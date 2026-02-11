@@ -374,3 +374,31 @@ body {
 .widget-stats strong {
   color: #333;
 }
+
+.import-export-panel {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.btn-download-template,
+.btn-upload-template {
+  padding: 10px 20px;
+  background-color: #4472C4;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.btn-download-template:hover,
+.btn-upload-template:hover {
+  background-color: #365a9c;
+}
+
+.btn-upload-template {
+  display: inline-block;
+}

@@ -1,10 +1,31 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: 'http://localhost:8000/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
+
+export const importExportAPI = {
+  downloadTemplate: async () => {
+    const response = await api.get('/import-export/template/download', {
+      responseType: 'blob'
+    });
+    return response;
+  },
+  
+  uploadTemplate: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/import-export/template/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response;
+  }
+};
 
 export const scheduleAPI = {
   getTasks: () => api.get('/schedule/tasks'),

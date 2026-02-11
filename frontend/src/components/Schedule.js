@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { scheduleAPI } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { scheduleAPI, importExportAPI } from '../services/api';
 import GanttChart from './GanttChart';
 
 function Schedule() {
@@ -11,6 +11,8 @@ function Schedule() {
     name: '',
     unit: ''
   });
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     loadTasks();
@@ -26,6 +28,48 @@ function Schedule() {
       setTasks(response.data);
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importExportAPI.downloadTemplate();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'template_schedule.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Ошибка скачивания шаблона:', error);
+      alert('Ошибка скачивания шаблона');
+    }
+  };
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      handleUploadTemplate(file);
+    }
+  };
+
+  const handleUploadTemplate = async (file) => {
+    try {
+      setUploadStatus('loading');
+      const response = await importExportAPI.uploadTemplate(file);
+      setUploadStatus('success');
+      alert(`Успешно обработано задач: ${response.data.tasks_processed}\n` +
+            (response.data.errors.length > 0 ? `Ошибки:\n${response.data.errors.join('\n')}` : ''));
+      loadTasks();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      setUploadStatus('error');
+      console.error('Ошибка загрузки файла:', error);
+      alert('Ошибка загрузки файла: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -57,6 +101,22 @@ function Schedule() {
 
   return (
     <div className="schedule-container">
+      {<div className="import-export-panel">
+        <button onClick={handleDownloadTemplate} className="btn-download-template">
+          📥 Скачать шаблон для импорта
+        </button>
+        <label className="btn-upload-template">
+          📤 Загрузить шаблон
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+        </label>
+        {uploadStatus === 'loading' && <span>Загрузка...</span>}
+      </div>}
       {showGantt && (
         <div className="gantt-panel">
           <GanttChart tasks={filteredTasks} />
