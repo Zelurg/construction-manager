@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 from datetime import date
 from .. import models, schemas
@@ -15,12 +16,28 @@ def get_daily_works(work_date: date, db: Session = Depends(get_db)):
 
 @router.post("/works")
 async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends(get_db)):
+    # Проверяем существование задачи
+    task = db.query(models.Task).filter(models.Task.id == work.task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    
+    # Создаём запись ежедневной работы
     db_work = models.DailyWork(**work.dict())
     db.add(db_work)
+    
+    # Пересчитываем volume_fact в задаче как сумму всех DailyWork
+    total_volume = db.query(func.sum(models.DailyWork.volume)).filter(
+        models.DailyWork.task_id == work.task_id
+    ).scalar() or 0
+    
+    # Обновляем volume_fact с учётом нового объёма
+    task.volume_fact = total_volume + work.volume
+    
     db.commit()
     db.refresh(db_work)
+    db.refresh(task)
     
-    # Отправляем уведомление
+    # Отправляем уведомление о создании работы
     await manager.broadcast({
         "type": "daily_work_created",
         "event": "daily_works",
@@ -33,6 +50,22 @@ async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends
         }
     }, event_type="daily_works")
     
+    # Отправляем уведомление об обновлении задачи для синхронизации всех вкладок
+    await manager.broadcast({
+        "type": "task_updated",
+        "event": "tasks",
+        "data": {
+            "id": task.id,
+            "code": task.code,
+            "name": task.name,
+            "unit": task.unit,
+            "volume_plan": task.volume_plan,
+            "volume_fact": task.volume_fact,
+            "start_date": task.start_date.isoformat(),
+            "end_date": task.end_date.isoformat()
+        }
+    }, event_type="tasks")
+    
     return db_work
 
 @router.get("/works/with-details")
@@ -44,14 +77,15 @@ def get_daily_works_with_details(work_date: date, db: Session = Depends(get_db))
     result = []
     for dw in daily_works:
         task = db.query(models.Task).filter(models.Task.id == dw.task_id).first()
-        result.append({
-            "id": dw.id,
-            "task_id": dw.task_id,
-            "code": task.code,
-            "name": task.name,
-            "unit": task.unit,
-            "volume": dw.volume,
-            "description": dw.description
-        })
+        if task:
+            result.append({
+                "id": dw.id,
+                "task_id": dw.task_id,
+                "code": task.code,
+                "name": task.name,
+                "unit": task.unit,
+                "volume": dw.volume,
+                "description": dw.description
+            })
     
     return result

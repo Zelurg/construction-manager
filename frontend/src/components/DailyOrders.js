@@ -22,9 +22,10 @@ function DailyOrders() {
     // Подключаемся к WebSocket
     websocketService.connect();
     
-    // Обработчики событий
+    // Обработчики событий - теперь внутри useEffect чтобы видеть актуальный selectedDate
     const handleDailyWorkCreated = (message) => {
       console.log('Daily work created:', message.data);
+      // loadDailyWorks теперь в замыкании и видит актуальный selectedDate
       loadDailyWorks();
     };
     
@@ -36,11 +37,12 @@ function DailyOrders() {
     websocketService.on('daily_work_created', handleDailyWorkCreated);
     websocketService.on('task_updated', handleTaskUpdated);
     
+    // Очистка при размонтировании или изменении selectedDate
     return () => {
       websocketService.off('daily_work_created', handleDailyWorkCreated);
       websocketService.off('task_updated', handleTaskUpdated);
     };
-  }, [selectedDate]);
+  }, [selectedDate]); // Пересоздаём обработчики при смене даты
 
   const loadDailyWorks = async () => {
     try {
@@ -83,6 +85,7 @@ function DailyOrders() {
       await dailyAPI.createWork(workData);
       setShowModal(false);
       // Список обновится автоматически через WebSocket
+      // Также обновятся все другие вкладки благодаря task_updated событию
     } catch (error) {
       alert('Ошибка при добавлении работы');
       console.error(error);
@@ -105,7 +108,7 @@ function DailyOrders() {
           />
         </div>
         <button onClick={handleAddWork} className="btn-primary">
-          + Внести объем
+          + Внести объём
         </button>
       </div>
 
@@ -146,7 +149,7 @@ function DailyOrders() {
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Внести объем работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
+            <h3>Внести объём работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
             
             <form onSubmit={handleSubmit}>
               <div className="form-group">
@@ -187,7 +190,7 @@ function DailyOrders() {
                   step="0.01"
                   value={formData.volume}
                   onChange={(e) => setFormData({...formData, volume: e.target.value})}
-                  placeholder="Введите объем"
+                  placeholder="Введите объём"
                   required
                 />
               </div>
