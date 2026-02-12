@@ -106,13 +106,33 @@ async def clear_all_tasks(
         raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
 
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
-async def update_task(task_id: int, task: schemas.TaskUpdate, db: Session = Depends(get_db)):
+async def update_task(
+    task_id: int, 
+    task: schemas.TaskUpdate, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Обновление задачи.
+    Редактирование плановых дат доступно только администраторам.
+    """
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
     
+    # Проверка прав: только админ может редактировать плановые даты
+    update_data = task.dict(exclude_unset=True)
+    
+    # Если пытаются обновить плановые даты - проверяем роль
+    if ('start_date_plan' in update_data or 'end_date_plan' in update_data):
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Только администратор может редактировать плановые даты"
+            )
+    
     # Обновляем только переданные поля
-    for key, value in task.dict(exclude_unset=True).items():
+    for key, value in update_data.items():
         setattr(db_task, key, value)
     
     db.commit()
