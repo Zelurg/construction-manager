@@ -3,24 +3,42 @@ from sqlalchemy.orm import Session
 from typing import List
 from .. import models, schemas
 from ..database import get_db
+from ..websocket_manager import manager
 
 router = APIRouter()
 
 @router.get("/tasks", response_model=List[schemas.Task])
-def get_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    tasks = db.query(models.Task).offset(skip).limit(limit).all()
+def get_tasks(db: Session = Depends(get_db)):
+    tasks = db.query(models.Task).all()
     return tasks
 
 @router.post("/tasks", response_model=schemas.Task)
-def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
+async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
     db_task = models.Task(**task.dict())
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+    
+    # Отправляем уведомление всем подключенным клиентам
+    await manager.broadcast({
+        "type": "task_created",
+        "event": "tasks",
+        "data": {
+            "id": db_task.id,
+            "code": db_task.code,
+            "name": db_task.name,
+            "unit": db_task.unit,
+            "volume_plan": db_task.volume_plan,
+            "volume_fact": db_task.volume_fact,
+            "start_date": db_task.start_date.isoformat(),
+            "end_date": db_task.end_date.isoformat()
+        }
+    }, event_type="tasks")
+    
     return db_task
 
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
-def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
+async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -30,14 +48,41 @@ def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(ge
     
     db.commit()
     db.refresh(db_task)
+    
+    # Отправляем уведомление об обновлении
+    await manager.broadcast({
+        "type": "task_updated",
+        "event": "tasks",
+        "data": {
+            "id": db_task.id,
+            "code": db_task.code,
+            "name": db_task.name,
+            "unit": db_task.unit,
+            "volume_plan": db_task.volume_plan,
+            "volume_fact": db_task.volume_fact,
+            "start_date": db_task.start_date.isoformat(),
+            "end_date": db_task.end_date.isoformat()
+        }
+    }, event_type="tasks")
+    
     return db_task
 
 @router.delete("/tasks/{task_id}")
-def delete_task(task_id: int, db: Session = Depends(get_db)):
+async def delete_task(task_id: int, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
     
     db.delete(db_task)
     db.commit()
-    return {"message": "Task deleted"}
+    
+    # Отправляем уведомление об удалении
+    await manager.broadcast({
+        "type": "task_deleted",
+        "event": "tasks",
+        "data": {
+            "id": task_id
+        }
+    }, event_type="tasks")
+    
+    return {"message": "Task deleted successfully"}
