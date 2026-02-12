@@ -3,6 +3,7 @@ import { scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
+import { useAuth } from '../contexts/AuthContext';
 
 // Пастельные цвета для разных уровней разделов
 const SECTION_COLORS = [
@@ -14,6 +15,9 @@ const SECTION_COLORS = [
 ];
 
 function Schedule({ showGantt, onShowColumnSettings }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [filters, setFilters] = useState({
@@ -24,6 +28,8 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [editingCell, setEditingCell] = useState(null); // { taskId, field }
+  const [editValue, setEditValue] = useState('');
   
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -32,8 +38,10 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     { key: 'volume_plan', label: 'Объем план', isBase: true },
     { key: 'volume_fact', label: 'Объем факт', isBase: true },
     { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
-    { key: 'start_date', label: 'Дата старта', isBase: true },
-    { key: 'end_date', label: 'Дата финиша', isBase: true },
+    { key: 'start_date_contract', label: 'Дата старта контракт', isBase: true },
+    { key: 'end_date_contract', label: 'Дата финиша контракт', isBase: true },
+    { key: 'start_date_plan', label: 'Дата старта план', isBase: true, editable: true },
+    { key: 'end_date_plan', label: 'Дата финиша план', isBase: true, editable: true },
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
@@ -48,7 +56,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
   ];
   
-  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date', 'end_date'];
+  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan'];
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const saved = localStorage.getItem('scheduleVisibleColumns');
     return saved ? JSON.parse(saved) : defaultColumns;
@@ -92,10 +100,8 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     
     const handleScheduleCleared = (message) => {
       console.log('Schedule cleared:', message.data);
-      // ИСПРАВЛЕНИЕ: явно очищаем оба состояния синхронно
       setTasks([]);
       setFilteredTasks([]);
-      // Дополнительно перезагружаем данные с сервера для гарантии синхронизации
       setTimeout(() => {
         loadTasks();
       }, 100);
@@ -173,7 +179,86 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
   
+  // Начало редактирования ячейки
+  const handleCellDoubleClick = (task, columnKey) => {
+    // Проверка: редактировать могут только админы
+    if (!isAdmin) return;
+    
+    // Проверка: только плановые даты можно редактировать
+    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan') return;
+    
+    // Разделы не редактируем
+    if (task.is_section) return;
+    
+    setEditingCell({ taskId: task.id, field: columnKey });
+    // Преобразуем дату в формат YYYY-MM-DD для input[type="date"]
+    const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
+    setEditValue(dateValue);
+  };
+  
+  // Сохранение изменений
+  const handleCellBlur = async () => {
+    if (!editingCell) return;
+    
+    const task = tasks.find(t => t.id === editingCell.taskId);
+    if (!task) return;
+    
+    // Если значение не изменилось, просто закрываем редактирование
+    const currentValue = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
+    if (editValue === currentValue) {
+      setEditingCell(null);
+      return;
+    }
+    
+    try {
+      // Отправляем только изменённое поле
+      const updateData = {
+        [editingCell.field]: editValue || null
+      };
+      
+      await scheduleAPI.updateTask(editingCell.taskId, updateData);
+      
+      // Обновляем локальное состояние
+      setTasks(prevTasks => 
+        prevTasks.map(t => 
+          t.id === editingCell.taskId 
+            ? { ...t, [editingCell.field]: editValue || null }
+            : t
+        )
+      );
+      
+      setEditingCell(null);
+    } catch (error) {
+      console.error('Ошибка обновления даты:', error);
+      alert('Ошибка обновления даты');
+      setEditingCell(null);
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleCellBlur();
+    } else if (e.key === 'Escape') {
+      setEditingCell(null);
+    }
+  };
+  
   const getCellValue = (task, columnKey) => {
+    // Проверка на режим редактирования
+    if (editingCell && editingCell.taskId === task.id && editingCell.field === columnKey) {
+      return (
+        <input
+          type="date"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleCellBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          style={{ width: '100%', padding: '4px' }}
+        />
+      );
+    }
+    
     switch(columnKey) {
       case 'volume_remaining':
         return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
@@ -197,8 +282,10 @@ function Schedule({ showGantt, onShowColumnSettings }) {
         return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'machine_hours_fact':
         return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
-      case 'start_date':
-      case 'end_date':
+      case 'start_date_contract':
+      case 'end_date_contract':
+      case 'start_date_plan':
+      case 'end_date_plan':
         return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
       case 'name':
         // Добавляем хлебные крошки для отфильтрованных задач
@@ -238,6 +325,20 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       fontWeight: 'bold',
       fontSize: task.level === 0 ? '1.05em' : '1em'
     };
+  };
+  
+  // Стиль для редактируемых ячеек (только для админа)
+  const getCellStyle = (task, columnKey) => {
+    if (!isAdmin || task.is_section) return {};
+    
+    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') {
+      return {
+        cursor: 'pointer',
+        backgroundColor: editingCell?.taskId === task.id && editingCell?.field === columnKey ? '#ffffcc' : 'inherit'
+      };
+    }
+    
+    return {};
   };
 
   const handleMouseDown = (e) => {
@@ -307,7 +408,14 @@ function Schedule({ showGantt, onShowColumnSettings }) {
                 {filteredTasks.map(task => (
                   <tr key={task.id} style={getRowStyle(task)}>
                     {visibleColumns.map(columnKey => (
-                      <td key={columnKey}>{getCellValue(task, columnKey)}</td>
+                      <td 
+                        key={columnKey} 
+                        style={getCellStyle(task, columnKey)}
+                        onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
+                        title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
+                      >
+                        {getCellValue(task, columnKey)}
+                      </td>
                     ))}
                   </tr>
                 ))}
@@ -331,7 +439,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
             style={{ width: `${100 - tableWidth}%` }}
             ref={ganttScrollRef}
           >
-            {/* ИСПРАВЛЕНИЕ: Передаем ВСЕ задачи (включая разделы) для правильного выравнивания */}
             <GanttChart tasks={filteredTasks} />
           </div>
         )}
