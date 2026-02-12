@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from .. import models, schemas
 from ..database import get_db
 from ..websocket_manager import manager
@@ -38,46 +38,6 @@ async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
     
     return db_task
 
-# ВАЖНО: clear-all ДОЛЖЕН быть ДО параметрического роута /{task_id}
-@router.delete("/tasks/clear-all")
-async def clear_all_tasks(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    """
-    Удаляет ВСЕ задачи из графика.
-    Доступно для авторизованных пользователей.
-    """
-    # Проверяем роль пользователя
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Только администратор может очистить график"
-        )
-    
-    try:
-        # Удаляем все задачи
-        deleted_count = db.query(models.Task).delete()
-        db.commit()
-        
-        # Уведомляем клиентов
-        await manager.broadcast({
-            "type": "schedule_cleared",
-            "event": "tasks",
-            "data": {
-                "message": "График очищен",
-                "deleted_count": deleted_count
-            }
-        }, event_type="tasks")
-        
-        return {
-            "message": "Все задачи успешно удалены",
-            "deleted_count": deleted_count
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
-
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
 async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
@@ -108,22 +68,62 @@ async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depe
     
     return db_task
 
-@router.delete("/tasks/{task_id}")
-async def delete_task(task_id: int, db: Session = Depends(get_db)):
-    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if not db_task:
-        raise HTTPException(status_code=404, detail="Task not found")
+@router.delete("/tasks")
+async def delete_tasks(
+    task_id: Optional[int] = Query(None),
+    clear_all: Optional[bool] = Query(False),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Удаляет задачу по ID или все задачи (если clear_all=true)
+    """
+    if clear_all:
+        # Очистка всех задач
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Только администратор может очистить график"
+            )
+        
+        try:
+            deleted_count = db.query(models.Task).delete()
+            db.commit()
+            
+            await manager.broadcast({
+                "type": "schedule_cleared",
+                "event": "tasks",
+                "data": {
+                    "message": "График очищен",
+                    "deleted_count": deleted_count
+                }
+            }, event_type="tasks")
+            
+            return {
+                "message": "Все задачи успешно удалены",
+                "deleted_count": deleted_count
+            }
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
     
-    db.delete(db_task)
-    db.commit()
-    
-    # Отправляем уведомление об удалении
-    await manager.broadcast({
-        "type": "task_deleted",
-        "event": "tasks",
-        "data": {
-            "id": task_id
-        }
-    }, event_type="tasks")
-    
-    return {"message": "Task deleted successfully"}
+    elif task_id is not None:
+        # Удаление одной задачи
+        db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
+        if not db_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        db.delete(db_task)
+        db.commit()
+        
+        await manager.broadcast({
+            "type": "task_deleted",
+            "event": "tasks",
+            "data": {
+                "id": task_id
+            }
+        }, event_type="tasks")
+        
+        return {"message": "Task deleted successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="Укажите task_id или clear_all=true")
