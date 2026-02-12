@@ -18,11 +18,12 @@ def get_analytics(db: Session = Depends(get_db)):
     total_progress = (total_fact / total_plan * 100) if total_plan > 0 else 0
     
     # ========== ПРОГРЕСС ПО ВРЕМЕНИ ==========
-    works_with_dates = [w for w in works if w.start_date and w.end_date]
+    # Используем ПЛАНОВЫЕ даты для расчета прогресса
+    works_with_dates = [w for w in works if w.start_date_plan and w.end_date_plan]
     
     if works_with_dates:
-        earliest_start = min(w.start_date for w in works_with_dates)
-        latest_end = max(w.end_date for w in works_with_dates)
+        earliest_start = min(w.start_date_plan for w in works_with_dates)
+        latest_end = max(w.end_date_plan for w in works_with_dates)
         total_days = (latest_end - earliest_start).days
         days_passed = (date.today() - earliest_start).days
         time_progress = (days_passed / total_days * 100) if total_days > 0 else 0
