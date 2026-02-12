@@ -30,8 +30,14 @@ class Task(Base):
     unit = Column(String, nullable=True)  # Nullable для разделов
     volume_plan = Column(Float, nullable=True, default=0)  # Nullable для разделов
     volume_fact = Column(Float, default=0)
-    start_date = Column(Date, nullable=True)  # Nullable для разделов
-    end_date = Column(Date, nullable=True)  # Nullable для разделов
+    
+    # Контрактные даты (из контракта, не изменяются)
+    start_date_contract = Column(Date, nullable=True)  # Дата старта контракт
+    end_date_contract = Column(Date, nullable=True)  # Дата финиша контракт
+    
+    # Плановые даты (можно редактировать в интерфейсе)
+    start_date_plan = Column(Date, nullable=True)  # Дата старта план
+    end_date_plan = Column(Date, nullable=True)  # Дата финиша план
     
     # Новые поля для расширенной информации
     unit_price = Column(Float, nullable=True, default=0)  # Цена за единицу
