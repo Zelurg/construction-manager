@@ -55,15 +55,21 @@ function GanttChart({ tasks }) {
   const chartData = useMemo(() => {
     if (tasks.length === 0) return null;
 
-    // Фильтруем только работы (не разделы) для расчёта дат
-    const workTasks = tasks.filter(t => !t.is_section && t.start_date && t.end_date);
+    // Фильтруем только работы (не разделы) с плановыми датами для расчёта
+    const workTasks = tasks.filter(t => !t.is_section && t.start_date_plan && t.end_date_plan);
     
     if (workTasks.length === 0) return null;
 
-    const dates = workTasks.flatMap(t => [
-      new Date(t.start_date),
-      new Date(t.end_date)
-    ]);
+    // Используем контрактные И плановые даты для расчета диапазона
+    const dates = workTasks.flatMap(t => {
+      const datesToAdd = [];
+      if (t.start_date_contract) datesToAdd.push(new Date(t.start_date_contract));
+      if (t.end_date_contract) datesToAdd.push(new Date(t.end_date_contract));
+      if (t.start_date_plan) datesToAdd.push(new Date(t.start_date_plan));
+      if (t.end_date_plan) datesToAdd.push(new Date(t.end_date_plan));
+      return datesToAdd;
+    });
+    
     const minDate = new Date(Math.min(...dates));
     const maxDate = new Date(Math.max(...dates));
     
@@ -213,9 +219,12 @@ function GanttChart({ tasks }) {
   const currentScale = scaleConfig[scale];
   const pixelsPerDay = currentScale.pixelsPerDay;
 
-  const getBarStyle = (task) => {
-    const start = new Date(task.start_date);
-    const end = new Date(task.end_date);
+  // Стиль для контрактной полосы (серая, верхняя)
+  const getContractBarStyle = (task) => {
+    if (!task.start_date_contract || !task.end_date_contract) return null;
+    
+    const start = new Date(task.start_date_contract);
+    const end = new Date(task.end_date_contract);
     
     start.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
@@ -225,7 +234,36 @@ function GanttChart({ tasks }) {
     
     return {
       left: `${startOffset * pixelsPerDay}px`,
-      width: `${Math.max(duration * pixelsPerDay, 10)}px`
+      width: `${Math.max(duration * pixelsPerDay, 10)}px`,
+      top: '3px',
+      height: '12px',
+      backgroundColor: '#999',
+      position: 'absolute',
+      borderRadius: '3px'
+    };
+  };
+
+  // Стиль для плановой полосы (синяя, нижняя)
+  const getPlanBarStyle = (task) => {
+    if (!task.start_date_plan || !task.end_date_plan) return null;
+    
+    const start = new Date(task.start_date_plan);
+    const end = new Date(task.end_date_plan);
+    
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    
+    const startOffset = Math.floor((start - chartData.minDate) / (1000 * 60 * 60 * 24));
+    const duration = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    
+    return {
+      left: `${startOffset * pixelsPerDay}px`,
+      width: `${Math.max(duration * pixelsPerDay, 10)}px`,
+      top: '18px',
+      height: '12px',
+      backgroundColor: '#4a90e2',
+      position: 'absolute',
+      borderRadius: '3px'
     };
   };
 
@@ -296,14 +334,29 @@ function GanttChart({ tasks }) {
                 ></div>
               ))}
               
-              {/* Бар задачи - только для работ, не для разделов */}
-              {!task.is_section && task.start_date && task.end_date && (
-                <div
-                  className="gantt-bar-integrated"
-                  style={getBarStyle(task)}
-                  title={`${task.name}\n${new Date(task.start_date).toLocaleDateString('ru-RU')} - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`}
-                >
-                </div>
+              {/* Бары задачи - только для работ, не для разделов */}
+              {!task.is_section && (
+                <>
+                  {/* Контрактная полоса (серая, верхняя) */}
+                  {task.start_date_contract && task.end_date_contract && (
+                    <div
+                      className="gantt-bar-contract"
+                      style={getContractBarStyle(task)}
+                      title={`Контракт: ${task.name}\n${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} - ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`}
+                    >
+                    </div>
+                  )}
+                  
+                  {/* Плановая полоса (синяя, нижняя) */}
+                  {task.start_date_plan && task.end_date_plan && (
+                    <div
+                      className="gantt-bar-plan"
+                      style={getPlanBarStyle(task)}
+                      title={`План: ${task.name}\n${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} - ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`}
+                    >
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))}
