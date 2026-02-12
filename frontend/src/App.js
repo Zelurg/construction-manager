@@ -1,21 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Schedule from './components/Schedule';
 import MonthlyOrder from './components/MonthlyOrder';
 import DailyOrders from './components/DailyOrders';
 import Analytics from './components/Analytics';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
+import Toolbar from './components/Toolbar';
 import authService from './services/authService';
+import { importExportAPI } from './services/api';
+import './styles/Toolbar.css';
+import './styles/GanttChart.css';
 
 function App() {
   const [activeTab, setActiveTab] = useState('schedule');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showGantt, setShowGantt] = useState(true);
 
   useEffect(() => {
-    // Проверка авторизации при загрузке
     const token = authService.getToken();
     const currentUser = authService.getCurrentUser();
     
@@ -39,11 +43,43 @@ function App() {
     setUser(null);
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importExportAPI.downloadTemplate();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'template_schedule.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Ошибка скачивания шаблона:', error);
+      alert('Ошибка скачивания шаблона');
+    }
+  };
+
+  const handleUploadTemplate = async (file) => {
+    try {
+      const response = await importExportAPI.uploadTemplate(file);
+      alert(`Успешно обработано задач: ${response.data.tasks_processed}\n` +
+            (response.data.errors.length > 0 ? `Ошибки:\n${response.data.errors.join('\n')}` : ''));
+      window.location.reload();
+    } catch (error) {
+      console.error('Ошибка загрузки файла:', error);
+      alert('Ошибка загрузки файла: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleToggleGantt = () => {
+    setShowGantt(!showGantt);
+  };
+
   if (loading) {
     return <div>Загрузка...</div>;
   }
 
-  // Главный компонент приложения (старый функционал)
   const MainApp = () => (
     <div className="app">
       <header className="header">
@@ -94,8 +130,15 @@ function App() {
         )}
       </nav>
 
+      <Toolbar 
+        onDownloadTemplate={handleDownloadTemplate}
+        onUploadTemplate={handleUploadTemplate}
+        showGantt={showGantt}
+        onToggleGantt={activeTab === 'schedule' ? handleToggleGantt : null}
+      />
+
       <main className="content">
-        {activeTab === 'schedule' && <Schedule />}
+        {activeTab === 'schedule' && <Schedule showGantt={showGantt} />}
         {activeTab === 'monthly' && <MonthlyOrder />}
         {activeTab === 'daily' && <DailyOrders />}
         {activeTab === 'analytics' && <Analytics />}
