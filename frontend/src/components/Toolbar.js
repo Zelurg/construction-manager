@@ -3,7 +3,7 @@ import authService from '../services/authService';
 import api from '../services/api';
 import '../styles/Toolbar.css';
 
-function Toolbar({ onDownloadTemplate, onUploadTemplate, showGantt, onToggleGantt }) {
+function Toolbar({ onDownloadTemplate, onUploadTemplate, showGantt, onToggleGantt, onShowColumnSettings }) {
   const fileInputRef = useRef(null);
   const user = authService.getCurrentUser();
   const isAdmin = user?.role === 'admin';
@@ -71,6 +71,17 @@ function Toolbar({ onDownloadTemplate, onUploadTemplate, showGantt, onToggleGant
             title={showGantt ? "Скрыть диаграмму Ганта" : "Показать диаграмму Ганта"}
           >
             <span className="toolbar-icon">{showGantt ? '📊' : '📈'}</span>
+          </button>
+        )}
+        
+        {/* Кнопка настройки вида колонок */}
+        {onShowColumnSettings && (
+          <button
+            className="toolbar-button"
+            onClick={onShowColumnSettings}
+            title="Настройка отображаемых колонок"
+          >
+            <span className="toolbar-icon">⚙️</span>
           </button>
         )}
 
