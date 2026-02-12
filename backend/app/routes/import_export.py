@@ -43,14 +43,14 @@ def download_template():
     ws = wb.active
     ws.title = "График работ"
     
-    # Заголовки - добавлены новые колонки
+    # Заголовки - добавлены контрактные даты
     headers = [
         "Шифр", 
         "Наименование работ", 
         "Ед. изм.", 
         "Объем план", 
-        "Дата начала", 
-        "Дата окончания",
+        "Дата начала (контракт)", 
+        "Дата окончания (контракт)",
         "Цена за ед.",
         "Трудозатраты на ед. (чел-час)",
         "Машиночасы на ед.",
@@ -76,7 +76,7 @@ def download_template():
         if col_num <= 2:
             ws.column_dimensions[cell.column_letter].width = 25
         elif col_num <= 6:
-            ws.column_dimensions[cell.column_letter].width = 15
+            ws.column_dimensions[cell.column_letter].width = 18
         else:
             ws.column_dimensions[cell.column_letter].width = 25
     
@@ -181,8 +181,10 @@ async def upload_template(
                             unit=None,
                             volume_plan=0,
                             volume_fact=0,
-                            start_date=None,
-                            end_date=None,
+                            start_date_contract=None,
+                            end_date_contract=None,
+                            start_date_plan=None,
+                            end_date_plan=None,
                             is_section=True,
                             level=level,
                             parent_code=parent_code
@@ -192,13 +194,17 @@ async def upload_template(
                         created_tasks.append({"action": "created", "code": code, "type": "section"})
                 else:
                     # Обработка работы
-                    # Преобразование дат
-                    start_date = pd.to_datetime(row["Дата начала"]).date() if "Дата начала" in row and not pd.isna(row["Дата начала"]) else None
-                    end_date = pd.to_datetime(row["Дата окончания"]).date() if "Дата окончания" in row and not pd.isna(row["Дата окончания"]) else None
+                    # Преобразование дат (из Excel загружаются контрактные даты)
+                    start_date_contract = pd.to_datetime(row["Дата начала (контракт)"]).date() if "Дата начала (контракт)" in row and not pd.isna(row["Дата начала (контракт)"]) else None
+                    end_date_contract = pd.to_datetime(row["Дата окончания (контракт)"]).date() if "Дата окончания (контракт)" in row and not pd.isna(row["Дата окончания (контракт)"]) else None
                     
-                    if not start_date or not end_date:
+                    if not start_date_contract or not end_date_contract:
                         errors.append(f"Строка {idx + 2} ({code}): отсутствуют даты")
                         continue
+                    
+                    # Плановые даты = контрактные при первом импорте
+                    start_date_plan = start_date_contract
+                    end_date_plan = end_date_contract
                     
                     # Читаем опциональные поля
                     volume_plan = float(row.get("Объем план", 0)) if "Объем план" in row and not pd.isna(row["Объем план"]) else 0
@@ -212,8 +218,13 @@ async def upload_template(
                         existing_task.name = name
                         existing_task.unit = str(unit).strip()
                         existing_task.volume_plan = volume_plan
-                        existing_task.start_date = start_date
-                        existing_task.end_date = end_date
+                        existing_task.start_date_contract = start_date_contract
+                        existing_task.end_date_contract = end_date_contract
+                        # Плановые даты не перезаписываем если они уже есть
+                        if not existing_task.start_date_plan:
+                            existing_task.start_date_plan = start_date_plan
+                        if not existing_task.end_date_plan:
+                            existing_task.end_date_plan = end_date_plan
                         existing_task.unit_price = unit_price
                         existing_task.labor_per_unit = labor_per_unit
                         existing_task.machine_hours_per_unit = machine_hours_per_unit
@@ -231,8 +242,10 @@ async def upload_template(
                             unit=str(unit).strip(),
                             volume_plan=volume_plan,
                             volume_fact=0,
-                            start_date=start_date,
-                            end_date=end_date,
+                            start_date_contract=start_date_contract,
+                            end_date_contract=end_date_contract,
+                            start_date_plan=start_date_plan,
+                            end_date_plan=end_date_plan,
                             unit_price=unit_price,
                             labor_per_unit=labor_per_unit,
                             machine_hours_per_unit=machine_hours_per_unit,
