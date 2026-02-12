@@ -25,6 +25,9 @@ function App() {
     monthly: null,
     daily: null
   });
+  
+  // Ref для принудительной перезагрузки Schedule
+  const scheduleKey = useRef(0);
 
   useEffect(() => {
     const token = authService.getToken();
@@ -89,6 +92,11 @@ function App() {
       handler();
     }
   };
+  
+  const handleScheduleCleared = () => {
+    // Принудительно перезагружаем Schedule
+    scheduleKey.current += 1;
+  };
 
   if (loading) {
     return <div>Загрузка...</div>;
@@ -145,16 +153,17 @@ function App() {
       </nav>
 
       <Toolbar 
-        onDownloadTemplate={handleDownloadTemplate}
-        onUploadTemplate={handleUploadTemplate}
+        activeTab={activeTab}
         showGantt={showGantt}
-        onToggleGantt={activeTab === 'schedule' ? handleToggleGantt : null}
-        onShowColumnSettings={['schedule', 'monthly', 'daily'].includes(activeTab) ? handleShowColumnSettings : null}
+        onToggleGantt={handleToggleGantt}
+        onShowColumnSettings={handleShowColumnSettings}
+        onScheduleCleared={handleScheduleCleared}
       />
 
       <main className="content">
         {activeTab === 'schedule' && (
           <Schedule 
+            key={scheduleKey.current}
             showGantt={showGantt}
             onShowColumnSettings={(handler) => columnSettingsHandlers.current.schedule = handler}
           />
