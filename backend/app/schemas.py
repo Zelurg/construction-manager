@@ -77,6 +77,14 @@ class DailyWorkWithTask(DailyWork):
     name: str
     unit: str
 
+# Analytics schema
+class Analytics(BaseModel):
+    total_progress_percent: float
+    time_progress_percent: float
+    labor_plan: float
+    labor_fact: float
+    labor_remaining: float
+
 # Auth schemas
 class UserBase(BaseModel):
     username: str
