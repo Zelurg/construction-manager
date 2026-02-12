@@ -31,8 +31,10 @@ async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
             "unit": db_task.unit,
             "volume_plan": db_task.volume_plan,
             "volume_fact": db_task.volume_fact,
-            "start_date": db_task.start_date.isoformat() if db_task.start_date else None,
-            "end_date": db_task.end_date.isoformat() if db_task.end_date else None
+            "start_date_contract": db_task.start_date_contract.isoformat() if db_task.start_date_contract else None,
+            "end_date_contract": db_task.end_date_contract.isoformat() if db_task.end_date_contract else None,
+            "start_date_plan": db_task.start_date_plan.isoformat() if db_task.start_date_plan else None,
+            "end_date_plan": db_task.end_date_plan.isoformat() if db_task.end_date_plan else None
         }
     }, event_type="tasks")
     
@@ -104,12 +106,13 @@ async def clear_all_tasks(
         raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
 
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
-async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
+async def update_task(task_id: int, task: schemas.TaskUpdate, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    for key, value in task.dict().items():
+    # Обновляем только переданные поля
+    for key, value in task.dict(exclude_unset=True).items():
         setattr(db_task, key, value)
     
     db.commit()
@@ -126,8 +129,10 @@ async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depe
             "unit": db_task.unit,
             "volume_plan": db_task.volume_plan,
             "volume_fact": db_task.volume_fact,
-            "start_date": db_task.start_date.isoformat() if db_task.start_date else None,
-            "end_date": db_task.end_date.isoformat() if db_task.end_date else None
+            "start_date_contract": db_task.start_date_contract.isoformat() if db_task.start_date_contract else None,
+            "end_date_contract": db_task.end_date_contract.isoformat() if db_task.end_date_contract else None,
+            "start_date_plan": db_task.start_date_plan.isoformat() if db_task.start_date_plan else None,
+            "end_date_plan": db_task.end_date_plan.isoformat() if db_task.end_date_plan else None
         }
     }, event_type="tasks")
     
