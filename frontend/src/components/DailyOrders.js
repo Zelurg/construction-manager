@@ -6,6 +6,7 @@ import ColumnSettings from './ColumnSettings';
 function DailyOrders({ onShowColumnSettings }) {
   const [works, setWorks] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [allTasks, setAllTasks] = useState([]); // Для breadcrumbs нужны все задачи включая разделы
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -82,7 +83,9 @@ function DailyOrders({ onShowColumnSettings }) {
   const loadTasks = async () => {
     try {
       const response = await scheduleAPI.getTasks();
-      // Фильтруем только работы, исключая разделы
+      // Сохраняем все задачи для breadcrumbs
+      setAllTasks(response.data);
+      // Фильтруем только работы для выбора в модалке
       const workTasks = response.data.filter(task => !task.is_section);
       setTasks(workTasks);
     } catch (error) {
@@ -125,10 +128,41 @@ function DailyOrders({ onShowColumnSettings }) {
     return tasks.find(t => t.id === taskId);
   };
   
+  // Получение полного пути раздела (хлебные крошки)
+  const getBreadcrumb = (work) => {
+    // Находим задачу по code
+    const task = allTasks.find(t => t.code === work.code);
+    if (!task || !task.parent_code) return '';
+    
+    const breadcrumbs = [];
+    let currentCode = task.parent_code;
+    
+    while (currentCode) {
+      const parentTask = allTasks.find(t => t.code === currentCode);
+      if (parentTask) {
+        breadcrumbs.unshift(parentTask.name);
+        currentCode = parentTask.parent_code;
+      } else {
+        break;
+      }
+    }
+    
+    return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
+  };
+  
   const getCellValue = (work, columnKey) => {
-    const task = tasks.find(t => t.code === work.code);
+    const task = allTasks.find(t => t.code === work.code);
     
     switch(columnKey) {
+      case 'name':
+        // Добавляем хлебные крошки
+        const breadcrumb = getBreadcrumb(work);
+        return breadcrumb ? (
+          <span>
+            <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
+            {work.name}
+          </span>
+        ) : work.name;
       case 'labor_total':
         if (!task) return '-';
         return (work.volume * (task.labor_per_unit || 0)).toFixed(2);
