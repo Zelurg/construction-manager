@@ -89,6 +89,26 @@ function MonthlyOrder({ onShowColumnSettings }) {
     }
   };
   
+  // Получение полного пути раздела (хлебные крошки)
+  const getBreadcrumb = (task) => {
+    if (!task.parent_code) return '';
+    
+    const breadcrumbs = [];
+    let currentCode = task.parent_code;
+    
+    while (currentCode) {
+      const parentTask = allTasks.find(t => t.code === currentCode);
+      if (parentTask) {
+        breadcrumbs.unshift(parentTask.name);
+        currentCode = parentTask.parent_code;
+      } else {
+        break;
+      }
+    }
+    
+    return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
+  };
+  
   const getCellValue = (task, columnKey) => {
     switch(columnKey) {
       case 'volume_remaining':
@@ -116,8 +136,16 @@ function MonthlyOrder({ onShowColumnSettings }) {
       case 'start_date':
       case 'end_date':
         return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
-      case 'code':
       case 'name':
+        // Добавляем хлебные крошки для всех задач
+        const breadcrumb = getBreadcrumb(task);
+        return breadcrumb ? (
+          <span>
+            <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
+            {task.name}
+          </span>
+        ) : task.name;
+      case 'code':
       case 'unit':
       case 'executor':
         return task[columnKey] || '-';
