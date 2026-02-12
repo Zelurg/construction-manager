@@ -1,3 +1,5 @@
+/* Стили для компонента Справочники */
+
 .directories {
   padding: 20px;
   height: 100%;
@@ -28,25 +30,26 @@
   padding: 10px 20px;
   background: none;
   border: none;
-  color: #666;
-  font-size: 16px;
   cursor: pointer;
-  border-radius: 4px 4px 0 0;
-  transition: all 0.3s ease;
-  font-weight: 500;
+  font-size: 16px;
+  color: #666;
+  transition: all 0.3s;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -12px;
 }
 
 .sub-tabs button:hover {
-  background-color: #f5f5f5;
   color: #333;
+  background-color: #f5f5f5;
 }
 
 .sub-tabs button.active {
-  background-color: #4CAF50;
-  color: white;
+  color: #2196F3;
+  border-bottom-color: #2196F3;
   font-weight: 600;
 }
 
+/* Контент справочников */
 .directories-content {
   flex: 1;
   overflow: auto;
