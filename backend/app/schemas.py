@@ -163,9 +163,9 @@ class EmployeeCreate(EmployeeBase):
     pass
 
 class EmployeeUpdate(BaseModel):
-    full_name: Optional[str] = Field(None, min_length=1, description="ФИО сотрудника")
-    position: Optional[str] = Field(None, min_length=1, description="Профессия/должность")
-    is_active: Optional[bool] = Field(None, description="Активен ли сотрудник")
+    full_name: Optional[str] = Field(default=None, min_length=1, description="ФИО сотрудника")
+    position: Optional[str] = Field(default=None, min_length=1, description="Профессия/должность")
+    is_active: Optional[bool] = Field(default=None, description="Активен ли сотрудник")
 
 class Employee(EmployeeBase):
     id: int
@@ -180,14 +180,14 @@ class DailyExecutorBase(BaseModel):
     date: date = Field(..., description="Дата работы")
     employee_id: int = Field(..., gt=0, description="ID сотрудника")
     hours_worked: float = Field(default=10.0, gt=0, le=24, description="Отработанные часы")
-    is_responsible: bool = Field(default=False, description="Является ли ответственным (прорабом)")
+    is_responsible: bool = Field(default=False, description="Является ли ответственным")
 
 class DailyExecutorCreate(DailyExecutorBase):
     pass
 
 class DailyExecutorUpdate(BaseModel):
-    hours_worked: Optional[float] = Field(None, gt=0, le=24, description="Отработанные часы")
-    is_responsible: Optional[bool] = Field(None, description="Является ли ответственным (прорабом)")
+    hours_worked: Optional[float] = Field(default=None, gt=0, le=24, description="Отработанные часы")
+    is_responsible: Optional[bool] = Field(default=None, description="Является ли ответственным")
 
 class DailyExecutor(DailyExecutorBase):
     id: int
@@ -203,8 +203,8 @@ class DailyExecutorWithEmployee(DailyExecutor):
 # Схема для получения статистики по дню
 class DailyExecutorStats(BaseModel):
     date: date
-    total_hours_worked: float  # Суммарные отработанные часы всех исполнителей
-    total_labor_hours: float  # Суммарные трудозатраты по внесенным объемам
-    executors_count: int  # Количество исполнителей
-    responsible: Optional[Employee] = None  # Ответственный за день
-    executors: List[DailyExecutorWithEmployee]  # Список исполнителей с полной информацией
+    total_hours_worked: float
+    total_labor_hours: float
+    executors_count: int
+    responsible: Optional[Employee] = None
+    executors: List[DailyExecutorWithEmployee]
