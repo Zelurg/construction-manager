@@ -1,12 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { monthlyAPI } from '../services/api';
 import websocketService from '../services/websocket';
+import ColumnSettings from './ColumnSettings';
 
-function MonthlyOrder() {
+function MonthlyOrder({ onShowColumnSettings }) {
   const [tasks, setTasks] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().substring(0, 7) + '-01'
   );
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  
+  // Доступные колонки для месячного наряда
+  const availableColumns = [
+    { key: 'code', label: 'Шифр', isBase: true },
+    { key: 'name', label: 'Наименование', isBase: true },
+    { key: 'unit', label: 'Ед. изм.', isBase: true },
+    { key: 'volume_plan', label: 'Объем план', isBase: true },
+    { key: 'volume_fact', label: 'Объем факт', isBase: true },
+    { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
+    { key: 'start_date', label: 'Дата старта', isBase: true },
+    { key: 'end_date', label: 'Дата финиша', isBase: true },
+    // Новые атрибуты
+    { key: 'unit_price', label: 'Цена за ед.', isBase: false },
+    { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
+    { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
+    { key: 'executor', label: 'Исполнитель', isBase: false },
+    // Вычисляемые атрибуты
+    { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
+    { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
+    { key: 'cost_total', label: 'Стоимость всего', isBase: false, isCalculated: true },
+    { key: 'cost_remaining', label: 'Остаток стоимости', isBase: false, isCalculated: true },
+  ];
+  
+  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date', 'end_date'];
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem('monthlyOrderVisibleColumns');
+    return saved ? JSON.parse(saved) : defaultColumns;
+  });
+
+  // Пробрасываем функцию открытия настроек наверх
+  useEffect(() => {
+    if (onShowColumnSettings) {
+      onShowColumnSettings(() => setShowColumnSettings(true));
+    }
+  }, [onShowColumnSettings]);
 
   useEffect(() => {
     loadMonthlyTasks();
@@ -17,7 +54,6 @@ function MonthlyOrder() {
     // Обработчики событий
     const handleMonthlyTaskCreated = (message) => {
       console.log('Monthly task created:', message.data);
-      // Перезагружаем данные для текущего месяца
       loadMonthlyTasks();
     };
     
@@ -43,6 +79,43 @@ function MonthlyOrder() {
       console.error('Ошибка загрузки месячных задач:', error);
     }
   };
+  
+  const getCellValue = (task, columnKey) => {
+    switch(columnKey) {
+      case 'volume_remaining':
+        return (task.volume_plan - task.volume_fact).toFixed(2);
+      case 'labor_total':
+        return (task.labor_per_unit * task.volume_plan).toFixed(2);
+      case 'labor_remaining':
+        const remaining = task.volume_plan - task.volume_fact;
+        return (task.labor_per_unit * remaining).toFixed(2);
+      case 'cost_total':
+        return (task.unit_price * task.volume_plan).toFixed(2);
+      case 'cost_remaining':
+        const volRemaining = task.volume_plan - task.volume_fact;
+        return (task.unit_price * volRemaining).toFixed(2);
+      case 'start_date':
+      case 'end_date':
+        return new Date(task[columnKey]).toLocaleDateString('ru-RU');
+      case 'code':
+      case 'name':
+      case 'unit':
+      case 'executor':
+        return task[columnKey] || '-';
+      default:
+        return task[columnKey] !== undefined ? task[columnKey] : '-';
+    }
+  };
+  
+  const getColumnLabel = (columnKey) => {
+    const column = availableColumns.find(col => col.key === columnKey);
+    return column ? column.label : columnKey;
+  };
+  
+  const handleSaveColumnSettings = (newVisibleColumns) => {
+    setVisibleColumns(newVisibleColumns);
+    localStorage.setItem('monthlyOrderVisibleColumns', JSON.stringify(newVisibleColumns));
+  };
 
   return (
     <div className="monthly-order">
@@ -58,31 +131,30 @@ function MonthlyOrder() {
       <table className="tasks-table">
         <thead>
           <tr>
-            <th>Шифр</th>
-            <th>Наименование</th>
-            <th>Ед. изм.</th>
-            <th>Объем план</th>
-            <th>Объем факт</th>
-            <th>Объем остаток</th>
-            <th>Дата старта</th>
-            <th>Дата финиша</th>
+            {visibleColumns.map(columnKey => (
+              <th key={columnKey}>{getColumnLabel(columnKey)}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {tasks.map(task => (
             <tr key={task.id}>
-              <td>{task.code}</td>
-              <td>{task.name}</td>
-              <td>{task.unit}</td>
-              <td>{task.volume_plan}</td>
-              <td>{task.volume_fact}</td>
-              <td>{task.volume_plan - task.volume_fact}</td>
-              <td>{new Date(task.start_date).toLocaleDateString()}</td>
-              <td>{new Date(task.end_date).toLocaleDateString()}</td>
+              {visibleColumns.map(columnKey => (
+                <td key={columnKey}>{getCellValue(task, columnKey)}</td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
+      
+      {showColumnSettings && (
+        <ColumnSettings
+          availableColumns={availableColumns}
+          visibleColumns={visibleColumns}
+          onSave={handleSaveColumnSettings}
+          onClose={() => setShowColumnSettings(false)}
+        />
+      )}
     </div>
   );
 }
