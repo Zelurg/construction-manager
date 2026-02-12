@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, extract, func
 from typing import List
 from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
 from .. import models, schemas
 from ..database import get_db
 
