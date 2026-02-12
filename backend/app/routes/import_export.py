@@ -19,8 +19,19 @@ def download_template():
     ws = wb.active
     ws.title = "График работ"
     
-    # Заголовки
-    headers = ["Шифр", "Наименование работ", "Ед. изм.", "Объем план", "Дата начала", "Дата окончания"]
+    # Заголовки - добавлены новые колонки
+    headers = [
+        "Шифр", 
+        "Наименование работ", 
+        "Ед. изм.", 
+        "Объем план", 
+        "Дата начала", 
+        "Дата окончания",
+        "Цена за ед.",  # Новое поле
+        "Трудозатраты на ед. (чел-час)",  # Новое поле
+        "Машиночасы на ед.",  # Новое поле
+        "Исполнитель"  # Новое поле
+    ]
     ws.append(headers)
     
     # Стилизация заголовков
@@ -38,28 +49,35 @@ def download_template():
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = border
-        ws.column_dimensions[cell.column_letter].width = 20
+        # Установим ширину колонок
+        if col_num <= 2:
+            ws.column_dimensions[cell.column_letter].width = 20
+        elif col_num <= 6:
+            ws.column_dimensions[cell.column_letter].width = 15
+        else:
+            ws.column_dimensions[cell.column_letter].width = 25
     
-    # Примеры данных
+    # Примеры данных с новыми полями
     examples = [
-        ["1.1", "Земляные работы", "м³", 1000, "2026-01-01", "2026-02-15"],
-        ["1.2", "Бетонные работы", "м³", 500, "2026-02-16", "2026-03-30"],
-        ["2.1", "Кирпичная кладка", "м³", 250, "2026-04-01", "2026-05-15"]
+        ["1.1", "Земляные работы", "м³", 1000, "2026-01-01", "2026-02-15", 150.50, 0.5, 0.25, "Бригада №1"],
+        ["1.2", "Бетонные работы", "м³", 500, "2026-02-16", "2026-03-30", 350.75, 1.2, 0.8, "Бригада №2"],
+        ["2.1", "Кирпичная кладка", "м³", 250, "2026-04-01", "2026-05-15", 280.00, 2.5, 0.1, "Бригада №3"]
     ]
     
     for row_data in examples:
         ws.append(row_data)
     
-    # Форматирование столбцов с датами
+    # Форматирование столбцов с датами (колонки 5-6)
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=5, max_col=6):
         for cell in row:
             cell.number_format = 'YYYY-MM-DD'
             cell.border = border
     
     # Форматирование остальных ячеек
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=4):
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=10):
         for cell in row:
-            cell.border = border
+            if cell.column < 5 or cell.column > 6:  # Не даты
+                cell.border = border
     
     # Сохранение в BytesIO
     output = BytesIO()
@@ -86,13 +104,21 @@ async def upload_template(
         contents = await file.read()
         df = pd.read_excel(BytesIO(contents))
         
-        # Проверка наличия необходимых колонок
+        # Проверка наличия необходимых колонок (обязательные)
         required_columns = ["Шифр", "Наименование работ", "Ед. изм.", "Объем план", "Дата начала", "Дата окончания"]
         if not all(col in df.columns for col in required_columns):
             raise HTTPException(
                 status_code=400,
                 detail=f"Файл должен содержать колонки: {', '.join(required_columns)}"
             )
+        
+        # Опциональные колонки
+        optional_columns = {
+            "Цена за ед.": "unit_price",
+            "Трудозатраты на ед. (чел-час)": "labor_per_unit",
+            "Машиночасы на ед.": "machine_hours_per_unit",
+            "Исполнитель": "executor"
+        }
         
         created_tasks = []
         errors = []
@@ -115,6 +141,12 @@ async def upload_template(
                 # Проверка существования задачи с таким кодом
                 existing_task = db.query(models.Task).filter(models.Task.code == str(row["Шифр"])).first()
                 
+                # Читаем опциональные поля
+                unit_price = float(row.get("Цена за ед.", 0)) if "Цена за ед." in row and not pd.isna(row["Цена за ед."]) else 0
+                labor_per_unit = float(row.get("Трудозатраты на ед. (чел-час)", 0)) if "Трудозатраты на ед. (чел-час)" in row and not pd.isna(row["Трудозатраты на ед. (чел-час)"]) else 0
+                machine_hours_per_unit = float(row.get("Машиночасы на ед.", 0)) if "Машиночасы на ед." in row and not pd.isna(row["Машиночасы на ед."]) else 0
+                executor = str(row.get("Исполнитель", "")) if "Исполнитель" in row and not pd.isna(row["Исполнитель"]) else None
+                
                 if existing_task:
                     # Обновление существующей задачи
                     existing_task.name = str(row["Наименование работ"])
@@ -122,6 +154,11 @@ async def upload_template(
                     existing_task.volume_plan = float(row["Объем план"])
                     existing_task.start_date = start_date
                     existing_task.end_date = end_date
+                    # Обновляем новые поля
+                    existing_task.unit_price = unit_price
+                    existing_task.labor_per_unit = labor_per_unit
+                    existing_task.machine_hours_per_unit = machine_hours_per_unit
+                    existing_task.executor = executor
                     db.commit()
                     created_tasks.append({"action": "updated", "code": existing_task.code})
                 else:
@@ -133,7 +170,12 @@ async def upload_template(
                         volume_plan=float(row["Объем план"]),
                         volume_fact=0,
                         start_date=start_date,
-                        end_date=end_date
+                        end_date=end_date,
+                        # Новые поля
+                        unit_price=unit_price,
+                        labor_per_unit=labor_per_unit,
+                        machine_hours_per_unit=machine_hours_per_unit,
+                        executor=executor
                     )
                     db.add(task)
                     db.commit()
