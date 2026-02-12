@@ -92,7 +92,13 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     
     const handleScheduleCleared = (message) => {
       console.log('Schedule cleared:', message.data);
+      // ИСПРАВЛЕНИЕ: явно очищаем оба состояния синхронно
       setTasks([]);
+      setFilteredTasks([]);
+      // Дополнительно перезагружаем данные с сервера для гарантии синхронизации
+      setTimeout(() => {
+        loadTasks();
+      }, 100);
     };
     
     websocketService.on('task_created', handleTaskCreated);
