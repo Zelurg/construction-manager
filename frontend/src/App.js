@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Schedule from './components/Schedule';
 import MonthlyOrder from './components/MonthlyOrder';
@@ -18,6 +18,16 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showGantt, setShowGantt] = useState(true);
+  
+  // Refs для хранения функций открытия настроек колонок
+  const columnSettingsHandlers = useRef({
+    schedule: null,
+    monthly: null,
+    daily: null
+  });
+  
+  // Ref для принудительной перезагрузки Schedule
+  const scheduleKey = useRef(0);
 
   useEffect(() => {
     const token = authService.getToken();
@@ -75,6 +85,18 @@ function App() {
   const handleToggleGantt = () => {
     setShowGantt(!showGantt);
   };
+  
+  const handleShowColumnSettings = () => {
+    const handler = columnSettingsHandlers.current[activeTab];
+    if (handler) {
+      handler();
+    }
+  };
+  
+  const handleScheduleCleared = () => {
+    // Принудительно перезагружаем Schedule
+    scheduleKey.current += 1;
+  };
 
   if (loading) {
     return <div>Загрузка...</div>;
@@ -131,16 +153,31 @@ function App() {
       </nav>
 
       <Toolbar 
-        onDownloadTemplate={handleDownloadTemplate}
-        onUploadTemplate={handleUploadTemplate}
+        activeTab={activeTab}
         showGantt={showGantt}
-        onToggleGantt={activeTab === 'schedule' ? handleToggleGantt : null}
+        onToggleGantt={handleToggleGantt}
+        onShowColumnSettings={handleShowColumnSettings}
+        onScheduleCleared={handleScheduleCleared}
       />
 
       <main className="content">
-        {activeTab === 'schedule' && <Schedule showGantt={showGantt} />}
-        {activeTab === 'monthly' && <MonthlyOrder />}
-        {activeTab === 'daily' && <DailyOrders />}
+        {activeTab === 'schedule' && (
+          <Schedule 
+            key={scheduleKey.current}
+            showGantt={showGantt}
+            onShowColumnSettings={(handler) => columnSettingsHandlers.current.schedule = handler}
+          />
+        )}
+        {activeTab === 'monthly' && (
+          <MonthlyOrder 
+            onShowColumnSettings={(handler) => columnSettingsHandlers.current.monthly = handler}
+          />
+        )}
+        {activeTab === 'daily' && (
+          <DailyOrders 
+            onShowColumnSettings={(handler) => columnSettingsHandlers.current.daily = handler}
+          />
+        )}
         {activeTab === 'analytics' && <Analytics />}
         {activeTab === 'admin' && user?.role === 'admin' && <AdminPanel />}
       </main>

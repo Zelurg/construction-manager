@@ -1,97 +1,136 @@
 import React, { useRef } from 'react';
-import authService from '../services/authService';
-import api from '../services/api';
-import '../styles/Toolbar.css';
+import { importExportAPI, scheduleAPI } from '../services/api';
+import './Toolbar.css';
 
-function Toolbar({ onDownloadTemplate, onUploadTemplate, showGantt, onToggleGantt }) {
+function Toolbar({ 
+  activeTab, 
+  showGantt, 
+  onToggleGantt, 
+  onShowColumnSettings,
+  onScheduleCleared 
+}) {
   const fileInputRef = useRef(null);
-  const user = authService.getCurrentUser();
-  const isAdmin = user?.role === 'admin';
 
-  const handleFileClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file && onUploadTemplate) {
-      onUploadTemplate(file);
-      event.target.value = '';
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importExportAPI.downloadTemplate();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'template_schedule.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      alert('Ошибка при скачивании шаблона');
+      console.error(error);
     }
   };
 
-  const handleRecalculateVolumes = async () => {
-    if (!window.confirm('Пересчитать фактические объёмы для всех задач?\n\nЭто обновит volume_fact на основе всех ежедневных нарядов.')) {
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const response = await importExportAPI.uploadTemplate(file);
+      alert(`Успешно загружено ${response.data.tasks_processed} задач`);
+      
+      if (response.data.errors && response.data.errors.length > 0) {
+        console.warn('Ошибки при загрузке:', response.data.errors);
+      }
+      
+      window.location.reload();
+    } catch (error) {
+      alert('Ошибка при загрузке файла');
+      console.error(error);
+    }
+
+    event.target.value = '';
+  };
+
+  const handleClearSchedule = async () => {
+    if (!window.confirm('Вы уверены, что хотите очистить весь график? Это действие нельзя отменить!')) {
       return;
     }
 
     try {
-      const response = await api.post('/admin/recalculate-volumes');
-      const data = response.data;
-      
-      alert(
-        `✅ Пересчёт завершён!\n\n` +
-        `Всего задач: ${data.total_tasks}\n` +
-        `Обновлено: ${data.updated_tasks}\n\n` +
-        `Страница будет перезагружена для обновления данных.`
-      );
-      
-      // Перезагружаем страницу чтобы обновить все вкладки
-      window.location.reload();
+      await scheduleAPI.clearAll();
+      alert('График успешно очищен');
+      if (onScheduleCleared) {
+        onScheduleCleared();
+      }
     } catch (error) {
-      console.error('Ошибка пересчёта объёмов:', error);
-      alert('❌ Ошибка при пересчёте объёмов: ' + (error.response?.data?.detail || error.message));
+      alert('Ошибка при очистке графика');
+      console.error('Ошибка очистки графика:', error);
+    }
+  };
+
+  const handleColumnSettings = () => {
+    if (onShowColumnSettings) {
+      onShowColumnSettings();
     }
   };
 
   return (
     <div className="toolbar">
-      <div className="toolbar-content">
-        <button
-          className="toolbar-button"
-          onClick={onDownloadTemplate}
-          title="Скачать шаблон для импорта"
-        >
-          <span className="toolbar-icon">📥</span>
-        </button>
+      <div className="toolbar-left">
+        {activeTab === 'schedule' && (
+          <>
+            <button 
+              onClick={handleDownloadTemplate}
+              className="toolbar-btn"
+              title="Скачать шаблон"
+            >
+              📥 Скачать шаблон
+            </button>
+            <button 
+              onClick={handleUploadClick}
+              className="toolbar-btn"
+              title="Загрузить график"
+            >
+              📤 Загрузить график
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+            />
+            <button 
+              onClick={handleClearSchedule}
+              className="toolbar-btn toolbar-btn-danger"
+              title="Очистить весь график"
+            >
+              🗑️ Очистить график
+            </button>
+          </>
+        )}
+      </div>
 
-        <button
-          className="toolbar-button"
-          onClick={handleFileClick}
-          title="Загрузить шаблон"
-        >
-          <span className="toolbar-icon">📤</span>
-        </button>
-
-        {/* Кнопка переключения диаграммы */}
-        {onToggleGantt && (
-          <button
-            className={`toolbar-button ${showGantt ? '' : 'inactive'}`}
+      <div className="toolbar-right">
+        {(activeTab === 'schedule' || activeTab === 'monthly' || activeTab === 'daily') && (
+          <button 
+            onClick={handleColumnSettings}
+            className="toolbar-btn"
+            title="Настройка колонок"
+          >
+            ⚙️ Колонки
+          </button>
+        )}
+        {activeTab === 'schedule' && (
+          <button 
             onClick={onToggleGantt}
-            title={showGantt ? "Скрыть диаграмму Ганта" : "Показать диаграмму Ганта"}
+            className={`toolbar-btn ${showGantt ? 'active' : ''}`}
+            title={showGantt ? 'Скрыть диаграмму Ганта' : 'Показать диаграмму Ганта'}
           >
-            <span className="toolbar-icon">{showGantt ? '📊' : '📈'}</span>
+            📊 {showGantt ? 'Скрыть' : 'Показать'} Ганта
           </button>
         )}
-
-        {/* Кнопка пересчёта объёмов (только для админа) */}
-        {isAdmin && (
-          <button
-            className="toolbar-button admin-button"
-            onClick={handleRecalculateVolumes}
-            title="Пересчитать фактические объёмы на основе ежедневных нарядов"
-          >
-            <span className="toolbar-icon">🔄</span>
-          </button>
-        )}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={handleFileChange}
-          style={{ display: 'none' }}
-        />
       </div>
     </div>
   );

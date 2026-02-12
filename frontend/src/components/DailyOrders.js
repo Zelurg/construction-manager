@@ -1,50 +1,74 @@
 import React, { useState, useEffect } from 'react';
 import { dailyAPI, scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
+import ColumnSettings from './ColumnSettings';
 
-function DailyOrders() {
+function DailyOrders({ onShowColumnSettings }) {
   const [works, setWorks] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
   const [showModal, setShowModal] = useState(false);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [formData, setFormData] = useState({
     task_id: '',
     volume: '',
     description: ''
   });
+  
+  const availableColumns = [
+    { key: 'code', label: 'Шифр', isBase: true },
+    { key: 'name', label: 'Наименование', isBase: true },
+    { key: 'unit', label: 'Ед. изм.', isBase: true },
+    { key: 'volume', label: 'Объем', isBase: true },
+    { key: 'description', label: 'Описание', isBase: true },
+    { key: 'executor', label: 'Исполнитель', isBase: false },
+    { key: 'unit_price', label: 'Цена за ед.', isBase: false },
+    { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
+    { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
+    { key: 'labor_total', label: 'Трудозатраты', isBase: false, isCalculated: true },
+    { key: 'cost_total', label: 'Стоимость', isBase: false, isCalculated: true },
+    { key: 'machine_hours_total', label: 'Машиночасы', isBase: false, isCalculated: true },
+  ];
+  
+  const defaultColumns = ['code', 'name', 'unit', 'volume', 'description'];
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem('dailyOrdersVisibleColumns');
+    return saved ? JSON.parse(saved) : defaultColumns;
+  });
+
+  useEffect(() => {
+    if (onShowColumnSettings) {
+      onShowColumnSettings(() => setShowColumnSettings(true));
+    }
+  }, [onShowColumnSettings]);
 
   useEffect(() => {
     loadDailyWorks();
     loadTasks();
     
-    // Подключаемся к WebSocket
     websocketService.connect();
     
-    // Обработчики событий - теперь внутри useEffect чтобы видеть актуальный selectedDate
     const handleDailyWorkCreated = (message) => {
       console.log('Daily work created:', message.data);
-      // loadDailyWorks теперь в замыкании и видит актуальный selectedDate
       loadDailyWorks();
     };
     
     const handleTaskUpdated = (message) => {
       console.log('Task updated, refreshing daily view:', message.data);
       loadDailyWorks();
-      // Также обновляем список задач чтобы в модальном окне был актуальный факт
       loadTasks();
     };
     
     websocketService.on('daily_work_created', handleDailyWorkCreated);
     websocketService.on('task_updated', handleTaskUpdated);
     
-    // Очистка при размонтировании или изменении selectedDate
     return () => {
       websocketService.off('daily_work_created', handleDailyWorkCreated);
       websocketService.off('task_updated', handleTaskUpdated);
     };
-  }, [selectedDate]); // Пересоздаём обработчики при смене даты
+  }, [selectedDate]);
 
   const loadDailyWorks = async () => {
     try {
@@ -58,7 +82,9 @@ function DailyOrders() {
   const loadTasks = async () => {
     try {
       const response = await scheduleAPI.getTasks();
-      setTasks(response.data);
+      // Фильтруем только работы, исключая разделы
+      const workTasks = response.data.filter(task => !task.is_section);
+      setTasks(workTasks);
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
     }
@@ -87,11 +113,8 @@ function DailyOrders() {
       await dailyAPI.createWork(workData);
       setShowModal(false);
       
-      // СРАЗУ обновляем список локально
       await loadDailyWorks();
       await loadTasks();
-      
-      // WebSocket уведомления обновят другие устройства
     } catch (error) {
       alert('Ошибка при добавлении работы');
       console.error(error);
@@ -100,6 +123,42 @@ function DailyOrders() {
 
   const getTaskInfo = (taskId) => {
     return tasks.find(t => t.id === taskId);
+  };
+  
+  const getCellValue = (work, columnKey) => {
+    const task = tasks.find(t => t.code === work.code);
+    
+    switch(columnKey) {
+      case 'labor_total':
+        if (!task) return '-';
+        return (work.volume * (task.labor_per_unit || 0)).toFixed(2);
+      case 'cost_total':
+        if (!task) return '-';
+        return (work.volume * (task.unit_price || 0)).toFixed(2);
+      case 'machine_hours_total':
+        if (!task) return '-';
+        return (work.volume * (task.machine_hours_per_unit || 0)).toFixed(2);
+      case 'executor':
+      case 'unit_price':
+      case 'labor_per_unit':
+      case 'machine_hours_per_unit':
+        if (!task) return '-';
+        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
+      case 'description':
+        return work[columnKey] || '-';
+      default:
+        return work[columnKey] || '-';
+    }
+  };
+  
+  const getColumnLabel = (columnKey) => {
+    const column = availableColumns.find(col => col.key === columnKey);
+    return column ? column.label : columnKey;
+  };
+  
+  const handleSaveColumnSettings = (newVisibleColumns) => {
+    setVisibleColumns(newVisibleColumns);
+    localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(newVisibleColumns));
   };
 
   return (
@@ -113,37 +172,35 @@ function DailyOrders() {
             onChange={(e) => setSelectedDate(e.target.value)}
           />
         </div>
-        <button onClick={handleAddWork} className="btn-primary">
-          + Внести объём
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={handleAddWork} className="btn-primary">
+            + Внести объём
+          </button>
+        </div>
       </div>
 
       <div className="table-container">
         <table className="tasks-table">
           <thead>
             <tr>
-              <th>Шифр</th>
-              <th>Наименование</th>
-              <th>Ед. изм.</th>
-              <th>Объем</th>
-              <th>Описание</th>
+              {visibleColumns.map(columnKey => (
+                <th key={columnKey}>{getColumnLabel(columnKey)}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {works.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={visibleColumns.length} style={{ textAlign: 'center', padding: '20px' }}>
                   Нет данных за выбранную дату
                 </td>
               </tr>
             ) : (
               works.map(work => (
                 <tr key={work.id}>
-                  <td>{work.code}</td>
-                  <td>{work.name}</td>
-                  <td>{work.unit}</td>
-                  <td>{work.volume}</td>
-                  <td>{work.description || '-'}</td>
+                  {visibleColumns.map(columnKey => (
+                    <td key={columnKey}>{getCellValue(work, columnKey)}</td>
+                  ))}
                 </tr>
               ))
             )}
@@ -151,7 +208,6 @@ function DailyOrders() {
         </table>
       </div>
 
-      {/* Модальное окно для добавления работы */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -223,6 +279,15 @@ function DailyOrders() {
             </form>
           </div>
         </div>
+      )}
+      
+      {showColumnSettings && (
+        <ColumnSettings
+          availableColumns={availableColumns}
+          visibleColumns={visibleColumns}
+          onSave={handleSaveColumnSettings}
+          onClose={() => setShowColumnSettings(false)}
+        />
       )}
     </div>
   );

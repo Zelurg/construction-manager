@@ -4,6 +4,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..websocket_manager import manager
+from ..dependencies import get_current_user
 
 router = APIRouter()
 
@@ -30,12 +31,77 @@ async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
             "unit": db_task.unit,
             "volume_plan": db_task.volume_plan,
             "volume_fact": db_task.volume_fact,
-            "start_date": db_task.start_date.isoformat(),
-            "end_date": db_task.end_date.isoformat()
+            "start_date": db_task.start_date.isoformat() if db_task.start_date else None,
+            "end_date": db_task.end_date.isoformat() if db_task.end_date else None
         }
     }, event_type="tasks")
     
     return db_task
+
+# Тестовый endpoint - проверь, что роутер работает
+@router.get("/test")
+def test_endpoint():
+    return {"message": "Schedule router is working!"}
+
+@router.post("/clear")
+async def clear_all_tasks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Удаляет ВСЕ задачи из графика вместе со связанными данными.
+    Доступно только администраторам.
+    """
+    print(f"Clear called by user: {current_user.username}, role: {current_user.role}")  # DEBUG
+    
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Только администратор может очистить график"
+        )
+    
+    try:
+        # ВАЖНО: Удаляем в правильном порядке (сначала зависимые таблицы)
+        
+        # 1. Удаляем daily_works
+        daily_deleted = db.query(models.DailyWork).delete()
+        print(f"Deleted {daily_deleted} daily works")  # DEBUG
+        
+        # 2. Удаляем monthly_tasks
+        monthly_deleted = db.query(models.MonthlyTask).delete()
+        print(f"Deleted {monthly_deleted} monthly tasks")  # DEBUG
+        
+        # 3. Теперь можно удалить tasks
+        tasks_deleted = db.query(models.Task).delete()
+        print(f"Deleted {tasks_deleted} tasks")  # DEBUG
+        
+        db.commit()
+        
+        total_deleted = daily_deleted + monthly_deleted + tasks_deleted
+        
+        await manager.broadcast({
+            "type": "schedule_cleared",
+            "event": "tasks",
+            "data": {
+                "message": "График очищен",
+                "tasks_deleted": tasks_deleted,
+                "daily_deleted": daily_deleted,
+                "monthly_deleted": monthly_deleted,
+                "total_deleted": total_deleted
+            }
+        }, event_type="tasks")
+        
+        return {
+            "message": "Все данные успешно удалены",
+            "tasks_deleted": tasks_deleted,
+            "daily_works_deleted": daily_deleted,
+            "monthly_tasks_deleted": monthly_deleted,
+            "total_deleted": total_deleted
+        }
+    except Exception as e:
+        print(f"Error clearing tasks: {e}")  # DEBUG
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
 
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
 async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
@@ -60,8 +126,8 @@ async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depe
             "unit": db_task.unit,
             "volume_plan": db_task.volume_plan,
             "volume_fact": db_task.volume_fact,
-            "start_date": db_task.start_date.isoformat(),
-            "end_date": db_task.end_date.isoformat()
+            "start_date": db_task.start_date.isoformat() if db_task.start_date else None,
+            "end_date": db_task.end_date.isoformat() if db_task.end_date else None
         }
     }, event_type="tasks")
     

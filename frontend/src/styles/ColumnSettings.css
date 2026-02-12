@@ -1,0 +1,222 @@
+/* Стили для модального окна настройки колонок */
+
+.column-settings-modal {
+  min-width: 700px;
+  max-width: 900px;
+  width: 80vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.column-settings-modal h3 {
+  margin-bottom: 20px;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.column-settings-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.column-settings-buttons .btn-secondary {
+  flex: 1;
+  padding: 8px 16px;
+  background: #e0e0e0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.column-settings-buttons .btn-secondary:hover {
+  background: #d0d0d0;
+}
+
+/* Двухколоночный layout */
+.column-settings-sections {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.column-settings-available,
+.column-settings-selected {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.column-settings-available h4,
+.column-settings-selected h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.column-settings-list,
+.column-settings-order-list {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background: #fafafa;
+}
+
+.column-checkbox {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.column-checkbox:hover {
+  background: #f0f0f0;
+}
+
+.column-checkbox input[type="checkbox"] {
+  margin-right: 10px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.column-checkbox span {
+  font-size: 13px;
+  color: #333;
+  user-select: none;
+}
+
+/* Стили для упорядоченного списка */
+.column-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  margin-bottom: 6px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: move;
+  transition: all 0.2s;
+}
+
+.column-order-item:hover {
+  background: #f8f9fa;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.column-order-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.column-order-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.drag-handle {
+  color: #999;
+  font-size: 16px;
+  cursor: grab;
+  user-select: none;
+}
+
+.column-order-item:active .drag-handle {
+  cursor: grabbing;
+}
+
+.column-number {
+  font-weight: 600;
+  color: #666;
+  min-width: 25px;
+}
+
+.column-label {
+  font-size: 13px;
+  color: #333;
+}
+
+.column-order-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-icon.btn-remove {
+  color: #dc3545;
+}
+
+.btn-icon.btn-remove:hover {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+  font-size: 14px;
+}
+
+/* Стили для скроллбара */
+.column-settings-list::-webkit-scrollbar,
+.column-settings-order-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.column-settings-list::-webkit-scrollbar-track,
+.column-settings-order-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.column-settings-list::-webkit-scrollbar-thumb,
+.column-settings-order-list::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.column-settings-list::-webkit-scrollbar-thumb:hover,
+.column-settings-order-list::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

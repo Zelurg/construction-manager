@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Enum, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -27,11 +27,23 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, unique=True, index=True)
     name = Column(String, nullable=False)
-    unit = Column(String, nullable=False)
-    volume_plan = Column(Float, nullable=False)
+    unit = Column(String, nullable=True)  # Nullable для разделов
+    volume_plan = Column(Float, nullable=True, default=0)  # Nullable для разделов
     volume_fact = Column(Float, default=0)
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
+    start_date = Column(Date, nullable=True)  # Nullable для разделов
+    end_date = Column(Date, nullable=True)  # Nullable для разделов
+    
+    # Новые поля для расширенной информации
+    unit_price = Column(Float, nullable=True, default=0)  # Цена за единицу
+    labor_per_unit = Column(Float, nullable=True, default=0)  # Трудозатраты на единицу (чел-час)
+    machine_hours_per_unit = Column(Float, nullable=True, default=0)  # Машиночасы на единицу
+    executor = Column(String, nullable=True)  # Исполнитель работ
+    
+    # Поля для поддержки иерархических разделов
+    is_section = Column(Boolean, default=False, nullable=False)  # Признак раздела
+    level = Column(Integer, default=0, nullable=False)  # Уровень вложенности (0, 1, 2, 3...)
+    parent_code = Column(String, nullable=True)  # Шифр родительского раздела
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
