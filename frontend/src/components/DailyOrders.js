@@ -3,7 +3,7 @@ import { dailyAPI, scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import ColumnSettings from './ColumnSettings';
 
-function DailyOrders() {
+function DailyOrders({ onShowColumnSettings }) {
   const [works, setWorks] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(
@@ -40,6 +40,13 @@ function DailyOrders() {
     return saved ? JSON.parse(saved) : defaultColumns;
   });
 
+  // Пробрасываем функцию открытия настроек наверх
+  useEffect(() => {
+    if (onShowColumnSettings) {
+      onShowColumnSettings(() => setShowColumnSettings(true));
+    }
+  }, [onShowColumnSettings]);
+
   useEffect(() => {
     loadDailyWorks();
     loadTasks();
@@ -50,26 +57,23 @@ function DailyOrders() {
     // Обработчики событий - теперь внутри useEffect чтобы видеть актуальный selectedDate
     const handleDailyWorkCreated = (message) => {
       console.log('Daily work created:', message.data);
-      // loadDailyWorks теперь в замыкании и видит актуальный selectedDate
       loadDailyWorks();
     };
     
     const handleTaskUpdated = (message) => {
       console.log('Task updated, refreshing daily view:', message.data);
       loadDailyWorks();
-      // Также обновляем список задач чтобы в модальном окне был актуальный факт
       loadTasks();
     };
     
     websocketService.on('daily_work_created', handleDailyWorkCreated);
     websocketService.on('task_updated', handleTaskUpdated);
     
-    // Очистка при размонтировании или изменении selectedDate
     return () => {
       websocketService.off('daily_work_created', handleDailyWorkCreated);
       websocketService.off('task_updated', handleTaskUpdated);
     };
-  }, [selectedDate]); // Пересоздаём обработчики при смене даты
+  }, [selectedDate]);
 
   const loadDailyWorks = async () => {
     try {
@@ -112,11 +116,8 @@ function DailyOrders() {
       await dailyAPI.createWork(workData);
       setShowModal(false);
       
-      // СРАЗУ обновляем список локально
       await loadDailyWorks();
       await loadTasks();
-      
-      // WebSocket уведомления обновят другие устройства
     } catch (error) {
       alert('Ошибка при добавлении работы');
       console.error(error);
@@ -127,9 +128,7 @@ function DailyOrders() {
     return tasks.find(t => t.id === taskId);
   };
   
-  // Функция для вычисления значения ячейки
   const getCellValue = (work, columnKey) => {
-    // Находим соответствующую задачу для доступа к ее атрибутам
     const task = tasks.find(t => t.code === work.code);
     
     switch(columnKey) {
@@ -174,12 +173,6 @@ function DailyOrders() {
           />
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button 
-            className="btn-secondary"
-            onClick={() => setShowColumnSettings(true)}
-          >
-            ⚙️ Настройка вида
-          </button>
           <button onClick={handleAddWork} className="btn-primary">
             + Внести объём
           </button>
@@ -215,7 +208,6 @@ function DailyOrders() {
         </table>
       </div>
 
-      {/* Модальное окно для добавления работы */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -289,7 +281,6 @@ function DailyOrders() {
         </div>
       )}
       
-      {/* Модальное окно настройки колонок */}
       {showColumnSettings && (
         <ColumnSettings
           availableColumns={availableColumns}
