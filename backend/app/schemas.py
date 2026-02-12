@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List
 
 class TaskBase(BaseModel):
@@ -120,6 +120,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     role: str
+    created_at: datetime  # Добавлено поле
 
     class Config:
         from_attributes = True
