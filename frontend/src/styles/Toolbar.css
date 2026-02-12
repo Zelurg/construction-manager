@@ -1,68 +1,30 @@
 .toolbar {
-  position: fixed;
-  left: 0;
-  top: 140px; /* Ниже header и tabs */
-  width: 60px;
-  background: white;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  border-radius: 0 8px 8px 0;
-  padding: 10px 0;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  padding: 10px 20px;
 }
 
 .toolbar-content {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
 .toolbar-button {
-  width: 44px;
-  height: 44px;
-  border: none;
-  background: #f5f5f5;
-  border-radius: 8px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
   cursor: pointer;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.3s;
-  position: relative;
+  gap: 5px;
 }
 
 .toolbar-button:hover {
-  background: #1976d2;
-  transform: translateX(2px);
-}
-
-.toolbar-button:hover .toolbar-icon {
-  transform: scale(1.1);
-}
-
-.toolbar-icon {
-  font-size: 24px;
-  transition: transform 0.2s;
-}
-
-/* Подсказка при наведении */
-.toolbar-button::after {
-  content: attr(title);
-  position: absolute;
-  left: 60px;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 6px 12px;
-  border-radius: 4px;
-  white-space: nowrap;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s;
-}
-
-.toolbar-button:hover::after {
-  opacity: 1;
+  background-color: #f0f0f0;
+  border-color: #999;
 }
 
 .toolbar-button.inactive {
@@ -70,6 +32,20 @@
 }
 
 .toolbar-button.inactive:hover {
-  background: #f0f0f0;
-  transform: none;
+  opacity: 0.7;
+}
+
+.toolbar-button.admin-button {
+  border-color: #ff9800;
+  background-color: #fff3e0;
+}
+
+.toolbar-button.admin-button:hover {
+  background-color: #ffe0b2;
+  border-color: #f57c00;
+}
+
+.toolbar-icon {
+  font-size: 20px;
+  line-height: 1;
 }
