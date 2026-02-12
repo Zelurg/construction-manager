@@ -47,6 +47,7 @@ export const scheduleAPI = {
   createTask: (task) => api.post('/schedule/tasks', task),
   updateTask: (id, task) => api.put(`/schedule/tasks/${id}`, task),
   deleteTask: (id) => api.delete(`/schedule/tasks/${id}`),
+  clearAll: () => api.delete('/schedule/tasks/clear-all'),
 };
 
 export const monthlyAPI = {
