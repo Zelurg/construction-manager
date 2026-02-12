@@ -4,6 +4,15 @@ import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 
+// Пастельные цвета для разных уровней разделов
+const SECTION_COLORS = [
+  '#E8F4F8',  // level 0 - светло-голубой
+  '#F0F8E8',  // level 1 - светло-зеленый
+  '#FFF4E6',  // level 2 - светло-оранжевый
+  '#F8E8F4',  // level 3 - светло-розовый
+  '#E8F0F8',  // level 4 - светло-синий
+];
+
 function Schedule({ showGantt, onShowColumnSettings }) {
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
@@ -16,9 +25,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   
-  // Доступные колонки (все возможные атрибуты)
   const availableColumns = [
-    // Базовые атрибуты
     { key: 'code', label: 'Шифр', isBase: true },
     { key: 'name', label: 'Наименование', isBase: true },
     { key: 'unit', label: 'Ед. изм.', isBase: true },
@@ -27,12 +34,10 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
     { key: 'start_date', label: 'Дата старта', isBase: true },
     { key: 'end_date', label: 'Дата финиша', isBase: true },
-    // Новые атрибуты из шаблона
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
     { key: 'executor', label: 'Исполнитель', isBase: false },
-    // Вычисляемые атрибуты
     { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
     { key: 'labor_fact', label: 'Трудозатраты факт', isBase: false, isCalculated: true },
     { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
@@ -43,7 +48,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
   ];
   
-  // Видимые колонки по умолчанию
   const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date', 'end_date'];
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const saved = localStorage.getItem('scheduleVisibleColumns');
@@ -54,7 +58,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   const tableScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
 
-  // Пробрасываем функцию открытия настроек наверх
   useEffect(() => {
     if (onShowColumnSettings) {
       onShowColumnSettings(() => setShowColumnSettings(true));
@@ -64,10 +67,8 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   useEffect(() => {
     loadTasks();
     
-    // Подключаемся к WebSocket
     websocketService.connect();
     
-    // Обработчики WebSocket событий
     const handleTaskCreated = (message) => {
       console.log('New task created:', message.data);
       setTasks(prevTasks => [...prevTasks, message.data]);
@@ -89,12 +90,10 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       );
     };
     
-    // Регистрируем обработчики
     websocketService.on('task_created', handleTaskCreated);
     websocketService.on('task_updated', handleTaskUpdated);
     websocketService.on('task_deleted', handleTaskDeleted);
     
-    // Очистка при размонтировании
     return () => {
       websocketService.off('task_created', handleTaskCreated);
       websocketService.off('task_updated', handleTaskUpdated);
@@ -114,6 +113,26 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       console.error('Ошибка загрузки задач:', error);
     }
   };
+  
+  // Получение полного пути раздела (хлебные крошки)
+  const getBreadcrumb = (task) => {
+    if (!task.parent_code) return '';
+    
+    const breadcrumbs = [];
+    let currentCode = task.parent_code;
+    
+    while (currentCode) {
+      const parentTask = tasks.find(t => t.code === currentCode);
+      if (parentTask) {
+        breadcrumbs.unshift(parentTask.name);
+        currentCode = parentTask.parent_code;
+      } else {
+        break;
+      }
+    }
+    
+    return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
+  };
 
   const applyFilters = () => {
     let filtered = tasks;
@@ -130,7 +149,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     }
     if (filters.unit) {
       filtered = filtered.filter(t => 
-        t.unit.toLowerCase().includes(filters.unit.toLowerCase())
+        t.unit && t.unit.toLowerCase().includes(filters.unit.toLowerCase())
       );
     }
     
@@ -141,59 +160,71 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
   
-  // Функция для вычисления значения ячейки
   const getCellValue = (task, columnKey) => {
     switch(columnKey) {
       case 'volume_remaining':
-        return (task.volume_plan - task.volume_fact).toFixed(2);
-      
-      // Трудозатраты
+        return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
       case 'labor_total':
-        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
+        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'labor_fact':
-        return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
+        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
       case 'labor_remaining':
+        if (task.is_section) return '-';
         const volRemaining = task.volume_plan - task.volume_fact;
         return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
-      
-      // Стоимость
       case 'cost_total':
-        return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
+        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_plan).toFixed(2);
       case 'cost_fact':
-        return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
+        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_fact).toFixed(2);
       case 'cost_remaining':
+        if (task.is_section) return '-';
         const costVolRemaining = task.volume_plan - task.volume_fact;
         return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
-      
-      // Машиночасы
       case 'machine_hours_total':
-        return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
+        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'machine_hours_fact':
-        return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
-      
+        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
       case 'start_date':
       case 'end_date':
-        return new Date(task[columnKey]).toLocaleDateString('ru-RU');
-      case 'code':
+        return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
       case 'name':
+        // Добавляем хлебные крошки для отфильтрованных задач
+        const breadcrumb = (filters.code || filters.name) ? getBreadcrumb(task) : '';
+        return breadcrumb ? (
+          <span>
+            <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
+            {task.name}
+          </span>
+        ) : task.name;
+      case 'code':
       case 'unit':
       case 'executor':
         return task[columnKey] || '-';
       default:
-        return task[columnKey] !== undefined ? task[columnKey] : '-';
+        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
     }
   };
   
-  // Функция для получения заголовка колонки
   const getColumnLabel = (columnKey) => {
     const column = availableColumns.find(col => col.key === columnKey);
     return column ? column.label : columnKey;
   };
   
-  // Обработчик сохранения настроек колонок
   const handleSaveColumnSettings = (newVisibleColumns) => {
     setVisibleColumns(newVisibleColumns);
     localStorage.setItem('scheduleVisibleColumns', JSON.stringify(newVisibleColumns));
+  };
+  
+  // Получение цвета фона для раздела
+  const getRowStyle = (task) => {
+    if (!task.is_section) return {};
+    
+    const color = SECTION_COLORS[task.level] || SECTION_COLORS[SECTION_COLORS.length - 1];
+    return {
+      backgroundColor: color,
+      fontWeight: 'bold',
+      fontSize: task.level === 0 ? '1.05em' : '1em'
+    };
   };
 
   const handleMouseDown = (e) => {
@@ -235,7 +266,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
     >
       <div className="schedule-split-view">
-        {/* Левая часть - таблица с данными */}
         <div 
           className="schedule-table-section" 
           style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
@@ -262,7 +292,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
               </thead>
               <tbody>
                 {filteredTasks.map(task => (
-                  <tr key={task.id}>
+                  <tr key={task.id} style={getRowStyle(task)}>
                     {visibleColumns.map(columnKey => (
                       <td key={columnKey}>{getCellValue(task, columnKey)}</td>
                     ))}
@@ -273,7 +303,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
           </div>
         </div>
 
-        {/* Разделитель */}
         {showGantt && (
           <div 
             className="resize-divider"
@@ -283,19 +312,17 @@ function Schedule({ showGantt, onShowColumnSettings }) {
           </div>
         )}
 
-        {/* Правая часть - диаграмма Ганта */}
         {showGantt && (
           <div 
             className="schedule-gantt-section"
             style={{ width: `${100 - tableWidth}%` }}
             ref={ganttScrollRef}
           >
-            <GanttChart tasks={filteredTasks} />
+            <GanttChart tasks={filteredTasks.filter(t => !t.is_section)} />
           </div>
         )}
       </div>
       
-      {/* Модальное окно настройки колонок */}
       {showColumnSettings && (
         <ColumnSettings
           availableColumns={availableColumns}
