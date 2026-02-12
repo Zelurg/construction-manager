@@ -38,6 +38,11 @@ async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
     
     return db_task
 
+# Тестовый endpoint - проверь, что роутер работает
+@router.get("/test")
+def test_endpoint():
+    return {"message": "Schedule router is working!"}
+
 @router.post("/clear")
 async def clear_all_tasks(
     db: Session = Depends(get_db),
@@ -47,6 +52,8 @@ async def clear_all_tasks(
     Удаляет ВСЕ задачи из графика.
     Доступно только администраторам.
     """
+    print(f"Clear called by user: {current_user.username}, role: {current_user.role}")  # DEBUG
+    
     if current_user.role != "admin":
         raise HTTPException(
             status_code=403,
@@ -56,6 +63,8 @@ async def clear_all_tasks(
     try:
         deleted_count = db.query(models.Task).delete()
         db.commit()
+        
+        print(f"Deleted {deleted_count} tasks")  # DEBUG
         
         await manager.broadcast({
             "type": "schedule_cleared",
@@ -71,6 +80,7 @@ async def clear_all_tasks(
             "deleted_count": deleted_count
         }
     except Exception as e:
+        print(f"Error clearing tasks: {e}")  # DEBUG
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
 
