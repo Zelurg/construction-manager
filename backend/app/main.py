@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routes import router
+from .routes.auth import router as auth_router
+from .routes.users import router as users_router
 import os
 from dotenv import load_dotenv
 
@@ -21,7 +23,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Подключение роутов
 app.include_router(router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(users_router, prefix="/api")
 
 @app.get("/")
 def read_root():

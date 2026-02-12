@@ -1,7 +1,25 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
+import enum
+
+class UserRole(str, enum.Enum):
+    admin = "admin"
+    user = "user"
+    viewer = "viewer"
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default="viewer", nullable=False)  # admin, user, viewer
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Task(Base):
     __tablename__ = "tasks"
