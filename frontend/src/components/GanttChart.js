@@ -44,106 +44,103 @@ function GanttChart({ tasks }) {
   };
 
   const chartData = useMemo(() => {
-  if (tasks.length === 0) return null;
+    if (tasks.length === 0) return null;
 
-  const dates = tasks.flatMap(t => [
-    new Date(t.start_date),
-    new Date(t.end_date)
-  ]);
-  const minDate = new Date(Math.min(...dates));
-  const maxDate = new Date(Math.max(...dates));
-  
-  minDate.setHours(0, 0, 0, 0);
-  maxDate.setHours(23, 59, 59, 999);
-  
-  const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
-  
-  const timeMarks = [];
-  const currentScale = scaleConfig[scale];
-  
-  // Генерация меток - ИСПРАВЛЕНО
-  if (scale === 'day') {
-    // Для дней - каждый день от начала
-    for (let day = 0; day <= totalDays; day += currentScale.gridUnit) {
-      const markDate = new Date(minDate);
-      markDate.setDate(markDate.getDate() + day);
+    // Фильтруем только работы (не разделы) для расчёта дат
+    const workTasks = tasks.filter(t => !t.is_section && t.start_date && t.end_date);
+    
+    if (workTasks.length === 0) return null;
+
+    const dates = workTasks.flatMap(t => [
+      new Date(t.start_date),
+      new Date(t.end_date)
+    ]);
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    
+    minDate.setHours(0, 0, 0, 0);
+    maxDate.setHours(23, 59, 59, 999);
+    
+    const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
+    
+    const timeMarks = [];
+    const currentScale = scaleConfig[scale];
+    
+    // Генерация меток
+    if (scale === 'day') {
+      for (let day = 0; day <= totalDays; day += currentScale.gridUnit) {
+        const markDate = new Date(minDate);
+        markDate.setDate(markDate.getDate() + day);
+        
+        if (markDate <= maxDate) {
+          timeMarks.push({
+            date: new Date(markDate),
+            offset: day,
+            label: currentScale.format(markDate)
+          });
+        }
+      }
+    } else if (scale === 'week') {
+      for (let day = 0; day <= totalDays; day += 7) {
+        const markDate = new Date(minDate);
+        markDate.setDate(markDate.getDate() + day);
+        
+        if (markDate <= maxDate) {
+          timeMarks.push({
+            date: new Date(markDate),
+            offset: day,
+            label: currentScale.format(markDate)
+          });
+        }
+      }
+    } else if (scale === 'month') {
+      let currentDate = new Date(minDate);
       
-      if (markDate <= maxDate) {
+      while (currentDate <= maxDate) {
+        const offset = Math.ceil((currentDate - minDate) / (1000 * 60 * 60 * 24));
+        
         timeMarks.push({
-          date: new Date(markDate),
-          offset: day,
-          label: currentScale.format(markDate)
+          date: new Date(currentDate),
+          offset: offset,
+          label: currentScale.format(currentDate)
         });
+        
+        currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      }
+    } else if (scale === 'quarter') {
+      let currentDate = new Date(minDate);
+      
+      while (currentDate <= maxDate) {
+        const offset = Math.ceil((currentDate - minDate) / (1000 * 60 * 60 * 24));
+        
+        timeMarks.push({
+          date: new Date(currentDate),
+          offset: offset,
+          label: currentScale.format(currentDate)
+        });
+        
+        currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 3, 1);
+      }
+    } else if (scale === 'year') {
+      let currentDate = new Date(minDate);
+      
+      while (currentDate <= maxDate) {
+        const offset = Math.ceil((currentDate - minDate) / (1000 * 60 * 60 * 24));
+        
+        timeMarks.push({
+          date: new Date(currentDate),
+          offset: offset,
+          label: currentScale.format(currentDate)
+        });
+        
+        currentDate = new Date(currentDate.getFullYear() + 1, 0, 1);
       }
     }
-  } else if (scale === 'week') {
-    // Для недель - каждые 7 дней
-    for (let day = 0; day <= totalDays; day += 7) {
-      const markDate = new Date(minDate);
-      markDate.setDate(markDate.getDate() + day);
-      
-      if (markDate <= maxDate) {
-        timeMarks.push({
-          date: new Date(markDate),
-          offset: day,
-          label: currentScale.format(markDate)
-        });
-      }
-    }
-  } else if (scale === 'month') {
-    // Для месяцев - начало каждого месяца
-    let currentDate = new Date(minDate);
-    
-    while (currentDate <= maxDate) {
-      const offset = Math.ceil((currentDate - minDate) / (1000 * 60 * 60 * 24));
-      
-      timeMarks.push({
-        date: new Date(currentDate),
-        offset: offset,
-        label: currentScale.format(currentDate)
-      });
-      
-      // Переход к 1-му числу следующего месяца
-      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-    }
-  } else if (scale === 'quarter') {
-    // Для кварталов - начало каждого квартала
-    let currentDate = new Date(minDate);
-    
-    while (currentDate <= maxDate) {
-      const offset = Math.ceil((currentDate - minDate) / (1000 * 60 * 60 * 24));
-      
-      timeMarks.push({
-        date: new Date(currentDate),
-        offset: offset,
-        label: currentScale.format(currentDate)
-      });
-      
-      // Переход к следующему кварталу
-      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 3, 1);
-    }
-  } else if (scale === 'year') {
-    // Для годов - начало каждого года
-    let currentDate = new Date(minDate);
-    
-    while (currentDate <= maxDate) {
-      const offset = Math.ceil((currentDate - minDate) / (1000 * 60 * 60 * 24));
-      
-      timeMarks.push({
-        date: new Date(currentDate),
-        offset: offset,
-        label: currentScale.format(currentDate)
-      });
-      
-      // Переход к следующему году
-      currentDate = new Date(currentDate.getFullYear() + 1, 0, 1);
-    }
-  }
 
-  return { minDate, maxDate, totalDays, timeMarks };
-}, [tasks, scale]);
+    return { minDate, maxDate, totalDays, timeMarks };
+  }, [tasks, scale]);
 
-  // Синхронизация скролла - УЛУЧШЕННАЯ ВЕРСИЯ
+  // Синхронизация скролла
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     const timelineScroll = timelineScrollRef.current;
@@ -155,7 +152,6 @@ function GanttChart({ tasks }) {
     let rafId = null;
 
     const handleScroll = () => {
-      // Используем requestAnimationFrame для плавной синхронизации
       if (rafId) {
         cancelAnimationFrame(rafId);
       }
@@ -167,13 +163,9 @@ function GanttChart({ tasks }) {
       });
     };
 
-    // Добавляем обработчик
     scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-
-    // Начальная синхронизация
     timelineScroll.scrollLeft = scrollContainer.scrollLeft;
 
-    // Очистка
     return () => {
       if (rafId) {
         cancelAnimationFrame(rafId);
@@ -216,11 +208,9 @@ function GanttChart({ tasks }) {
     const start = new Date(task.start_date);
     const end = new Date(task.end_date);
     
-    // Нормализуем даты - убираем время
     start.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
     
-    // Вычисляем offset - используем Math.floor вместо Math.ceil
     const startOffset = Math.floor((start - chartData.minDate) / (1000 * 60 * 60 * 24));
     const duration = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
     
@@ -230,16 +220,14 @@ function GanttChart({ tasks }) {
     };
   };
 
-
   const getContainerWidth = () => {
     return chartData.totalDays * pixelsPerDay;
   };
 
-    return (
+  return (
     <div className="gantt-chart-integrated">
-      {/* Комбинированная шапка - 2 строки по 35px */}
+      {/* Комбинированная шапка */}
       <div className="gantt-combined-header">
-        {/* Строка 1: Название + Select */}
         <div className="gantt-controls-row">
           <div className="gantt-title">Диаграмма Ганта</div>
           <select 
@@ -255,7 +243,7 @@ function GanttChart({ tasks }) {
           </select>
         </div>
 
-        {/* Строка 2: Временная шкала */}
+        {/* Временная шкала */}
         <div className="gantt-timeline-row" ref={timelineScrollRef}>
           <div className="gantt-timeline-content" style={{ width: `${getContainerWidth()}px` }}>
             {chartData.timeMarks.map((mark, index) => (
@@ -271,7 +259,7 @@ function GanttChart({ tasks }) {
         </div>
       </div>
 
-      {/* Тело диаграммы с барами */}
+      {/* Тело диаграммы */}
       <div className="gantt-body-scroll" ref={scrollContainerRef}>
         <div className="gantt-body-content" style={{ width: `${getContainerWidth()}px` }}>
           {tasks.map((task) => (
@@ -285,13 +273,15 @@ function GanttChart({ tasks }) {
                 ></div>
               ))}
               
-              {/* Бар задачи */}
-              <div
-                className="gantt-bar-integrated"
-                style={getBarStyle(task)}
-                title={`${task.name}\n${new Date(task.start_date).toLocaleDateString('ru-RU')} - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`}
-              >
-              </div>
+              {/* Бар задачи - только для работ, не для разделов */}
+              {!task.is_section && task.start_date && task.end_date && (
+                <div
+                  className="gantt-bar-integrated"
+                  style={getBarStyle(task)}
+                  title={`${task.name}\n${new Date(task.start_date).toLocaleDateString('ru-RU')} - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`}
+                >
+                </div>
+              )}
             </div>
           ))}
         </div>

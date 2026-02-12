@@ -24,6 +24,8 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [userRole, setUserRole] = useState(null);
   
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -57,6 +59,12 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   const containerRef = useRef(null);
   const tableScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
+
+  useEffect(() => {
+    // Получаем роль пользователя из localStorage
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    setUserRole(user.role);
+  }, []);
 
   useEffect(() => {
     if (onShowColumnSettings) {
@@ -111,6 +119,18 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       setTasks(response.data);
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
+    }
+  };
+  
+  const handleClearSchedule = async () => {
+    try {
+      await scheduleAPI.clearAll();
+      setTasks([]);
+      setShowClearConfirm(false);
+      alert('График успешно очищен');
+    } catch (error) {
+      console.error('Ошибка очистки графика:', error);
+      alert('Ошибка при очистке графика');
     }
   };
   
@@ -265,6 +285,25 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
     >
+      {userRole === 'admin' && (
+        <div style={{ padding: '10px', borderBottom: '1px solid #ddd' }}>
+          <button 
+            onClick={() => setShowClearConfirm(true)}
+            style={{
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            🗑️ Очистить график
+          </button>
+        </div>
+      )}
+      
       <div className="schedule-split-view">
         <div 
           className="schedule-table-section" 
@@ -318,7 +357,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
             style={{ width: `${100 - tableWidth}%` }}
             ref={ganttScrollRef}
           >
-            <GanttChart tasks={filteredTasks.filter(t => !t.is_section)} />
+            <GanttChart tasks={filteredTasks} />
           </div>
         )}
       </div>
@@ -330,6 +369,39 @@ function Schedule({ showGantt, onShowColumnSettings }) {
           onSave={handleSaveColumnSettings}
           onClose={() => setShowColumnSettings(false)}
         />
+      )}
+      
+      {showClearConfirm && (
+        <div className="modal-overlay" onClick={() => setShowClearConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>⚠️ Подтверждение очистки</h3>
+            <p style={{ marginBottom: '20px' }}>
+              Вы уверены, что хотите <strong>удалить ВСЕ данные</strong> графика?<br/>
+              Это действие нельзя отменить!
+            </p>
+            <div className="modal-actions">
+              <button 
+                onClick={() => setShowClearConfirm(false)}
+                className="btn-cancel"
+              >
+                Отмена
+              </button>
+              <button 
+                onClick={handleClearSchedule}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Удалить всё
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
