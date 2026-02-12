@@ -1,3 +1,5 @@
+import { WS_URL } from '../config';
+
 class WebSocketService {
   constructor() {
     this.ws = null;
@@ -7,12 +9,13 @@ class WebSocketService {
     this.reconnectDelay = 3000;
   }
 
-  connect(url = 'ws://localhost:8000/api/ws') {
+  connect(url = WS_URL) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected');
       return;
     }
 
+    console.log('Connecting to WebSocket:', url);
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {

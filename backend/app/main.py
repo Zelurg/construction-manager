@@ -14,7 +14,25 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Construction Manager API")
 
-origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+# Для разработки разрешаем все источники
+# В продакшене нужно указать конкретные домены
+origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+
+# Добавляем поддержку локальной сети
+# Получаем дополнительные origins из .env если они есть
+env_origins = os.getenv("CORS_ORIGINS", "")
+if env_origins:
+    origins.extend(env_origins.split(","))
+
+# Для разработки в локальной сети можно временно разрешить все
+# ВНИМАНИЕ: в продакшене это небезопасно!
+if os.getenv("ALLOW_ALL_ORIGINS", "false").lower() == "true":
+    origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
