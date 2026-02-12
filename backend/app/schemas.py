@@ -152,3 +152,20 @@ class TokenData(BaseModel):
 class ImportResult(BaseModel):
     tasks_processed: int
     errors: List[str] = []
+
+# DailyExecutor schemas - схемы для исполнителей работ за день
+class DailyExecutorBase(BaseModel):
+    work_date: date = Field(..., description="Дата работы")
+    employee_id: int = Field(..., gt=0, description="ID сотрудника")
+    hours_worked: float = Field(default=10.0, gt=0, le=24, description="Отработанные часы")
+    is_responsible: bool = Field(default=False, description="Является ли ответственным")
+
+class DailyExecutorCreate(DailyExecutorBase):
+    task_id: int = Field(..., gt=0, description="ID задачи")
+
+class DailyExecutor(DailyExecutorBase):
+    id: int
+    task_id: int
+
+    class Config:
+        from_attributes = True
