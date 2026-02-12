@@ -331,7 +331,8 @@ function Schedule({ showGantt, onShowColumnSettings }) {
             style={{ width: `${100 - tableWidth}%` }}
             ref={ganttScrollRef}
           >
-            <GanttChart tasks={filteredTasks.filter(t => !t.is_section)} />
+            {/* ИСПРАВЛЕНИЕ: Передаем ВСЕ задачи (включая разделы) для правильного выравнивания */}
+            <GanttChart tasks={filteredTasks} />
           </div>
         )}
       </div>

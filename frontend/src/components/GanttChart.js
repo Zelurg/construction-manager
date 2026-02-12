@@ -1,6 +1,15 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import '../styles/GanttChart.css';
 
+// Пастельные цвета для разных уровней разделов (те же что в Schedule.js)
+const SECTION_COLORS = [
+  '#E8F4F8',  // level 0 - светло-голубой
+  '#F0F8E8',  // level 1 - светло-зеленый
+  '#FFF4E6',  // level 2 - светло-оранжевый
+  '#F8E8F4',  // level 3 - светло-розовый
+  '#E8F0F8',  // level 4 - светло-синий
+];
+
 function GanttChart({ tasks }) {
   const [scale, setScale] = useState('month');
   const scrollContainerRef = useRef(null);
@@ -224,6 +233,16 @@ function GanttChart({ tasks }) {
     return chartData.totalDays * pixelsPerDay;
   };
 
+  // Получение стилей строки для раздела
+  const getRowStyle = (task) => {
+    if (!task.is_section) return {};
+    
+    const color = SECTION_COLORS[task.level] || SECTION_COLORS[SECTION_COLORS.length - 1];
+    return {
+      backgroundColor: color
+    };
+  };
+
   return (
     <div className="gantt-chart-integrated">
       {/* Комбинированная шапка */}
@@ -263,7 +282,11 @@ function GanttChart({ tasks }) {
       <div className="gantt-body-scroll" ref={scrollContainerRef}>
         <div className="gantt-body-content" style={{ width: `${getContainerWidth()}px` }}>
           {tasks.map((task) => (
-            <div key={task.id} className="gantt-row-integrated">
+            <div 
+              key={task.id} 
+              className={`gantt-row-integrated ${task.is_section ? 'gantt-row-section' : ''}`}
+              style={getRowStyle(task)}
+            >
               {/* Вертикальные линии сетки */}
               {chartData.timeMarks.map((mark, idx) => (
                 <div
