@@ -4,7 +4,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..websocket_manager import manager
-from ..dependencies import get_current_admin_user
+from ..dependencies import get_current_user
 
 router = APIRouter()
 
@@ -91,12 +91,19 @@ async def delete_task(task_id: int, db: Session = Depends(get_db)):
 @router.delete("/tasks/clear-all")
 async def clear_all_tasks(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_admin_user)
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Удаляет ВСЕ задачи из графика.
-    Доступно только администраторам.
+    Доступно для авторизованных пользователей.
     """
+    # Проверяем роль пользователя
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Только администратор может очистить график"
+        )
+    
     try:
         # Удаляем все задачи
         deleted_count = db.query(models.Task).delete()
