@@ -24,17 +24,19 @@ async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends
     # Создаём запись ежедневной работы
     db_work = models.DailyWork(**work.dict())
     db.add(db_work)
+    db.commit()
+    db.refresh(db_work)
     
-    # Пересчитываем volume_fact в задаче как сумму всех DailyWork
+    # ТЕПЕРЬ пересчитываем volume_fact ПОСЛЕ commit
+    # Так мы учтём ВСЕ записи DailyWork включая только что добавленную
     total_volume = db.query(func.sum(models.DailyWork.volume)).filter(
         models.DailyWork.task_id == work.task_id
     ).scalar() or 0
     
-    # Обновляем volume_fact с учётом нового объёма
-    task.volume_fact = total_volume + work.volume
+    # Просто присваиваем общую сумму (БЕЗ + work.volume!)
+    task.volume_fact = total_volume
     
     db.commit()
-    db.refresh(db_work)
     db.refresh(task)
     
     # Отправляем уведомление о создании работы

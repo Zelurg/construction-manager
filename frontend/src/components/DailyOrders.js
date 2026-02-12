@@ -32,6 +32,8 @@ function DailyOrders() {
     const handleTaskUpdated = (message) => {
       console.log('Task updated, refreshing daily view:', message.data);
       loadDailyWorks();
+      // Также обновляем список задач чтобы в модальном окне был актуальный факт
+      loadTasks();
     };
     
     websocketService.on('daily_work_created', handleDailyWorkCreated);
@@ -84,8 +86,12 @@ function DailyOrders() {
       
       await dailyAPI.createWork(workData);
       setShowModal(false);
-      // Список обновится автоматически через WebSocket
-      // Также обновятся все другие вкладки благодаря task_updated событию
+      
+      // СРАЗУ обновляем список локально
+      await loadDailyWorks();
+      await loadTasks();
+      
+      // WebSocket уведомления обновят другие устройства
     } catch (error) {
       alert('Ошибка при добавлении работы');
       console.error(error);
