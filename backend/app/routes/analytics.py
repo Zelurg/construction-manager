@@ -9,13 +9,18 @@ router = APIRouter()
 
 @router.get("/", response_model=schemas.Analytics)
 def get_analytics(db: Session = Depends(get_db)):
-    # Total progress
-    total_plan = db.query(func.sum(models.Task.volume_plan)).scalar() or 0
-    total_fact = db.query(func.sum(models.Task.volume_fact)).scalar() or 0
+    # Total progress - считаем только работы, не разделы
+    total_plan = db.query(func.sum(models.Task.volume_plan)).filter(models.Task.is_section == False).scalar() or 0
+    total_fact = db.query(func.sum(models.Task.volume_fact)).filter(models.Task.is_section == False).scalar() or 0
     total_progress = (total_fact / total_plan * 100) if total_plan > 0 else 0
     
-    # Time progress
-    tasks = db.query(models.Task).all()
+    # Time progress - только работы с заполненными датами
+    tasks = db.query(models.Task).filter(
+        models.Task.is_section == False,
+        models.Task.start_date.isnot(None),
+        models.Task.end_date.isnot(None)
+    ).all()
+    
     if tasks:
         earliest_start = min(task.start_date for task in tasks)
         latest_end = max(task.end_date for task in tasks)
