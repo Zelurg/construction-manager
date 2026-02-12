@@ -38,6 +38,46 @@ async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
     
     return db_task
 
+# ВАЖНО: clear-all ДОЛЖЕН быть ДО параметрического роута /{task_id}
+@router.delete("/tasks/clear-all")
+async def clear_all_tasks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Удаляет ВСЕ задачи из графика.
+    Доступно для авторизованных пользователей.
+    """
+    # Проверяем роль пользователя
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Только администратор может очистить график"
+        )
+    
+    try:
+        # Удаляем все задачи
+        deleted_count = db.query(models.Task).delete()
+        db.commit()
+        
+        # Уведомляем клиентов
+        await manager.broadcast({
+            "type": "schedule_cleared",
+            "event": "tasks",
+            "data": {
+                "message": "График очищен",
+                "deleted_count": deleted_count
+            }
+        }, event_type="tasks")
+        
+        return {
+            "message": "Все задачи успешно удалены",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
+
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
 async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
@@ -87,42 +127,3 @@ async def delete_task(task_id: int, db: Session = Depends(get_db)):
     }, event_type="tasks")
     
     return {"message": "Task deleted successfully"}
-
-@router.delete("/tasks/clear-all")
-async def clear_all_tasks(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    """
-    Удаляет ВСЕ задачи из графика.
-    Доступно для авторизованных пользователей.
-    """
-    # Проверяем роль пользователя
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Только администратор может очистить график"
-        )
-    
-    try:
-        # Удаляем все задачи
-        deleted_count = db.query(models.Task).delete()
-        db.commit()
-        
-        # Уведомляем клиентов
-        await manager.broadcast({
-            "type": "schedule_cleared",
-            "event": "tasks",
-            "data": {
-                "message": "График очищен",
-                "deleted_count": deleted_count
-            }
-        }, event_type="tasks")
-        
-        return {
-            "message": "Все задачи успешно удалены",
-            "deleted_count": deleted_count
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
