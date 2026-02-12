@@ -4,7 +4,7 @@ import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 
-function Schedule({ showGantt }) {
+function Schedule({ showGantt, onShowColumnSettings }) {
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [filters, setFilters] = useState({
@@ -49,6 +49,13 @@ function Schedule({ showGantt }) {
   const containerRef = useRef(null);
   const tableScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
+
+  // Пробрасываем функцию открытия настроек наверх
+  useEffect(() => {
+    if (onShowColumnSettings) {
+      onShowColumnSettings(() => setShowColumnSettings(true));
+    }
+  }, [onShowColumnSettings]);
 
   useEffect(() => {
     loadTasks();
@@ -208,17 +215,6 @@ function Schedule({ showGantt }) {
       ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
     >
-      {/* Кнопка настройки колонок */}
-      <div className="schedule-toolbar">
-        <button 
-          className="btn-secondary"
-          onClick={() => setShowColumnSettings(true)}
-          style={{ marginBottom: '10px' }}
-        >
-          ⚙️ Настройка вида
-        </button>
-      </div>
-      
       <div className="schedule-split-view">
         {/* Левая часть - таблица с данными */}
         <div 
