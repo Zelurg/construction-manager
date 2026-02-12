@@ -30,6 +30,7 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
     - month приходит в формате "2026-02-01" (первый день месяца)
     - Находим все задачи, у которых период выполнения (start_date - end_date) 
       пересекается с выбранным месяцем
+    - Разделы показываются только если в них есть работы в этом месяце
     """
     try:
         # Парсим входящую дату (формат: "2026-02-01")
@@ -37,36 +38,60 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
         
         # Вычисляем первый и последний день месяца
         first_day = month_date.replace(day=1)
-        # Получаем первый день следующего месяца и вычитаем 1 день
+        # Получаем первый день следующего месяца
         if month_date.month == 12:
             last_day = month_date.replace(year=month_date.year + 1, month=1, day=1)
         else:
             last_day = month_date.replace(month=month_date.month + 1, day=1)
         
-        # Для последнего дня месяца используем конец дня
-        # но в SQL сравнении с Date достаточно просто < first_day_next_month
-        
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат даты. Ожидается YYYY-MM-DD")
     
-    # Получаем ВСЕ задачи (включая разделы), которые пересекаются с выбранным месяцем
-    # Для разделов start_date и end_date могут быть None, поэтому их тоже включаем
-    tasks = db.query(models.Task).filter(
-        or_(
-            # Задачи с датами, которые пересекаются с месяцем
-            and_(
-                models.Task.start_date.isnot(None),
-                models.Task.end_date.isnot(None),
-                models.Task.start_date < last_day,
-                models.Task.end_date >= first_day
-            ),
-            # Разделы (у них нет дат)
-            models.Task.is_section == True
+    # Получаем ТОЛЬКО работы (не разделы), которые пересекаются с выбранным месяцем
+    work_tasks = db.query(models.Task).filter(
+        and_(
+            models.Task.is_section == False,  # Только работы
+            models.Task.start_date.isnot(None),
+            models.Task.end_date.isnot(None),
+            models.Task.start_date < last_day,
+            models.Task.end_date >= first_day
         )
-    ).order_by(models.Task.code).all()
+    ).all()
+    
+    # Если нет работ - возвращаем пустой массив
+    if not work_tasks:
+        return []
+    
+    # Собираем все уникальные parent_code от работ
+    parent_codes = set()
+    for task in work_tasks:
+        if task.parent_code:
+            # Добавляем всю цепочку родителей
+            current_code = task.parent_code
+            while current_code:
+                parent_codes.add(current_code)
+                parent_task = db.query(models.Task).filter(models.Task.code == current_code).first()
+                if parent_task and parent_task.parent_code:
+                    current_code = parent_task.parent_code
+                else:
+                    break
+    
+    # Получаем только нужные разделы
+    sections = db.query(models.Task).filter(
+        and_(
+            models.Task.is_section == True,
+            models.Task.code.in_(parent_codes)
+        )
+    ).all() if parent_codes else []
+    
+    # Объединяем разделы и работы
+    all_tasks = sections + work_tasks
+    
+    # Сортируем по code
+    all_tasks.sort(key=lambda x: x.code)
     
     result = []
-    for task in tasks:
+    for task in all_tasks:
         # Пытаемся найти запись в MonthlyTask для этого месяца
         monthly_task = db.query(models.MonthlyTask).filter(
             and_(
@@ -89,7 +114,7 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
             "volume_fact": task.volume_fact,
             "start_date": task.start_date.isoformat() if task.start_date else None,
             "end_date": task.end_date.isoformat() if task.end_date else None,
-            # Добавляем поля для breadcrumbs
+            # Поля для breadcrumbs
             "parent_code": task.parent_code,
             "is_section": task.is_section,
             "level": task.level,
