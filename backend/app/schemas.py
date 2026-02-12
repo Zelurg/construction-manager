@@ -8,8 +8,13 @@ class TaskBase(BaseModel):
     unit: Optional[str] = None  # Опционально для разделов
     volume_plan: Optional[float] = 0
     volume_fact: Optional[float] = 0
-    start_date: Optional[date] = None  # Опционально для разделов
-    end_date: Optional[date] = None  # Опционально для разделов
+    # Контрактные даты
+    start_date_contract: Optional[date] = None
+    end_date_contract: Optional[date] = None
+    # Плановые даты
+    start_date_plan: Optional[date] = None
+    end_date_plan: Optional[date] = None
+    # Дополнительные поля
     unit_price: Optional[float] = 0
     labor_per_unit: Optional[float] = 0
     machine_hours_per_unit: Optional[float] = 0
@@ -27,8 +32,13 @@ class TaskUpdate(BaseModel):
     unit: Optional[str] = None
     volume_plan: Optional[float] = None
     volume_fact: Optional[float] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    # Контрактные даты
+    start_date_contract: Optional[date] = None
+    end_date_contract: Optional[date] = None
+    # Плановые даты
+    start_date_plan: Optional[date] = None
+    end_date_plan: Optional[date] = None
+    # Дополнительные поля
     unit_price: Optional[float] = None
     labor_per_unit: Optional[float] = None
     machine_hours_per_unit: Optional[float] = None
@@ -120,7 +130,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     role: str
-    created_at: datetime  # Добавлено поле
+    created_at: datetime
 
     class Config:
         from_attributes = True
