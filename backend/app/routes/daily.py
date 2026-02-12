@@ -1,53 +1,57 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from typing import List
 from datetime import date
 from .. import models, schemas
 from ..database import get_db
+from ..websocket_manager import manager
 
 router = APIRouter()
 
-@router.get("/works", response_model=List[schemas.DailyWork])
+@router.get("/works")
 def get_daily_works(work_date: date, db: Session = Depends(get_db)):
     works = db.query(models.DailyWork).filter(models.DailyWork.date == work_date).all()
     return works
 
-@router.post("/works", response_model=schemas.DailyWork)
-def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends(get_db)):
+@router.post("/works")
+async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends(get_db)):
     db_work = models.DailyWork(**work.dict())
     db.add(db_work)
-    
-    # Update task volume_fact
-    total_volume = db.query(func.sum(models.DailyWork.volume)).filter(
-        models.DailyWork.task_id == work.task_id
-    ).scalar() or 0
-    total_volume += work.volume
-    
-    task = db.query(models.Task).filter(models.Task.id == work.task_id).first()
-    if task:
-        task.volume_fact = total_volume
-    
     db.commit()
     db.refresh(db_work)
+    
+    # Отправляем уведомление
+    await manager.broadcast({
+        "type": "daily_work_created",
+        "event": "daily_works",
+        "data": {
+            "id": db_work.id,
+            "task_id": db_work.task_id,
+            "date": db_work.date.isoformat(),
+            "volume": db_work.volume,
+            "description": db_work.description
+        }
+    }, event_type="daily_works")
+    
     return db_work
 
 @router.get("/works/with-details")
 def get_daily_works_with_details(work_date: date, db: Session = Depends(get_db)):
-    works = db.query(models.DailyWork).filter(models.DailyWork.date == work_date).all()
+    daily_works = db.query(models.DailyWork).filter(
+        models.DailyWork.date == work_date
+    ).all()
     
     result = []
-    for work in works:
-        task = db.query(models.Task).filter(models.Task.id == work.task_id).first()
+    for dw in daily_works:
+        task = db.query(models.Task).filter(models.Task.id == dw.task_id).first()
         result.append({
-            "id": work.id,
-            "task_id": work.task_id,
+            "id": dw.id,
+            "task_id": dw.task_id,
             "code": task.code,
             "name": task.name,
             "unit": task.unit,
-            "volume": work.volume,
-            "description": work.description,
-            "date": work.date
+            "volume": dw.volume,
+            "description": dw.description
         })
     
     return result

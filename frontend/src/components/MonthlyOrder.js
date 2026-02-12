@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { monthlyAPI } from '../services/api';
+import websocketService from '../services/websocket';
 
 function MonthlyOrder() {
   const [tasks, setTasks] = useState([]);
@@ -9,6 +10,29 @@ function MonthlyOrder() {
 
   useEffect(() => {
     loadMonthlyTasks();
+    
+    // Подключаемся к WebSocket
+    websocketService.connect();
+    
+    // Обработчики событий
+    const handleMonthlyTaskCreated = (message) => {
+      console.log('Monthly task created:', message.data);
+      // Перезагружаем данные для текущего месяца
+      loadMonthlyTasks();
+    };
+    
+    const handleTaskUpdated = (message) => {
+      console.log('Task updated, refreshing monthly view:', message.data);
+      loadMonthlyTasks();
+    };
+    
+    websocketService.on('monthly_task_created', handleMonthlyTaskCreated);
+    websocketService.on('task_updated', handleTaskUpdated);
+    
+    return () => {
+      websocketService.off('monthly_task_created', handleMonthlyTaskCreated);
+      websocketService.off('task_updated', handleTaskUpdated);
+    };
   }, [selectedMonth]);
 
   const loadMonthlyTasks = async () => {

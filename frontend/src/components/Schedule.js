@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { scheduleAPI } from '../services/api';
+import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 
 function Schedule({ showGantt }) {
@@ -18,6 +19,43 @@ function Schedule({ showGantt }) {
 
   useEffect(() => {
     loadTasks();
+    
+    // Подключаемся к WebSocket
+    websocketService.connect();
+    
+    // Обработчики WebSocket событий
+    const handleTaskCreated = (message) => {
+      console.log('New task created:', message.data);
+      setTasks(prevTasks => [...prevTasks, message.data]);
+    };
+    
+    const handleTaskUpdated = (message) => {
+      console.log('Task updated:', message.data);
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === message.data.id ? message.data : task
+        )
+      );
+    };
+    
+    const handleTaskDeleted = (message) => {
+      console.log('Task deleted:', message.data.id);
+      setTasks(prevTasks => 
+        prevTasks.filter(task => task.id !== message.data.id)
+      );
+    };
+    
+    // Регистрируем обработчики
+    websocketService.on('task_created', handleTaskCreated);
+    websocketService.on('task_updated', handleTaskUpdated);
+    websocketService.on('task_deleted', handleTaskDeleted);
+    
+    // Очистка при размонтировании
+    return () => {
+      websocketService.off('task_created', handleTaskCreated);
+      websocketService.off('task_updated', handleTaskUpdated);
+      websocketService.off('task_deleted', handleTaskDeleted);
+    };
   }, []);
 
   useEffect(() => {
