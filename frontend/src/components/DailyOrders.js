@@ -17,19 +17,16 @@ function DailyOrders({ onShowColumnSettings }) {
     description: ''
   });
   
-  // Доступные колонки для ежедневного наряда
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
     { key: 'name', label: 'Наименование', isBase: true },
     { key: 'unit', label: 'Ед. изм.', isBase: true },
     { key: 'volume', label: 'Объем', isBase: true },
     { key: 'description', label: 'Описание', isBase: true },
-    // Новые поля
     { key: 'executor', label: 'Исполнитель', isBase: false },
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
-    // Вычисляемые поля (для выполненного объема)
     { key: 'labor_total', label: 'Трудозатраты', isBase: false, isCalculated: true },
     { key: 'cost_total', label: 'Стоимость', isBase: false, isCalculated: true },
     { key: 'machine_hours_total', label: 'Машиночасы', isBase: false, isCalculated: true },
@@ -41,7 +38,6 @@ function DailyOrders({ onShowColumnSettings }) {
     return saved ? JSON.parse(saved) : defaultColumns;
   });
 
-  // Пробрасываем функцию открытия настроек наверх
   useEffect(() => {
     if (onShowColumnSettings) {
       onShowColumnSettings(() => setShowColumnSettings(true));
@@ -52,10 +48,8 @@ function DailyOrders({ onShowColumnSettings }) {
     loadDailyWorks();
     loadTasks();
     
-    // Подключаемся к WebSocket
     websocketService.connect();
     
-    // Обработчики событий
     const handleDailyWorkCreated = (message) => {
       console.log('Daily work created:', message.data);
       loadDailyWorks();
@@ -88,7 +82,9 @@ function DailyOrders({ onShowColumnSettings }) {
   const loadTasks = async () => {
     try {
       const response = await scheduleAPI.getTasks();
-      setTasks(response.data);
+      // Фильтруем только работы, исключая разделы
+      const workTasks = response.data.filter(task => !task.is_section);
+      setTasks(workTasks);
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
     }

@@ -3,14 +3,22 @@ import { monthlyAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import ColumnSettings from './ColumnSettings';
 
+const SECTION_COLORS = [
+  '#E8F4F8',  // level 0
+  '#F0F8E8',  // level 1
+  '#FFF4E6',  // level 2
+  '#F8E8F4',  // level 3
+  '#E8F0F8',  // level 4
+];
+
 function MonthlyOrder({ onShowColumnSettings }) {
   const [tasks, setTasks] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().substring(0, 7) + '-01'
   );
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   
-  // Доступные колонки для месячного наряда
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
     { key: 'name', label: 'Наименование', isBase: true },
@@ -20,12 +28,10 @@ function MonthlyOrder({ onShowColumnSettings }) {
     { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
     { key: 'start_date', label: 'Дата старта', isBase: true },
     { key: 'end_date', label: 'Дата финиша', isBase: true },
-    // Новые атрибуты
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
     { key: 'executor', label: 'Исполнитель', isBase: false },
-    // Вычисляемые атрибуты
     { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
     { key: 'labor_fact', label: 'Трудозатраты факт', isBase: false, isCalculated: true },
     { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
@@ -42,7 +48,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
     return saved ? JSON.parse(saved) : defaultColumns;
   });
 
-  // Пробрасываем функцию открытия настроек наверх
   useEffect(() => {
     if (onShowColumnSettings) {
       onShowColumnSettings(() => setShowColumnSettings(true));
@@ -52,10 +57,8 @@ function MonthlyOrder({ onShowColumnSettings }) {
   useEffect(() => {
     loadMonthlyTasks();
     
-    // Подключаемся к WebSocket
     websocketService.connect();
     
-    // Обработчики событий
     const handleMonthlyTaskCreated = (message) => {
       console.log('Monthly task created:', message.data);
       loadMonthlyTasks();
@@ -78,7 +81,9 @@ function MonthlyOrder({ onShowColumnSettings }) {
   const loadMonthlyTasks = async () => {
     try {
       const response = await monthlyAPI.getTasks(selectedMonth);
-      setTasks(response.data);
+      const tasksData = response.data;
+      setTasks(tasksData);
+      setAllTasks(tasksData);
     } catch (error) {
       console.error('Ошибка загрузки месячных задач:', error);
     }
@@ -87,42 +92,37 @@ function MonthlyOrder({ onShowColumnSettings }) {
   const getCellValue = (task, columnKey) => {
     switch(columnKey) {
       case 'volume_remaining':
-        return (task.volume_plan - task.volume_fact).toFixed(2);
-      
-      // Трудозатраты
+        return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
       case 'labor_total':
-        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
+        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'labor_fact':
-        return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
+        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
       case 'labor_remaining':
+        if (task.is_section) return '-';
         const volRemaining = task.volume_plan - task.volume_fact;
         return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
-      
-      // Стоимость
       case 'cost_total':
-        return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
+        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_plan).toFixed(2);
       case 'cost_fact':
-        return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
+        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_fact).toFixed(2);
       case 'cost_remaining':
+        if (task.is_section) return '-';
         const costVolRemaining = task.volume_plan - task.volume_fact;
         return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
-      
-      // Машиночасы
       case 'machine_hours_total':
-        return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
+        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'machine_hours_fact':
-        return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
-      
+        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
       case 'start_date':
       case 'end_date':
-        return new Date(task[columnKey]).toLocaleDateString('ru-RU');
+        return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
       case 'code':
       case 'name':
       case 'unit':
       case 'executor':
         return task[columnKey] || '-';
       default:
-        return task[columnKey] !== undefined ? task[columnKey] : '-';
+        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
     }
   };
   
@@ -134,6 +134,17 @@ function MonthlyOrder({ onShowColumnSettings }) {
   const handleSaveColumnSettings = (newVisibleColumns) => {
     setVisibleColumns(newVisibleColumns);
     localStorage.setItem('monthlyOrderVisibleColumns', JSON.stringify(newVisibleColumns));
+  };
+  
+  const getRowStyle = (task) => {
+    if (!task.is_section) return {};
+    
+    const color = SECTION_COLORS[task.level] || SECTION_COLORS[SECTION_COLORS.length - 1];
+    return {
+      backgroundColor: color,
+      fontWeight: 'bold',
+      fontSize: task.level === 0 ? '1.05em' : '1em'
+    };
   };
 
   return (
@@ -157,7 +168,7 @@ function MonthlyOrder({ onShowColumnSettings }) {
         </thead>
         <tbody>
           {tasks.map(task => (
-            <tr key={task.id}>
+            <tr key={task.id} style={getRowStyle(task)}>
               {visibleColumns.map(columnKey => (
                 <td key={columnKey}>{getCellValue(task, columnKey)}</td>
               ))}
