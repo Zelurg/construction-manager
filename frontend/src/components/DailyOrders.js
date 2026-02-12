@@ -29,9 +29,10 @@ function DailyOrders({ onShowColumnSettings }) {
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
-    // Вычисляемые поля
-    { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
-    { key: 'cost_total', label: 'Стоимость всего', isBase: false, isCalculated: true },
+    // Вычисляемые поля (для выполненного объема)
+    { key: 'labor_total', label: 'Трудозатраты', isBase: false, isCalculated: true },
+    { key: 'cost_total', label: 'Стоимость', isBase: false, isCalculated: true },
+    { key: 'machine_hours_total', label: 'Машиночасы', isBase: false, isCalculated: true },
   ];
   
   const defaultColumns = ['code', 'name', 'unit', 'volume', 'description'];
@@ -54,7 +55,7 @@ function DailyOrders({ onShowColumnSettings }) {
     // Подключаемся к WebSocket
     websocketService.connect();
     
-    // Обработчики событий - теперь внутри useEffect чтобы видеть актуальный selectedDate
+    // Обработчики событий
     const handleDailyWorkCreated = (message) => {
       console.log('Daily work created:', message.data);
       loadDailyWorks();
@@ -138,6 +139,9 @@ function DailyOrders({ onShowColumnSettings }) {
       case 'cost_total':
         if (!task) return '-';
         return (work.volume * (task.unit_price || 0)).toFixed(2);
+      case 'machine_hours_total':
+        if (!task) return '-';
+        return (work.volume * (task.machine_hours_per_unit || 0)).toFixed(2);
       case 'executor':
       case 'unit_price':
       case 'labor_per_unit':
