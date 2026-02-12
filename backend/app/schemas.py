@@ -13,6 +13,11 @@ class TaskBase(BaseModel):
     volume_plan: float
     start_date: date
     end_date: date
+    # Новые поля
+    unit_price: Optional[float] = 0
+    labor_per_unit: Optional[float] = 0
+    machine_hours_per_unit: Optional[float] = 0
+    executor: Optional[str] = None
 
 class TaskCreate(TaskBase):
     pass
