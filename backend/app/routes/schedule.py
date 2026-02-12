@@ -4,6 +4,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..websocket_manager import manager
+from ..dependencies import get_current_admin_user
 
 router = APIRouter()
 
@@ -30,8 +31,8 @@ async def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
             "unit": db_task.unit,
             "volume_plan": db_task.volume_plan,
             "volume_fact": db_task.volume_fact,
-            "start_date": db_task.start_date.isoformat(),
-            "end_date": db_task.end_date.isoformat()
+            "start_date": db_task.start_date.isoformat() if db_task.start_date else None,
+            "end_date": db_task.end_date.isoformat() if db_task.end_date else None
         }
     }, event_type="tasks")
     
@@ -60,8 +61,8 @@ async def update_task(task_id: int, task: schemas.TaskCreate, db: Session = Depe
             "unit": db_task.unit,
             "volume_plan": db_task.volume_plan,
             "volume_fact": db_task.volume_fact,
-            "start_date": db_task.start_date.isoformat(),
-            "end_date": db_task.end_date.isoformat()
+            "start_date": db_task.start_date.isoformat() if db_task.start_date else None,
+            "end_date": db_task.end_date.isoformat() if db_task.end_date else None
         }
     }, event_type="tasks")
     
@@ -86,3 +87,35 @@ async def delete_task(task_id: int, db: Session = Depends(get_db)):
     }, event_type="tasks")
     
     return {"message": "Task deleted successfully"}
+
+@router.delete("/tasks/clear/all")
+async def clear_all_tasks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """
+    Удаляет ВСЕ задачи из графика.
+    Доступно только администраторам.
+    """
+    try:
+        # Удаляем все задачи
+        deleted_count = db.query(models.Task).delete()
+        db.commit()
+        
+        # Уведомляем клиентов
+        await manager.broadcast({
+            "type": "schedule_cleared",
+            "event": "tasks",
+            "data": {
+                "message": "График очищен",
+                "deleted_count": deleted_count
+            }
+        }, event_type="tasks")
+        
+        return {
+            "message": "Все задачи успешно удалены",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка при очистке графика: {str(e)}")
