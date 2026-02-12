@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dailyAPI, scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
+import ColumnSettings from './ColumnSettings';
 
 function DailyOrders() {
   const [works, setWorks] = useState([]);
@@ -9,10 +10,34 @@ function DailyOrders() {
     new Date().toISOString().split('T')[0]
   );
   const [showModal, setShowModal] = useState(false);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [formData, setFormData] = useState({
     task_id: '',
     volume: '',
     description: ''
+  });
+  
+  // Доступные колонки для ежедневного наряда
+  const availableColumns = [
+    { key: 'code', label: 'Шифр', isBase: true },
+    { key: 'name', label: 'Наименование', isBase: true },
+    { key: 'unit', label: 'Ед. изм.', isBase: true },
+    { key: 'volume', label: 'Объем', isBase: true },
+    { key: 'description', label: 'Описание', isBase: true },
+    // Новые поля
+    { key: 'executor', label: 'Исполнитель', isBase: false },
+    { key: 'unit_price', label: 'Цена за ед.', isBase: false },
+    { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
+    { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
+    // Вычисляемые поля
+    { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
+    { key: 'cost_total', label: 'Стоимость всего', isBase: false, isCalculated: true },
+  ];
+  
+  const defaultColumns = ['code', 'name', 'unit', 'volume', 'description'];
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem('dailyOrdersVisibleColumns');
+    return saved ? JSON.parse(saved) : defaultColumns;
   });
 
   useEffect(() => {
@@ -101,6 +126,41 @@ function DailyOrders() {
   const getTaskInfo = (taskId) => {
     return tasks.find(t => t.id === taskId);
   };
+  
+  // Функция для вычисления значения ячейки
+  const getCellValue = (work, columnKey) => {
+    // Находим соответствующую задачу для доступа к ее атрибутам
+    const task = tasks.find(t => t.code === work.code);
+    
+    switch(columnKey) {
+      case 'labor_total':
+        if (!task) return '-';
+        return (work.volume * (task.labor_per_unit || 0)).toFixed(2);
+      case 'cost_total':
+        if (!task) return '-';
+        return (work.volume * (task.unit_price || 0)).toFixed(2);
+      case 'executor':
+      case 'unit_price':
+      case 'labor_per_unit':
+      case 'machine_hours_per_unit':
+        if (!task) return '-';
+        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
+      case 'description':
+        return work[columnKey] || '-';
+      default:
+        return work[columnKey] || '-';
+    }
+  };
+  
+  const getColumnLabel = (columnKey) => {
+    const column = availableColumns.find(col => col.key === columnKey);
+    return column ? column.label : columnKey;
+  };
+  
+  const handleSaveColumnSettings = (newVisibleColumns) => {
+    setVisibleColumns(newVisibleColumns);
+    localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(newVisibleColumns));
+  };
 
   return (
     <div className="daily-orders">
@@ -113,37 +173,41 @@ function DailyOrders() {
             onChange={(e) => setSelectedDate(e.target.value)}
           />
         </div>
-        <button onClick={handleAddWork} className="btn-primary">
-          + Внести объём
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            className="btn-secondary"
+            onClick={() => setShowColumnSettings(true)}
+          >
+            ⚙️ Настройка вида
+          </button>
+          <button onClick={handleAddWork} className="btn-primary">
+            + Внести объём
+          </button>
+        </div>
       </div>
 
       <div className="table-container">
         <table className="tasks-table">
           <thead>
             <tr>
-              <th>Шифр</th>
-              <th>Наименование</th>
-              <th>Ед. изм.</th>
-              <th>Объем</th>
-              <th>Описание</th>
+              {visibleColumns.map(columnKey => (
+                <th key={columnKey}>{getColumnLabel(columnKey)}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {works.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={visibleColumns.length} style={{ textAlign: 'center', padding: '20px' }}>
                   Нет данных за выбранную дату
                 </td>
               </tr>
             ) : (
               works.map(work => (
                 <tr key={work.id}>
-                  <td>{work.code}</td>
-                  <td>{work.name}</td>
-                  <td>{work.unit}</td>
-                  <td>{work.volume}</td>
-                  <td>{work.description || '-'}</td>
+                  {visibleColumns.map(columnKey => (
+                    <td key={columnKey}>{getCellValue(work, columnKey)}</td>
+                  ))}
                 </tr>
               ))
             )}
@@ -223,6 +287,16 @@ function DailyOrders() {
             </form>
           </div>
         </div>
+      )}
+      
+      {/* Модальное окно настройки колонок */}
+      {showColumnSettings && (
+        <ColumnSettings
+          availableColumns={availableColumns}
+          visibleColumns={visibleColumns}
+          onSave={handleSaveColumnSettings}
+          onClose={() => setShowColumnSettings(false)}
+        />
       )}
     </div>
   );
