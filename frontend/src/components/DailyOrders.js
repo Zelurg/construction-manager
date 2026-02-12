@@ -45,37 +45,49 @@ function DailyOrders() {
 
   return (
     <div className="daily-orders">
-      <div className="date-selector">
-        <label>Выберите дату:</label>
-        <input 
-          type="date" 
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-        />
+      <div className="controls-header">
+        <div className="date-selector">
+          <label>Выберите дату:</label>
+          <input 
+            type="date" 
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+          />
+        </div>
       </div>
 
-      <table className="works-table">
-        <thead>
-          <tr>
-            <th>Шифр</th>
-            <th>Наименование</th>
-            <th>Ед. изм.</th>
-            <th>Объем</th>
-            <th>Описание</th>
-          </tr>
-        </thead>
-        <tbody>
-          {works.map(work => (
-            <tr key={work.id}>
-              <td>{work.code}</td>
-              <td>{work.name}</td>
-              <td>{work.unit}</td>
-              <td>{work.volume}</td>
-              <td>{work.description || '-'}</td>
+      <div className="table-container">
+        <table className="tasks-table">
+          <thead>
+            <tr>
+              <th>Шифр</th>
+              <th>Наименование</th>
+              <th>Ед. изм.</th>
+              <th>Объем</th>
+              <th>Описание</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {works.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>
+                  Нет данных за выбранную дату
+                </td>
+              </tr>
+            ) : (
+              works.map(work => (
+                <tr key={work.id}>
+                  <td>{work.code}</td>
+                  <td>{work.name}</td>
+                  <td>{work.unit}</td>
+                  <td>{work.volume}</td>
+                  <td>{work.description || '-'}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
