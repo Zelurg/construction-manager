@@ -49,7 +49,7 @@ async def clear_all_tasks(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Удаляет ВСЕ задачи из графика.
+    Удаляет ВСЕ задачи из графика вместе со связанными данными.
     Доступно только администраторам.
     """
     print(f"Clear called by user: {current_user.username}, role: {current_user.role}")  # DEBUG
@@ -61,23 +61,42 @@ async def clear_all_tasks(
         )
     
     try:
-        deleted_count = db.query(models.Task).delete()
+        # ВАЖНО: Удаляем в правильном порядке (сначала зависимые таблицы)
+        
+        # 1. Удаляем daily_works
+        daily_deleted = db.query(models.DailyWork).delete()
+        print(f"Deleted {daily_deleted} daily works")  # DEBUG
+        
+        # 2. Удаляем monthly_tasks
+        monthly_deleted = db.query(models.MonthlyTask).delete()
+        print(f"Deleted {monthly_deleted} monthly tasks")  # DEBUG
+        
+        # 3. Теперь можно удалить tasks
+        tasks_deleted = db.query(models.Task).delete()
+        print(f"Deleted {tasks_deleted} tasks")  # DEBUG
+        
         db.commit()
         
-        print(f"Deleted {deleted_count} tasks")  # DEBUG
+        total_deleted = daily_deleted + monthly_deleted + tasks_deleted
         
         await manager.broadcast({
             "type": "schedule_cleared",
             "event": "tasks",
             "data": {
                 "message": "График очищен",
-                "deleted_count": deleted_count
+                "tasks_deleted": tasks_deleted,
+                "daily_deleted": daily_deleted,
+                "monthly_deleted": monthly_deleted,
+                "total_deleted": total_deleted
             }
         }, event_type="tasks")
         
         return {
-            "message": "Все задачи успешно удалены",
-            "deleted_count": deleted_count
+            "message": "Все данные успешно удалены",
+            "tasks_deleted": tasks_deleted,
+            "daily_works_deleted": daily_deleted,
+            "monthly_tasks_deleted": monthly_deleted,
+            "total_deleted": total_deleted
         }
     except Exception as e:
         print(f"Error clearing tasks: {e}")  # DEBUG
