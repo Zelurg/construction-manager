@@ -27,9 +27,13 @@ function MonthlyOrder({ onShowColumnSettings }) {
     { key: 'executor', label: 'Исполнитель', isBase: false },
     // Вычисляемые атрибуты
     { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
+    { key: 'labor_fact', label: 'Трудозатраты факт', isBase: false, isCalculated: true },
     { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
     { key: 'cost_total', label: 'Стоимость всего', isBase: false, isCalculated: true },
+    { key: 'cost_fact', label: 'Стоимость факт', isBase: false, isCalculated: true },
     { key: 'cost_remaining', label: 'Остаток стоимости', isBase: false, isCalculated: true },
+    { key: 'machine_hours_total', label: 'Всего машиночасов', isBase: false, isCalculated: true },
+    { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
   ];
   
   const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date', 'end_date'];
@@ -84,16 +88,31 @@ function MonthlyOrder({ onShowColumnSettings }) {
     switch(columnKey) {
       case 'volume_remaining':
         return (task.volume_plan - task.volume_fact).toFixed(2);
+      
+      // Трудозатраты
       case 'labor_total':
-        return (task.labor_per_unit * task.volume_plan).toFixed(2);
+        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
+      case 'labor_fact':
+        return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
       case 'labor_remaining':
-        const remaining = task.volume_plan - task.volume_fact;
-        return (task.labor_per_unit * remaining).toFixed(2);
-      case 'cost_total':
-        return (task.unit_price * task.volume_plan).toFixed(2);
-      case 'cost_remaining':
         const volRemaining = task.volume_plan - task.volume_fact;
-        return (task.unit_price * volRemaining).toFixed(2);
+        return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
+      
+      // Стоимость
+      case 'cost_total':
+        return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
+      case 'cost_fact':
+        return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
+      case 'cost_remaining':
+        const costVolRemaining = task.volume_plan - task.volume_fact;
+        return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
+      
+      // Машиночасы
+      case 'machine_hours_total':
+        return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
+      case 'machine_hours_fact':
+        return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
+      
       case 'start_date':
       case 'end_date':
         return new Date(task[columnKey]).toLocaleDateString('ru-RU');
