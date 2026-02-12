@@ -152,3 +152,59 @@ class TokenData(BaseModel):
 class ImportResult(BaseModel):
     tasks_processed: int
     errors: List[str] = []
+
+# Employee schemas - новые схемы для сотрудников
+class EmployeeBase(BaseModel):
+    full_name: str = Field(..., min_length=1, description="ФИО сотрудника")
+    position: str = Field(..., min_length=1, description="Профессия/должность")
+    is_active: bool = Field(default=True, description="Активен ли сотрудник")
+
+class EmployeeCreate(EmployeeBase):
+    pass
+
+class EmployeeUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=1, description="ФИО сотрудника")
+    position: Optional[str] = Field(None, min_length=1, description="Профессия/должность")
+    is_active: Optional[bool] = Field(None, description="Активен ли сотрудник")
+
+class Employee(EmployeeBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# DailyExecutor schemas - схемы для исполнителей работ за день
+class DailyExecutorBase(BaseModel):
+    date: date = Field(..., description="Дата работы")
+    employee_id: int = Field(..., gt=0, description="ID сотрудника")
+    hours_worked: float = Field(default=10.0, gt=0, le=24, description="Отработанные часы")
+    is_responsible: bool = Field(default=False, description="Является ли ответственным (прорабом)")
+
+class DailyExecutorCreate(DailyExecutorBase):
+    pass
+
+class DailyExecutorUpdate(BaseModel):
+    hours_worked: Optional[float] = Field(None, gt=0, le=24, description="Отработанные часы")
+    is_responsible: Optional[bool] = Field(None, description="Является ли ответственным (прорабом)")
+
+class DailyExecutor(DailyExecutorBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Расширенная схема с информацией о сотруднике
+class DailyExecutorWithEmployee(DailyExecutor):
+    employee: Employee
+
+# Схема для получения статистики по дню
+class DailyExecutorStats(BaseModel):
+    date: date
+    total_hours_worked: float  # Суммарные отработанные часы всех исполнителей
+    total_labor_hours: float  # Суммарные трудозатраты по внесенным объемам
+    executors_count: int  # Количество исполнителей
+    responsible: Optional[Employee] = None  # Ответственный за день
+    executors: List[DailyExecutorWithEmployee]  # Список исполнителей с полной информацией
