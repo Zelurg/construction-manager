@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { monthlyAPI } from '../services/api';
+import { monthlyAPI, scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import ColumnSettings from './ColumnSettings';
+import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
   '#E8F4F8',  // level 0
@@ -12,12 +13,17 @@ const SECTION_COLORS = [
 ];
 
 function MonthlyOrder({ onShowColumnSettings }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  
   const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().substring(0, 7) + '-01'
   );
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [editingCell, setEditingCell] = useState(null); // { taskId, field }
+  const [editValue, setEditValue] = useState('');
   
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -26,8 +32,10 @@ function MonthlyOrder({ onShowColumnSettings }) {
     { key: 'volume_plan', label: 'Объем план', isBase: true },
     { key: 'volume_fact', label: 'Объем факт', isBase: true },
     { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
-    { key: 'start_date', label: 'Дата старта', isBase: true },
-    { key: 'end_date', label: 'Дата финиша', isBase: true },
+    { key: 'start_date_contract', label: 'Дата старта контракт', isBase: true },
+    { key: 'end_date_contract', label: 'Дата финиша контракт', isBase: true },
+    { key: 'start_date_plan', label: 'Дата старта план', isBase: true, editable: true },
+    { key: 'end_date_plan', label: 'Дата финиша план', isBase: true, editable: true },
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
@@ -42,7 +50,7 @@ function MonthlyOrder({ onShowColumnSettings }) {
     { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
   ];
   
-  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date', 'end_date'];
+  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan'];
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const saved = localStorage.getItem('monthlyOrderVisibleColumns');
     return saved ? JSON.parse(saved) : defaultColumns;
@@ -109,7 +117,77 @@ function MonthlyOrder({ onShowColumnSettings }) {
     return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
   };
   
+  // Начало редактирования ячейки
+  const handleCellDoubleClick = (task, columnKey) => {
+    if (!isAdmin) return;
+    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan') return;
+    if (task.is_section) return;
+    
+    setEditingCell({ taskId: task.task_id, field: columnKey });
+    const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
+    setEditValue(dateValue);
+  };
+  
+  // Сохранение изменений
+  const handleCellBlur = async () => {
+    if (!editingCell) return;
+    
+    const task = tasks.find(t => t.task_id === editingCell.taskId);
+    if (!task) return;
+    
+    const currentValue = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
+    if (editValue === currentValue) {
+      setEditingCell(null);
+      return;
+    }
+    
+    try {
+      const updateData = {
+        [editingCell.field]: editValue || null
+      };
+      
+      await scheduleAPI.updateTask(editingCell.taskId, updateData);
+      
+      setTasks(prevTasks => 
+        prevTasks.map(t => 
+          t.task_id === editingCell.taskId 
+            ? { ...t, [editingCell.field]: editValue || null }
+            : t
+        )
+      );
+      
+      setEditingCell(null);
+    } catch (error) {
+      console.error('Ошибка обновления даты:', error);
+      alert('Ошибка обновления даты');
+      setEditingCell(null);
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleCellBlur();
+    } else if (e.key === 'Escape') {
+      setEditingCell(null);
+    }
+  };
+  
   const getCellValue = (task, columnKey) => {
+    // Проверка на режим редактирования
+    if (editingCell && editingCell.taskId === task.task_id && editingCell.field === columnKey) {
+      return (
+        <input
+          type="date"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleCellBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          style={{ width: '100%', padding: '4px' }}
+        />
+      );
+    }
+    
     switch(columnKey) {
       case 'volume_remaining':
         return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
@@ -133,11 +211,12 @@ function MonthlyOrder({ onShowColumnSettings }) {
         return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'machine_hours_fact':
         return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
-      case 'start_date':
-      case 'end_date':
+      case 'start_date_contract':
+      case 'end_date_contract':
+      case 'start_date_plan':
+      case 'end_date_plan':
         return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
       case 'name':
-        // Добавляем хлебные крошки для всех задач
         const breadcrumb = getBreadcrumb(task);
         return breadcrumb ? (
           <span>
@@ -174,6 +253,19 @@ function MonthlyOrder({ onShowColumnSettings }) {
       fontSize: task.level === 0 ? '1.05em' : '1em'
     };
   };
+  
+  const getCellStyle = (task, columnKey) => {
+    if (!isAdmin || task.is_section) return {};
+    
+    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') {
+      return {
+        cursor: 'pointer',
+        backgroundColor: editingCell?.taskId === task.task_id && editingCell?.field === columnKey ? '#ffffcc' : 'inherit'
+      };
+    }
+    
+    return {};
+  };
 
   return (
     <div className="monthly-order">
@@ -198,7 +290,14 @@ function MonthlyOrder({ onShowColumnSettings }) {
           {tasks.map(task => (
             <tr key={task.id} style={getRowStyle(task)}>
               {visibleColumns.map(columnKey => (
-                <td key={columnKey}>{getCellValue(task, columnKey)}</td>
+                <td 
+                  key={columnKey} 
+                  style={getCellStyle(task, columnKey)}
+                  onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
+                  title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
+                >
+                  {getCellValue(task, columnKey)}
+                </td>
               ))}
             </tr>
           ))}
