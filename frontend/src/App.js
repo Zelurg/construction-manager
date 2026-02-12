@@ -4,6 +4,7 @@ import Schedule from './components/Schedule';
 import MonthlyOrder from './components/MonthlyOrder';
 import DailyOrders from './components/DailyOrders';
 import Analytics from './components/Analytics';
+import Directories from './components/Directories';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import Toolbar from './components/Toolbar';
@@ -142,6 +143,12 @@ function App() {
         >
           Аналитика
         </button>
+        <button 
+          className={activeTab === 'directories' ? 'active' : ''} 
+          onClick={() => setActiveTab('directories')}
+        >
+          Справочники
+        </button>
         {user?.role === 'admin' && (
           <button 
             className={activeTab === 'admin' ? 'active' : ''} 
@@ -179,6 +186,7 @@ function App() {
           />
         )}
         {activeTab === 'analytics' && <Analytics />}
+        {activeTab === 'directories' && <Directories />}
         {activeTab === 'admin' && user?.role === 'admin' && <AdminPanel />}
       </main>
     </div>
