@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
+import ColumnSettings from './ColumnSettings';
 
 function Schedule({ showGantt }) {
   const [tasks, setTasks] = useState([]);
@@ -13,6 +14,38 @@ function Schedule({ showGantt }) {
   });
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  
+  // Доступные колонки (все возможные атрибуты)
+  const availableColumns = [
+    // Базовые атрибуты
+    { key: 'code', label: 'Шифр', isBase: true },
+    { key: 'name', label: 'Наименование', isBase: true },
+    { key: 'unit', label: 'Ед. изм.', isBase: true },
+    { key: 'volume_plan', label: 'Объем план', isBase: true },
+    { key: 'volume_fact', label: 'Объем факт', isBase: true },
+    { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
+    { key: 'start_date', label: 'Дата старта', isBase: true },
+    { key: 'end_date', label: 'Дата финиша', isBase: true },
+    // Новые атрибуты из шаблона
+    { key: 'unit_price', label: 'Цена за ед.', isBase: false },
+    { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
+    { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
+    { key: 'executor', label: 'Исполнитель', isBase: false },
+    // Вычисляемые атрибуты
+    { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
+    { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
+    { key: 'cost_total', label: 'Стоимость всего', isBase: false, isCalculated: true },
+    { key: 'cost_remaining', label: 'Остаток стоимости', isBase: false, isCalculated: true },
+  ];
+  
+  // Видимые колонки по умолчанию
+  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date', 'end_date'];
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem('scheduleVisibleColumns');
+    return saved ? JSON.parse(saved) : defaultColumns;
+  });
+  
   const containerRef = useRef(null);
   const tableScrollRef = useRef(null);
   const ganttScrollRef = useRef(null);
@@ -96,6 +129,46 @@ function Schedule({ showGantt }) {
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
+  
+  // Функция для вычисления значения ячейки
+  const getCellValue = (task, columnKey) => {
+    switch(columnKey) {
+      case 'volume_remaining':
+        return (task.volume_plan - task.volume_fact).toFixed(2);
+      case 'labor_total':
+        return (task.labor_per_unit * task.volume_plan).toFixed(2);
+      case 'labor_remaining':
+        const remaining = task.volume_plan - task.volume_fact;
+        return (task.labor_per_unit * remaining).toFixed(2);
+      case 'cost_total':
+        return (task.unit_price * task.volume_plan).toFixed(2);
+      case 'cost_remaining':
+        const volRemaining = task.volume_plan - task.volume_fact;
+        return (task.unit_price * volRemaining).toFixed(2);
+      case 'start_date':
+      case 'end_date':
+        return new Date(task[columnKey]).toLocaleDateString('ru-RU');
+      case 'code':
+      case 'name':
+      case 'unit':
+      case 'executor':
+        return task[columnKey] || '-';
+      default:
+        return task[columnKey] !== undefined ? task[columnKey] : '-';
+    }
+  };
+  
+  // Функция для получения заголовка колонки
+  const getColumnLabel = (columnKey) => {
+    const column = availableColumns.find(col => col.key === columnKey);
+    return column ? column.label : columnKey;
+  };
+  
+  // Обработчик сохранения настроек колонок
+  const handleSaveColumnSettings = (newVisibleColumns) => {
+    setVisibleColumns(newVisibleColumns);
+    localStorage.setItem('scheduleVisibleColumns', JSON.stringify(newVisibleColumns));
+  };
 
   const handleMouseDown = (e) => {
     setIsResizing(true);
@@ -135,6 +208,17 @@ function Schedule({ showGantt }) {
       ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
     >
+      {/* Кнопка настройки колонок */}
+      <div className="schedule-toolbar">
+        <button 
+          className="btn-secondary"
+          onClick={() => setShowColumnSettings(true)}
+          style={{ marginBottom: '10px' }}
+        >
+          ⚙️ Настройка вида
+        </button>
+      </div>
+      
       <div className="schedule-split-view">
         {/* Левая часть - таблица с данными */}
         <div 
@@ -146,51 +230,27 @@ function Schedule({ showGantt }) {
             <table className="tasks-table-integrated">
               <thead>
                 <tr>
-                  <th>
-                    <div>Шифр</div>
-                    <input 
-                      type="text" 
-                      placeholder="Фильтр..."
-                      value={filters.code}
-                      onChange={(e) => handleFilterChange('code', e.target.value)}
-                    />
-                  </th>
-                  <th>
-                    <div>Наименование</div>
-                    <input 
-                      type="text" 
-                      placeholder="Фильтр..."
-                      value={filters.name}
-                      onChange={(e) => handleFilterChange('name', e.target.value)}
-                    />
-                  </th>
-                  <th>
-                    <div>Ед. изм.</div>
-                    <input 
-                      type="text" 
-                      placeholder="Фильтр..."
-                      value={filters.unit}
-                      onChange={(e) => handleFilterChange('unit', e.target.value)}
-                    />
-                  </th>
-                  <th>Объем<br/>план</th>
-                  <th>Объем<br/>факт</th>
-                  <th>Объем<br/>остаток</th>
-                  <th>Дата<br/>старта</th>
-                  <th>Дата<br/>финиша</th>
+                  {visibleColumns.map(columnKey => (
+                    <th key={columnKey}>
+                      <div>{getColumnLabel(columnKey)}</div>
+                      {['code', 'name', 'unit'].includes(columnKey) && (
+                        <input 
+                          type="text" 
+                          placeholder="Фильтр..."
+                          value={filters[columnKey] || ''}
+                          onChange={(e) => handleFilterChange(columnKey, e.target.value)}
+                        />
+                      )}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredTasks.map(task => (
                   <tr key={task.id}>
-                    <td>{task.code}</td>
-                    <td>{task.name}</td>
-                    <td>{task.unit}</td>
-                    <td>{task.volume_plan}</td>
-                    <td>{task.volume_fact}</td>
-                    <td>{task.volume_plan - task.volume_fact}</td>
-                    <td>{new Date(task.start_date).toLocaleDateString('ru-RU')}</td>
-                    <td>{new Date(task.end_date).toLocaleDateString('ru-RU')}</td>
+                    {visibleColumns.map(columnKey => (
+                      <td key={columnKey}>{getCellValue(task, columnKey)}</td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -219,6 +279,16 @@ function Schedule({ showGantt }) {
           </div>
         )}
       </div>
+      
+      {/* Модальное окно настройки колонок */}
+      {showColumnSettings && (
+        <ColumnSettings
+          availableColumns={availableColumns}
+          visibleColumns={visibleColumns}
+          onSave={handleSaveColumnSettings}
+          onClose={() => setShowColumnSettings(false)}
+        />
+      )}
     </div>
   );
 }
