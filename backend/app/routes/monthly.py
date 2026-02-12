@@ -49,15 +49,21 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат даты. Ожидается YYYY-MM-DD")
     
-    # Получаем все задачи, которые пересекаются с выбранным месяцем
-    # Задача пересекается с месяцем если:
-    # start_date <= last_day_of_month AND end_date >= first_day_of_month
+    # Получаем ВСЕ задачи (включая разделы), которые пересекаются с выбранным месяцем
+    # Для разделов start_date и end_date могут быть None, поэтому их тоже включаем
     tasks = db.query(models.Task).filter(
-        and_(
-            models.Task.start_date < last_day,  # Начало задачи до конца месяца
-            models.Task.end_date >= first_day    # Конец задачи после начала месяца
+        or_(
+            # Задачи с датами, которые пересекаются с месяцем
+            and_(
+                models.Task.start_date.isnot(None),
+                models.Task.end_date.isnot(None),
+                models.Task.start_date < last_day,
+                models.Task.end_date >= first_day
+            ),
+            # Разделы (у них нет дат)
+            models.Task.is_section == True
         )
-    ).all()
+    ).order_by(models.Task.code).all()
     
     result = []
     for task in tasks:
@@ -81,8 +87,17 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
             "unit": task.unit,
             "volume_plan": volume_plan,
             "volume_fact": task.volume_fact,
-            "start_date": task.start_date.isoformat(),
-            "end_date": task.end_date.isoformat()
+            "start_date": task.start_date.isoformat() if task.start_date else None,
+            "end_date": task.end_date.isoformat() if task.end_date else None,
+            # Добавляем поля для breadcrumbs
+            "parent_code": task.parent_code,
+            "is_section": task.is_section,
+            "level": task.level,
+            # Дополнительные поля
+            "unit_price": task.unit_price,
+            "labor_per_unit": task.labor_per_unit,
+            "machine_hours_per_unit": task.machine_hours_per_unit,
+            "executor": task.executor
         })
     
     return result
