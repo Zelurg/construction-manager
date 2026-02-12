@@ -32,6 +32,13 @@ class Task(Base):
     volume_fact = Column(Float, default=0)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
+    
+    # Новые поля для расширенной информации
+    unit_price = Column(Float, nullable=True, default=0)  # Цена за единицу
+    labor_per_unit = Column(Float, nullable=True, default=0)  # Трудозатраты на единицу (чел-час)
+    machine_hours_per_unit = Column(Float, nullable=True, default=0)  # Машиночасы на единицу
+    executor = Column(String, nullable=True)  # Исполнитель работ
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
