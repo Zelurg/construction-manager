@@ -28,7 +28,7 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
     
     Логика:
     - month приходит в формате "2026-02-01" (первый день месяца)
-    - Находим все задачи, у которых период выполнения (start_date - end_date) 
+    - Находим все задачи, у которых период выполнения (плановые даты) 
       пересекается с выбранным месяцем
     - Разделы показываются только если в них есть работы в этом месяце
     """
@@ -48,13 +48,14 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Неверный формат даты. Ожидается YYYY-MM-DD")
     
     # Получаем ТОЛЬКО работы (не разделы), которые пересекаются с выбранным месяцем
+    # Используем ПЛАНОВЫЕ даты для фильтрации
     work_tasks = db.query(models.Task).filter(
         and_(
             models.Task.is_section == False,  # Только работы
-            models.Task.start_date.isnot(None),
-            models.Task.end_date.isnot(None),
-            models.Task.start_date < last_day,
-            models.Task.end_date >= first_day
+            models.Task.start_date_plan.isnot(None),
+            models.Task.end_date_plan.isnot(None),
+            models.Task.start_date_plan < last_day,
+            models.Task.end_date_plan >= first_day
         )
     ).all()
     
@@ -112,8 +113,11 @@ def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
             "unit": task.unit,
             "volume_plan": volume_plan,
             "volume_fact": task.volume_fact,
-            "start_date": task.start_date.isoformat() if task.start_date else None,
-            "end_date": task.end_date.isoformat() if task.end_date else None,
+            # Возвращаем все 4 поля дат
+            "start_date_contract": task.start_date_contract.isoformat() if task.start_date_contract else None,
+            "end_date_contract": task.end_date_contract.isoformat() if task.end_date_contract else None,
+            "start_date_plan": task.start_date_plan.isoformat() if task.start_date_plan else None,
+            "end_date_plan": task.end_date_plan.isoformat() if task.end_date_plan else None,
             # Поля для breadcrumbs
             "parent_code": task.parent_code,
             "is_section": task.is_section,
