@@ -37,13 +37,29 @@ function Analytics() {
     { name: 'Остаток', value: analytics.labor_remaining }
   ];
 
+  const machineData = [
+    { name: 'Факт', value: analytics.machine_hours_fact },
+    { name: 'Остаток', value: analytics.machine_hours_remaining }
+  ];
+
+  const costData = [
+    { name: 'Факт', value: analytics.cost_fact },
+    { name: 'Остаток', value: analytics.cost_remaining }
+  ];
+
   const COLORS = ['#4caf50', '#ff9800', '#f44336'];
+
+  // Форматирование чисел с пробелами
+  const formatNumber = (num) => {
+    return num.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  };
 
   return (
     <div className="analytics">
       <h2>Аналитика проекта</h2>
       
       <div className="analytics-grid">
+        {/* Выполнение по объемам */}
         <div className="analytics-card">
           <h3>Выполнение по объемам</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -72,6 +88,7 @@ function Analytics() {
           </div>
         </div>
 
+        {/* Выполнение по срокам */}
         <div className="analytics-card">
           <h3>Выполнение по срокам</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -99,8 +116,9 @@ function Analytics() {
           </div>
         </div>
 
+        {/* Трудозатраты */}
         <div className="analytics-card">
-          <h3>Трудозатраты</h3>
+          <h3>Трудозатраты (чел.-ч)</h3>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
@@ -108,7 +126,7 @@ function Analytics() {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({name, value}) => `${name}: ${value.toFixed(1)}`}
+                label={({name, value}) => `${name}: ${formatNumber(value)}`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
@@ -117,13 +135,71 @@ function Analytics() {
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip formatter={(value) => formatNumber(value)} />
             </PieChart>
           </ResponsiveContainer>
           <div className="widget-stats">
-            <p><strong>План:</strong> {analytics.labor_plan.toFixed(2)}</p>
-            <p><strong>Факт:</strong> {analytics.labor_fact.toFixed(2)}</p>
-            <p><strong>Остаток:</strong> {analytics.labor_remaining.toFixed(2)}</p>
+            <p><strong>План:</strong> {formatNumber(analytics.labor_plan)} чел.-ч</p>
+            <p><strong>Факт:</strong> {formatNumber(analytics.labor_fact)} чел.-ч</p>
+            <p><strong>Остаток:</strong> {formatNumber(analytics.labor_remaining)} чел.-ч</p>
+          </div>
+        </div>
+
+        {/* Машиночасы */}
+        <div className="analytics-card">
+          <h3>Машиночасы (маш.-ч)</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={machineData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({name, value}) => `${name}: ${formatNumber(value)}`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {machineData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value) => formatNumber(value)} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="widget-stats">
+            <p><strong>План:</strong> {formatNumber(analytics.machine_hours_plan)} маш.-ч</p>
+            <p><strong>Факт:</strong> {formatNumber(analytics.machine_hours_fact)} маш.-ч</p>
+            <p><strong>Остаток:</strong> {formatNumber(analytics.machine_hours_remaining)} маш.-ч</p>
+          </div>
+        </div>
+
+        {/* Стоимость */}
+        <div className="analytics-card">
+          <h3>Стоимость (руб.)</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={costData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({name, value}) => `${name}: ${formatNumber(value)}`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {costData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value) => formatNumber(value)} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="widget-stats">
+            <p><strong>План:</strong> {formatNumber(analytics.cost_plan)} ₽</p>
+            <p><strong>Факт:</strong> {formatNumber(analytics.cost_fact)} ₽</p>
+            <p><strong>Остаток:</strong> {formatNumber(analytics.cost_remaining)} ₽</p>
           </div>
         </div>
       </div>
