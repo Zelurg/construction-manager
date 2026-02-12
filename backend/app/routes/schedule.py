@@ -88,7 +88,7 @@ async def delete_task(task_id: int, db: Session = Depends(get_db)):
     
     return {"message": "Task deleted successfully"}
 
-@router.delete("/tasks/clear/all")
+@router.delete("/tasks/clear-all")
 async def clear_all_tasks(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_admin_user)
