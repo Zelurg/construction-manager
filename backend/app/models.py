@@ -76,3 +76,31 @@ class DailyWork(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     task = relationship("Task", back_populates="daily_works")
+
+# Новые модели для справочника сотрудников
+class Employee(Base):
+    """Модель сотрудника - справочник"""
+    __tablename__ = "employees"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String, nullable=False)  # ФИО
+    position = Column(String, nullable=False)  # Профессия/должность
+    is_active = Column(Boolean, default=True, nullable=False)  # Активен ли сотрудник
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Связь с исполнителями работ
+    daily_executors = relationship("DailyExecutor", back_populates="employee")
+
+class DailyExecutor(Base):
+    """Модель исполнителя работ за конкретный день"""
+    __tablename__ = "daily_executors"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False, index=True)  # Дата работы
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    hours_worked = Column(Float, nullable=False, default=10.0)  # Отработанные часы
+    is_responsible = Column(Boolean, default=False, nullable=False)  # Является ли ответственным (прорабом)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    employee = relationship("Employee", back_populates="daily_executors")

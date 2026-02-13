@@ -152,3 +152,60 @@ class TokenData(BaseModel):
 class ImportResult(BaseModel):
     tasks_processed: int
     errors: List[str] = []
+
+# Employee schemas - новые схемы для сотрудников
+class EmployeeBase(BaseModel):
+    full_name: str = Field(..., min_length=1, description="ФИО сотрудника")
+    position: str = Field(..., min_length=1, description="Профессия/должность")
+    is_active: bool = Field(default=True, description="Активен ли сотрудник")
+
+class EmployeeCreate(EmployeeBase):
+    pass
+
+class EmployeeUpdate(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=1, description="ФИО сотрудника")
+    position: Optional[str] = Field(default=None, min_length=1, description="Профессия/должность")
+    is_active: Optional[bool] = Field(default=None, description="Активен ли сотрудник")
+
+class Employee(EmployeeBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# DailyExecutor schemas - схемы для исполнителей работ за день
+class DailyExecutorBase(BaseModel):
+    work_date: date = Field(..., description="Дата работы")
+    employee_id: int = Field(..., gt=0, description="ID сотрудника")
+    hours_worked: float = Field(default=10.0, gt=0, le=24, description="Отработанные часы")
+    is_responsible: bool = Field(default=False, description="Является ли ответственным")
+
+class DailyExecutorCreate(DailyExecutorBase):
+    task_id: int = Field(..., gt=0, description="ID задачи")
+
+class DailyExecutorUpdate(BaseModel):
+    hours_worked: Optional[float] = Field(default=None, gt=0, le=24, description="Отработанные часы")
+    is_responsible: Optional[bool] = Field(default=None, description="Является ли ответственным")
+
+class DailyExecutor(DailyExecutorBase):
+    id: int
+    task_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Расширенная схема с информацией о сотруднике
+class DailyExecutorWithEmployee(DailyExecutor):
+    employee: Employee
+
+# Схема для получения статистики по дню
+class DailyExecutorStats(BaseModel):
+    work_date: date
+    total_hours_worked: float
+    total_labor_hours: float
+    executors_count: int
+    responsible: Optional[Employee] = None
+    executors: List[DailyExecutorWithEmployee]

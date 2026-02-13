@@ -1,22 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { dailyAPI, scheduleAPI } from '../services/api';
+import { dailyAPI, scheduleAPI, employeesAPI, executorsAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import ColumnSettings from './ColumnSettings';
+import '../styles/DailyOrders.css';
 
 function DailyOrders({ onShowColumnSettings }) {
   const [works, setWorks] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [allTasks, setAllTasks] = useState([]); // Для breadcrumbs нужны все задачи включая разделы
+  const [allTasks, setAllTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
   const [showModal, setShowModal] = useState(false);
+  const [showExecutorsModal, setShowExecutorsModal] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [formData, setFormData] = useState({
     task_id: '',
     volume: '',
     description: ''
   });
+  
+  // Состояние для исполнителей
+  const [employees, setEmployees] = useState([]);
+  const [executorsStats, setExecutorsStats] = useState(null);
+  const [selectedEmployees, setSelectedEmployees] = useState({});
+  const [responsibleId, setResponsibleId] = useState('');
   
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -48,26 +56,37 @@ function DailyOrders({ onShowColumnSettings }) {
   useEffect(() => {
     loadDailyWorks();
     loadTasks();
+    loadEmployees();
+    loadExecutorsStats();
     
     websocketService.connect();
     
     const handleDailyWorkCreated = (message) => {
-      console.log('Daily work created:', message.data);
       loadDailyWorks();
+      loadExecutorsStats();
     };
     
     const handleTaskUpdated = (message) => {
-      console.log('Task updated, refreshing daily view:', message.data);
       loadDailyWorks();
       loadTasks();
     };
     
+    const handleExecutorChanged = (message) => {
+      loadExecutorsStats();
+    };
+    
     websocketService.on('daily_work_created', handleDailyWorkCreated);
     websocketService.on('task_updated', handleTaskUpdated);
+    websocketService.on('executor_added', handleExecutorChanged);
+    websocketService.on('executor_updated', handleExecutorChanged);
+    websocketService.on('executor_deleted', handleExecutorChanged);
     
     return () => {
       websocketService.off('daily_work_created', handleDailyWorkCreated);
       websocketService.off('task_updated', handleTaskUpdated);
+      websocketService.off('executor_added', handleExecutorChanged);
+      websocketService.off('executor_updated', handleExecutorChanged);
+      websocketService.off('executor_deleted', handleExecutorChanged);
     };
   }, [selectedDate]);
 
@@ -83,13 +102,112 @@ function DailyOrders({ onShowColumnSettings }) {
   const loadTasks = async () => {
     try {
       const response = await scheduleAPI.getTasks();
-      // Сохраняем все задачи для breadcrumbs
       setAllTasks(response.data);
-      // Фильтруем только работы для выбора в модалке
       const workTasks = response.data.filter(task => !task.is_section);
       setTasks(workTasks);
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const response = await employeesAPI.getAll({ active_only: true });
+      setEmployees(response.data);
+    } catch (error) {
+      console.error('Ошибка загрузки сотрудников:', error);
+    }
+  };
+
+  const loadExecutorsStats = async () => {
+    try {
+      const response = await executorsAPI.getStats(selectedDate);
+      setExecutorsStats(response.data);
+      
+      // Заполняем selectedEmployees из загруженных данных
+      const newSelected = {};
+      response.data.executors.forEach(exec => {
+        if (!exec.is_responsible) {
+          newSelected[exec.employee_id] = {
+            id: exec.id,
+            hours: exec.hours_worked
+          };
+        }
+      });
+      setSelectedEmployees(newSelected);
+      
+      // Устанавливаем ответственного
+      if (response.data.responsible) {
+        const responsibleExec = response.data.executors.find(e => e.is_responsible);
+        if (responsibleExec) {
+          setResponsibleId(responsibleExec.employee_id.toString());
+        }
+      } else {
+        setResponsibleId('');
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки статистики исполнителей:', error);
+    }
+  };
+
+  const handleOpenExecutorsModal = () => {
+    setShowExecutorsModal(true);
+  };
+
+  const handleEmployeeToggle = (employeeId) => {
+    setSelectedEmployees(prev => {
+      const newSelected = { ...prev };
+      if (newSelected[employeeId]) {
+        delete newSelected[employeeId];
+      } else {
+        newSelected[employeeId] = { id: null, hours: 10.0 };
+      }
+      return newSelected;
+    });
+  };
+
+  const handleHoursChange = (employeeId, hours) => {
+    setSelectedEmployees(prev => ({
+      ...prev,
+      [employeeId]: { ...prev[employeeId], hours: parseFloat(hours) || 0 }
+    }));
+  };
+
+  const handleSaveExecutors = async () => {
+    try {
+      // Сначала удаляем всех старых исполнителей
+      if (executorsStats && executorsStats.executors) {
+        for (const exec of executorsStats.executors) {
+          await executorsAPI.delete(exec.id);
+        }
+      }
+      
+      // Добавляем ответственного
+      if (responsibleId) {
+        await executorsAPI.create({
+          date: selectedDate,
+          employee_id: parseInt(responsibleId),
+          hours_worked: 10.0,
+          is_responsible: true
+        });
+      }
+      
+      // Добавляем исполнителей
+      for (const [employeeId, data] of Object.entries(selectedEmployees)) {
+        await executorsAPI.create({
+          date: selectedDate,
+          employee_id: parseInt(employeeId),
+          hours_worked: data.hours,
+          is_responsible: false
+        });
+      }
+      
+      setShowExecutorsModal(false);
+      await loadExecutorsStats();
+    } catch (error) {
+      console.error('Ошибка сохранения исполнителей:', error);
+      const errorMessage = error.response?.data?.detail || 'Ошибка сохранения';
+      alert(errorMessage);
     }
   };
 
@@ -128,9 +246,7 @@ function DailyOrders({ onShowColumnSettings }) {
     return tasks.find(t => t.id === taskId);
   };
   
-  // Получение полного пути раздела (хлебные крошки)
   const getBreadcrumb = (work) => {
-    // Находим задачу по code
     const task = allTasks.find(t => t.code === work.code);
     if (!task || !task.parent_code) return '';
     
@@ -155,7 +271,6 @@ function DailyOrders({ onShowColumnSettings }) {
     
     switch(columnKey) {
       case 'name':
-        // Добавляем хлебные крошки
         const breadcrumb = getBreadcrumb(work);
         return breadcrumb ? (
           <span>
@@ -195,6 +310,15 @@ function DailyOrders({ onShowColumnSettings }) {
     localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(newVisibleColumns));
   };
 
+  // Расчет эффективности
+  const getEfficiencyColor = () => {
+    if (!executorsStats) return 'gray';
+    const diff = executorsStats.total_hours_worked - executorsStats.total_labor_hours;
+    if (Math.abs(diff) < 1) return 'green';
+    if (diff > 0) return 'orange';
+    return 'blue';
+  };
+
   return (
     <div className="daily-orders">
       <div className="controls-header">
@@ -206,7 +330,27 @@ function DailyOrders({ onShowColumnSettings }) {
             onChange={(e) => setSelectedDate(e.target.value)}
           />
         </div>
+        
+        {/* Информация об исполнителях */}
+        {executorsStats && executorsStats.executors_count > 0 && (
+          <div className="executors-info">
+            <div className="executors-summary">
+              <span>👥 {executorsStats.executors_count} чел.</span>
+              <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
+              <span style={{ color: getEfficiencyColor() }}>
+                📊 {executorsStats.total_labor_hours.toFixed(1)} ч/ч (норма)
+              </span>
+              {executorsStats.responsible && (
+                <span>👨‍💼 {executorsStats.responsible.full_name}</span>
+              )}
+            </div>
+          </div>
+        )}
+        
         <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={handleOpenExecutorsModal} className="btn-secondary">
+            👥 Указать исполнителей
+          </button>
           <button onClick={handleAddWork} className="btn-primary">
             + Внести объём
           </button>
@@ -242,6 +386,7 @@ function DailyOrders({ onShowColumnSettings }) {
         </table>
       </div>
 
+      {/* Модальное окно для внесения объёма */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -311,6 +456,97 @@ function DailyOrders({ onShowColumnSettings }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно для указания исполнителей */}
+      {showExecutorsModal && (
+        <div className="modal-overlay" onClick={() => setShowExecutorsModal(false)}>
+          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+            <h3>Указать исполнителей за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
+
+            <div className="executors-form">
+              {/* Ответственный */}
+              <div className="form-group">
+                <label>Ответственный (прораб):</label>
+                <select
+                  value={responsibleId}
+                  onChange={(e) => setResponsibleId(e.target.value)}
+                >
+                  <option value="">Не указан</option>
+                  {employees
+                    .filter(emp => !selectedEmployees[emp.id])
+                    .map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.full_name} - {emp.position}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+
+              <hr />
+
+              {/* Список исполнителей */}
+              <div className="form-group">
+                <label>Исполнители работ:</label>
+                <div className="executors-list">
+                  {employees.length === 0 ? (
+                    <p>Сотрудников нет. Добавьте их в справочнике.</p>
+                  ) : (
+                    employees
+                      .filter(emp => emp.id.toString() !== responsibleId)
+                      .map(emp => (
+                        <div key={emp.id} className="executor-item">
+                          <label className="executor-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={!!selectedEmployees[emp.id]}
+                              onChange={() => handleEmployeeToggle(emp.id)}
+                            />
+                            <span className="employee-info">
+                              <strong>{emp.full_name}</strong>
+                              <span className="employee-position">{emp.position}</span>
+                            </span>
+                          </label>
+                          {selectedEmployees[emp.id] && (
+                            <div className="hours-input">
+                              <input
+                                type="number"
+                                min="0"
+                                max="24"
+                                step="0.5"
+                                value={selectedEmployees[emp.id].hours}
+                                onChange={(e) => handleHoursChange(emp.id, e.target.value)}
+                              />
+                              <span>часов</span>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* Итоговая статистика */}
+              {Object.keys(selectedEmployees).length > 0 && (
+                <div className="executors-summary-box">
+                  <strong>Итого:</strong>
+                  <p>Исполнителей: {Object.keys(selectedEmployees).length}</p>
+                  <p>Суммарно часов: {Object.values(selectedEmployees).reduce((sum, e) => sum + e.hours, 0).toFixed(1)}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button onClick={() => setShowExecutorsModal(false)} className="btn-cancel">
+                Отмена
+              </button>
+              <button onClick={handleSaveExecutors} className="btn-submit">
+                Сохранить
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -64,4 +64,46 @@ export const analyticsAPI = {
   getData: () => api.get('/analytics/'),
 };
 
+// Новые API для справочника сотрудников
+export const employeesAPI = {
+  // Получить список всех сотрудников
+  getAll: (params = {}) => api.get('/employees/', { params }),
+  
+  // Получить сотрудника по ID
+  getById: (id) => api.get(`/employees/${id}`),
+  
+  // Создать нового сотрудника
+  create: (employee) => api.post('/employees/', employee),
+  
+  // Обновить данные сотрудника
+  update: (id, employee) => api.put(`/employees/${id}`, employee),
+  
+  // Удалить сотрудника
+  delete: (id) => api.delete(`/employees/${id}`),
+  
+  // Деактивировать сотрудника (безопасная альтернатива удалению)
+  deactivate: (id) => api.patch(`/employees/${id}/deactivate`),
+  
+  // Активировать сотрудника
+  activate: (id) => api.patch(`/employees/${id}/activate`),
+};
+
+// Новые API для исполнителей работ
+export const executorsAPI = {
+  // Получить список исполнителей за конкретную дату
+  getByDate: (date) => api.get('/executors/', { params: { work_date: date } }),
+  
+  // Получить статистику по исполнителям за день
+  getStats: (date) => api.get('/executors/stats', { params: { work_date: date } }),
+  
+  // Добавить исполнителя на день
+  create: (executor) => api.post('/executors/', executor),
+  
+  // Обновить данные исполнителя (например, часы работы)
+  update: (id, executor) => api.put(`/executors/${id}`, executor),
+  
+  // Удалить исполнителя из дня
+  delete: (id) => api.delete(`/executors/${id}`),
+};
+
 export default api;
