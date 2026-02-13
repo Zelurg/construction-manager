@@ -155,17 +155,17 @@ class ImportResult(BaseModel):
 
 # Employee schemas - новые схемы для сотрудников
 class EmployeeBase(BaseModel):
-    full_name: str = Field(..., min_length=1, description="ФИО сотрудника")
-    position: str = Field(..., min_length=1, description="Профессия/должность")
-    is_active: bool = Field(default=True, description="Активен ли сотрудник")
+    full_name: str = Field(..., min_length=1)
+    position: str = Field(..., min_length=1)
+    is_active: bool = Field(default=True)
 
 class EmployeeCreate(EmployeeBase):
     pass
 
 class EmployeeUpdate(BaseModel):
-    full_name: Optional[str] = Field(default=None, min_length=1, description="ФИО сотрудника")
-    position: Optional[str] = Field(default=None, min_length=1, description="Профессия/должность")
-    is_active: Optional[bool] = Field(default=None, description="Активен ли сотрудник")
+    full_name: Optional[str] = Field(default=None, min_length=1)
+    position: Optional[str] = Field(default=None, min_length=1)
+    is_active: Optional[bool] = Field(default=None)
 
 class Employee(EmployeeBase):
     id: int
@@ -177,17 +177,17 @@ class Employee(EmployeeBase):
 
 # DailyExecutor schemas - схемы для исполнителей работ за день
 class DailyExecutorBase(BaseModel):
-    date: date = Field(..., description="Дата работы")
-    employee_id: int = Field(..., gt=0, description="ID сотрудника")
-    hours_worked: float = Field(default=10.0, gt=0, le=24, description="Отработанные часы")
-    is_responsible: bool = Field(default=False, description="Является ли ответственным")
+    date: date
+    employee_id: int = Field(..., gt=0)
+    hours_worked: float = Field(default=10.0, gt=0, le=24)
+    is_responsible: bool = Field(default=False)
 
 class DailyExecutorCreate(DailyExecutorBase):
     pass
 
 class DailyExecutorUpdate(BaseModel):
-    hours_worked: Optional[float] = Field(default=None, gt=0, le=24, description="Отработанные часы")
-    is_responsible: Optional[bool] = Field(default=None, description="Является ли ответственным")
+    hours_worked: Optional[float] = Field(default=None, gt=0, le=24)
+    is_responsible: Optional[bool] = Field(default=None)
 
 class DailyExecutor(DailyExecutorBase):
     id: int
