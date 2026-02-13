@@ -55,9 +55,9 @@ def get_daily_executor_stats(
     Получить статистику по исполнителям за день
     
     Возвращает:
-    - total_hours_worked: суммарные отработанные часы
+    - total_hours_worked: суммарные отработанные часы (БЕЗ ответственного)
     - total_labor_hours: суммарные трудозатраты по внесенным объемам
-    - executors_count: количество исполнителей
+    - executors_count: количество исполнителей (БЕЗ ответственного)
     - responsible: ответственный за день
     - executors: список всех исполнителей
     """
@@ -66,8 +66,8 @@ def get_daily_executor_stats(
         models.DailyExecutor.date == work_date
     ).all()
     
-    # Считаем суммарные отработанные часы
-    total_hours_worked = sum(e.hours_worked for e in executors)
+    # Считаем суммарные отработанные часы (БЕЗ ответственного)
+    total_hours_worked = sum(e.hours_worked for e in executors if not e.is_responsible)
     
     # Находим ответственного
     responsible_executor = db.query(models.DailyExecutor).filter(
@@ -110,11 +110,14 @@ def get_daily_executor_stats(
                 "employee": employee
             })
     
+    # Количество исполнителей (БЕЗ ответственного)
+    executors_count = len([e for e in executors if not e.is_responsible])
+    
     return {
         "date": work_date,
         "total_hours_worked": total_hours_worked,
         "total_labor_hours": total_labor_hours,
-        "executors_count": len(executors),
+        "executors_count": executors_count,
         "responsible": responsible,
         "executors": executors_with_employees
     }
