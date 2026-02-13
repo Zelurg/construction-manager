@@ -63,8 +63,8 @@ async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends
             "unit": task.unit,
             "volume_plan": task.volume_plan,
             "volume_fact": task.volume_fact,
-            "start_date": task.start_date.isoformat(),
-            "end_date": task.end_date.isoformat()
+            "start_date_plan": task.start_date_plan.isoformat() if task.start_date_plan else None,
+            "end_date_plan": task.end_date_plan.isoformat() if task.end_date_plan else None
         }
     }, event_type="tasks")
     
