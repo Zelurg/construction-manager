@@ -13,12 +13,31 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
+# Загружаем переменные окружения из .env файла
+try:
+    from dotenv import load_dotenv
+    # Ищем .env файл в текущей папке
+    env_path = Path(__file__).parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"ℹ️  Загружен .env файл: {env_path}")
+    else:
+        print(f"⚠️  .env файл не найден: {env_path}")
+        print("Убедитесь, что .env файл существует в папке backend/")
+except ImportError:
+    print("⚠️  python-dotenv не установлен. Установите: pip install python-dotenv")
+    print("Попытка продолжить без загрузки .env...\n")
+
 def get_db_connection():
     """Получаем подключение к PostgreSQL из DATABASE_URL"""
     database_url = os.getenv('DATABASE_URL')
     
     if not database_url:
-        print("Ошибка: DATABASE_URL не установлена в .env файле")
+        print("\n❌ Ошибка: DATABASE_URL не установлена")
+        print("\nПроверьте, что:")
+        print("1. Файл backend/.env существует")
+        print("2. В нём есть строка: DATABASE_URL=postgresql://...")
+        print("3. python-dotenv установлен: pip install python-dotenv")
         sys.exit(1)
     
     # Парсим URL базы данных
@@ -34,8 +53,12 @@ def get_db_connection():
         )
         return connection
     except Exception as e:
-        print(f"Ошибка подключения к БД: {e}")
+        print(f"\n❌ Ошибка подключения к БД: {e}")
         print(f"DATABASE_URL: {database_url}")
+        print("\nПроверьте:")
+        print("1. PostgreSQL сервер запущен")
+        print("2. Параметры подключения верны (хост, порт, логин, пароль)")
+        print("3. База данных construction_db существует")
         sys.exit(1)
 
 def convert_sqlite_to_postgres(sql_text):
@@ -61,7 +84,7 @@ def apply_migration_file(conn, migration_file):
     """Применяет одну миграцию из файла"""
     
     if not migration_file.exists():
-        print(f"  Пропущен: файл не найден - {migration_file.name}")
+        print(f"  ⚠️  Пропущен: файл не найден - {migration_file.name}")
         return False
     
     with open(migration_file, 'r', encoding='utf-8') as f:
@@ -81,13 +104,13 @@ def apply_migration_file(conn, migration_file):
                 try:
                     cursor.execute(command)
                 except psycopg2.errors.DuplicateTable:
-                    print(f"    Таблица уже существует, пропускаем...")
+                    print(f"    ℹ️  Таблица уже существует, пропускаем...")
                     conn.rollback()
                 except psycopg2.errors.DuplicateObject:
-                    print(f"    Индекс уже существует, пропускаем...")
+                    print(f"    ℹ️  Индекс уже существует, пропускаем...")
                     conn.rollback()
                 except Exception as e:
-                    print(f"    Ошибка при выполнении команды: {e}")
+                    print(f"    ❌ Ошибка при выполнении команды: {e}")
                     print(f"    Команда: {command[:100]}...")
                     conn.rollback()
                     raise
@@ -117,7 +140,7 @@ def check_tables_exist(conn):
     return [table[0] for table in tables]
 
 def main():
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("Применение миграций к PostgreSQL базе данных")
     print("=" * 60)
     
@@ -168,7 +191,7 @@ def main():
     print("\n" + "=" * 60)
     print(f"✅ Миграция завершена! Применено: {applied_count} из {len(migrations)}")
     print("=" * 60)
-    print("\nТеперь перезапусти сервер командой: start-backend.bat")
+    print("\nТеперь перезапусти сервер командой: start-backend.bat\n")
 
 if __name__ == '__main__':
     try:
