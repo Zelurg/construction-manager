@@ -12,8 +12,7 @@ def get_employees(
     skip: int = 0, 
     limit: int = 100,
     active_only: bool = True,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
     Получить список всех сотрудников
@@ -33,8 +32,7 @@ def get_employees(
 @router.get("/{employee_id}", response_model=schemas.Employee)
 def get_employee(
     employee_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
     Получить сотрудника по ID
