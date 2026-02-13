@@ -315,33 +315,33 @@ function DailyOrders({ onShowColumnSettings }) {
   const getEfficiencyStatus = () => {
     if (!executorsStats) return { color: 'gray', text: '', label: '' };
     
-    const worked = executorsStats.total_hours_worked;
-    const needed = executorsStats.total_labor_hours;
-    const diff = worked - needed;
+    const worked = executorsStats.total_hours_worked; // Отработано часов исполнителями
+    const needed = executorsStats.total_labor_hours; // Трудозатраты по выполненным работам
+    const diff = needed - worked; // Разница: сколько работ выполнено относительно часов
     
     // Если разница меньше 1 часа - это норма
     if (Math.abs(diff) < 1) {
       return { 
-        color: 'green', 
+        color: 'blue', 
         text: needed.toFixed(1),
         label: 'норма'
       };
     }
     
-    // Если отработано МЕНЬШЕ, чем нужно - отставание
-    if (diff < 0) {
+    // Если работ выполнено БОЛЬШЕ, чем отработано часов - перевыполнение
+    if (diff > 0) {
       return { 
-        color: 'red', 
+        color: 'green', 
         text: needed.toFixed(1),
-        label: 'отставание'
+        label: 'перевыполнение'
       };
     }
     
-    // Если отработано БОЛЬШЕ - перевыполнение
+    // Если работ выполнено МЕНЬШЕ - отставание
     return { 
-      color: 'blue', 
+      color: 'red', 
       text: needed.toFixed(1),
-      label: 'перевыполнение'
+      label: 'отставание'
     };
   };
 
