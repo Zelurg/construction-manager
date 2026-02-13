@@ -177,13 +177,13 @@ class Employee(EmployeeBase):
 
 # DailyExecutor schemas - схемы для исполнителей работ за день
 class DailyExecutorBase(BaseModel):
-    work_date: date = Field(..., description="Дата работы")
+    date: date = Field(..., description="Дата работы")
     employee_id: int = Field(..., gt=0, description="ID сотрудника")
     hours_worked: float = Field(default=10.0, gt=0, le=24, description="Отработанные часы")
     is_responsible: bool = Field(default=False, description="Является ли ответственным")
 
 class DailyExecutorCreate(DailyExecutorBase):
-    task_id: int = Field(..., gt=0, description="ID задачи")
+    pass
 
 class DailyExecutorUpdate(BaseModel):
     hours_worked: Optional[float] = Field(default=None, gt=0, le=24, description="Отработанные часы")
@@ -191,7 +191,6 @@ class DailyExecutorUpdate(BaseModel):
 
 class DailyExecutor(DailyExecutorBase):
     id: int
-    task_id: int
     created_at: datetime
 
     class Config:
@@ -203,7 +202,7 @@ class DailyExecutorWithEmployee(DailyExecutor):
 
 # Схема для получения статистики по дню
 class DailyExecutorStats(BaseModel):
-    work_date: date
+    date: date
     total_hours_worked: float
     total_labor_hours: float
     executors_count: int
