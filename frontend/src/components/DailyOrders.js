@@ -63,12 +63,13 @@ function DailyOrders({ onShowColumnSettings }) {
     
     const handleDailyWorkCreated = (message) => {
       loadDailyWorks();
-      loadExecutorsStats();
+      loadExecutorsStats(); // Обновляем статистику в реальном времени
     };
     
     const handleTaskUpdated = (message) => {
       loadDailyWorks();
       loadTasks();
+      loadExecutorsStats(); // Обновляем статистику при обновлении задачи
     };
     
     const handleExecutorChanged = (message) => {
@@ -311,13 +312,40 @@ function DailyOrders({ onShowColumnSettings }) {
   };
 
   // Расчет эффективности
-  const getEfficiencyColor = () => {
-    if (!executorsStats) return 'gray';
-    const diff = executorsStats.total_hours_worked - executorsStats.total_labor_hours;
-    if (Math.abs(diff) < 1) return 'green';
-    if (diff > 0) return 'orange';
-    return 'blue';
+  const getEfficiencyStatus = () => {
+    if (!executorsStats) return { color: 'gray', text: '', label: '' };
+    
+    const worked = executorsStats.total_hours_worked;
+    const needed = executorsStats.total_labor_hours;
+    const diff = worked - needed;
+    
+    // Если разница меньше 1 часа - это норма
+    if (Math.abs(diff) < 1) {
+      return { 
+        color: 'green', 
+        text: needed.toFixed(1),
+        label: 'норма'
+      };
+    }
+    
+    // Если отработано МЕНЬШЕ, чем нужно - отставание
+    if (diff < 0) {
+      return { 
+        color: 'red', 
+        text: needed.toFixed(1),
+        label: 'отставание'
+      };
+    }
+    
+    // Если отработано БОЛЬШЕ - перевыполнение
+    return { 
+      color: 'blue', 
+      text: needed.toFixed(1),
+      label: 'перевыполнение'
+    };
   };
+
+  const efficiencyStatus = getEfficiencyStatus();
 
   return (
     <div className="daily-orders">
@@ -337,8 +365,8 @@ function DailyOrders({ onShowColumnSettings }) {
             <div className="executors-summary">
               <span>👥 {executorsStats.executors_count} чел.</span>
               <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
-              <span style={{ color: getEfficiencyColor() }}>
-                📊 {executorsStats.total_labor_hours.toFixed(1)} ч/ч (норма)
+              <span style={{ color: efficiencyStatus.color }}>
+                📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
               </span>
               {executorsStats.responsible && (
                 <span>👨‍💼 {executorsStats.responsible.full_name}</span>
