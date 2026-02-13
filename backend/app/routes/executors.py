@@ -13,8 +13,7 @@ router = APIRouter()
 @router.get("/", response_model=List[schemas.DailyExecutorWithEmployee])
 def get_daily_executors(
     work_date: date,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
     Получить список исполнителей за конкретную дату
@@ -48,8 +47,7 @@ def get_daily_executors(
 @router.get("/stats", response_model=schemas.DailyExecutorStats)
 def get_daily_executor_stats(
     work_date: date,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
     Получить статистику по исполнителям за день
