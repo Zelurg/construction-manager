@@ -29,9 +29,12 @@ class WebSocketService {
         const message = JSON.parse(event.data);
         console.log('WebSocket message received:', message);
         
-        // Уведомляем слушателей
-        const eventType = message.event || message.type;
-        this.notifyListeners(eventType, message);
+        // Уведомляем слушателей - используем message.type как основной тип события
+        const eventType = message.type || message.event;
+        if (eventType) {
+          console.log(`📡 Calling listeners for: ${eventType}`);
+          this.notifyListeners(eventType, message);
+        }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
@@ -90,6 +93,7 @@ class WebSocketService {
       this.listeners.set(eventType, []);
     }
     this.listeners.get(eventType).push(callback);
+    console.log(`🎯 Registered listener for: ${eventType}, total: ${this.listeners.get(eventType).length}`);
   }
 
   // Удалить слушателя
@@ -106,13 +110,17 @@ class WebSocketService {
   // Уведомить всех слушателей о событии
   notifyListeners(eventType, data) {
     if (this.listeners.has(eventType)) {
-      this.listeners.get(eventType).forEach(callback => {
+      const callbacks = this.listeners.get(eventType);
+      console.log(`🔔 Notifying ${callbacks.length} listener(s) for: ${eventType}`);
+      callbacks.forEach(callback => {
         try {
           callback(data);
         } catch (error) {
           console.error(`Error in listener for ${eventType}:`, error);
         }
       });
+    } else {
+      console.log(`⚠️ No listeners registered for: ${eventType}`);
     }
   }
 
