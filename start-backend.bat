@@ -9,19 +9,35 @@ echo.
 
 cd backend
 
-if not exist venv (
-    echo [ERROR] Виртуальное окружение не найдено!
-    echo [INFO] Создайте его командой: python -m venv venv
-    pause
-    exit /b 1
+:: Проверяем виртуальное окружение в backend/venv
+if exist venv\Scripts\activate.bat (
+    echo Активация виртуального окружения (backend\venv)...
+    call venv\Scripts\activate.bat
+    goto :start_server
 )
 
-echo Активация виртуального окружения...
-call venv\Scripts\activate
+:: Проверяем виртуальное окружение в корне проекта
+if exist ..\venv\Scripts\activate.bat (
+    echo Активация виртуального окружения (..\venv)...
+    call ..\venv\Scripts\activate.bat
+    goto :start_server
+)
+
+:: Если не найдено
+echo [ERROR] Виртуальное окружение не найдено!
+echo [INFO] Создайте его командой:
+echo        cd backend
+echo        python -m venv venv
+echo.
+pause
+exit /b 1
+
+:start_server
 
 if not exist .env (
     echo [WARNING] Файл .env не найден!
-    echo [INFO] Скопируйте .env.example в .env и настройте его
+    echo [INFO] Создайте файл backend\.env с настройками БД
+    echo.
     pause
 )
 
