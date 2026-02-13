@@ -62,20 +62,24 @@ function DailyOrders({ onShowColumnSettings }) {
     websocketService.connect();
     
     const handleDailyWorkCreated = (message) => {
+      console.log('✅ WebSocket: daily_work_created', message);
       loadDailyWorks();
       loadExecutorsStats(); // Обновляем статистику в реальном времени
     };
     
     const handleTaskUpdated = (message) => {
+      console.log('✅ WebSocket: task_updated', message);
       loadDailyWorks();
       loadTasks();
       loadExecutorsStats(); // Обновляем статистику при обновлении задачи
     };
     
     const handleExecutorChanged = (message) => {
+      console.log('✅ WebSocket: executor changed', message);
       loadExecutorsStats();
     };
     
+    console.log('🔌 Подписка на WebSocket события...');
     websocketService.on('daily_work_created', handleDailyWorkCreated);
     websocketService.on('task_updated', handleTaskUpdated);
     websocketService.on('executor_added', handleExecutorChanged);
@@ -83,6 +87,7 @@ function DailyOrders({ onShowColumnSettings }) {
     websocketService.on('executor_deleted', handleExecutorChanged);
     
     return () => {
+      console.log('❌ Отписка от WebSocket событий');
       websocketService.off('daily_work_created', handleDailyWorkCreated);
       websocketService.off('task_updated', handleTaskUpdated);
       websocketService.off('executor_added', handleExecutorChanged);
@@ -122,7 +127,9 @@ function DailyOrders({ onShowColumnSettings }) {
 
   const loadExecutorsStats = async () => {
     try {
+      console.log('📊 Загрузка статистики исполнителей...');
       const response = await executorsAPI.getStats(selectedDate);
+      console.log('✅ Статистика загружена:', response.data);
       setExecutorsStats(response.data);
       
       // Заполняем selectedEmployees из загруженных данных
