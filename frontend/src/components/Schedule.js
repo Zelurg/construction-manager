@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
@@ -16,7 +16,12 @@ const SECTION_COLORS = [
 
 function Schedule({ showGantt, onShowColumnSettings }) {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  
+  // Используем useMemo для реактивного вычисления isAdmin
+  // Теперь isAdmin будет автоматически обновляться при изменении user
+  const isAdmin = useMemo(() => {
+    return user?.role === 'admin';
+  }, [user]);
   
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
