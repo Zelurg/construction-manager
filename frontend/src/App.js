@@ -20,14 +20,16 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [showGantt, setShowGantt] = useState(true);
   
-  // Refs для хранения функций открытия настроек колонок
   const columnSettingsHandlers = useRef({
     schedule: null,
     monthly: null,
     daily: null
   });
+
+  const filtersHandlers = useRef({
+    schedule: null
+  });
   
-  // Ref для принудительной перезагрузки Schedule
   const scheduleKey = useRef(0);
 
   useEffect(() => {
@@ -93,9 +95,15 @@ function App() {
       handler();
     }
   };
+
+  const handleShowFilters = () => {
+    const handler = filtersHandlers.current[activeTab];
+    if (handler) {
+      handler();
+    }
+  };
   
   const handleScheduleCleared = () => {
-    // Принудительно перезагружаем Schedule
     scheduleKey.current += 1;
   };
 
@@ -164,6 +172,7 @@ function App() {
         showGantt={showGantt}
         onToggleGantt={handleToggleGantt}
         onShowColumnSettings={handleShowColumnSettings}
+        onShowFilters={handleShowFilters}
         onScheduleCleared={handleScheduleCleared}
       />
 
@@ -173,6 +182,7 @@ function App() {
             key={scheduleKey.current}
             showGantt={showGantt}
             onShowColumnSettings={(handler) => columnSettingsHandlers.current.schedule = handler}
+            onShowFilters={(handler) => filtersHandlers.current.schedule = handler}
           />
         )}
         {activeTab === 'monthly' && (
