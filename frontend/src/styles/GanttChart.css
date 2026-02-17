@@ -66,7 +66,7 @@
 /* Строка 2: Временная шкала - 35px */
 .gantt-timeline-row {
   height: 35px;
-  overflow-x: auto;
+  overflow-x: hidden; /* Изменено с auto на hidden */
   overflow-y: hidden;
   background: #fafafa;
   position: relative;
@@ -76,19 +76,9 @@
   will-change: scroll-position;
 }
 
-/* Показываем скроллбар на macOS когда он нужен */
+/* Скрываем скроллбар - прокрутка управляется только основным контентом */
 .gantt-timeline-row::-webkit-scrollbar {
-  height: 8px;
-  display: block;
-}
-
-.gantt-timeline-row::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-.gantt-timeline-row::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
+  display: none;
 }
 
 .gantt-timeline-content {
