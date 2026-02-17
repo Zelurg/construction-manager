@@ -211,6 +211,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getDisplayValue = (task, columnKey) => {
+    // Для разделов - суммируем только расчетные колонки
     if (task.is_section) {
       const sumColumns = [
         'labor_total', 'labor_fact', 'labor_remaining',
@@ -223,9 +224,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         return sum.toFixed(2);
       }
       
-      return '-';
+      // Для остальных колонок показываем собственные значения раздела
+      // или прочерк для неприменимых полей
+      if (columnKey === 'volume_plan' || columnKey === 'volume_fact' || columnKey === 'volume_remaining' ||
+          columnKey === 'unit' || columnKey === 'unit_price' || columnKey === 'labor_per_unit' || 
+          columnKey === 'machine_hours_per_unit' || columnKey === 'executor') {
+        return '-';
+      }
     }
     
+    // Для работ и для остальных полей разделов
     switch(columnKey) {
       case 'volume_remaining':
         return (task.volume_plan - task.volume_fact).toFixed(2);
