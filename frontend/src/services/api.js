@@ -22,6 +22,32 @@ api.interceptors.request.use(
   }
 );
 
+// Добавляем интерцептор для обработки ответов с ошибкой 401
+api.interceptors.response.use(
+  (response) => {
+    // Если ответ успешный, просто возвращаем его
+    return response;
+  },
+  (error) => {
+    // Обработка ошибки 401 (Unauthorized)
+    if (error.response && error.response.status === 401) {
+      console.error('Токен авторизации истёк или недействителен');
+      
+      // Удаляем токен и данные пользователя
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      
+      // Перенаправляем на страницу входа
+      window.location.href = '/login';
+      
+      // Показываем сообщение пользователю
+      alert('Сессия истекла. Пожалуйста, войдите заново.');
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
 export const importExportAPI = {
   downloadTemplate: async () => {
     const response = await api.get('/import-export/template/download', {
