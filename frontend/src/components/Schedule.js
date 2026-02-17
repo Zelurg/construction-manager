@@ -220,8 +220,26 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setShowFilterManager(false);
   };
   
+  // Измененная функция: теперь берет значения из уже отфильтрованных задач,
+  // исключая текущий фильтруемый столбец
   const getColumnValues = (columnKey) => {
-    return tasks.map(task => getDisplayValue(task, columnKey));
+    // Создаем временные фильтры без текущего столбца
+    const otherFilters = Object.entries(filters).filter(([key]) => key !== columnKey);
+    
+    let tasksForColumn = tasks;
+    
+    // Применяем все другие фильтры
+    otherFilters.forEach(([key, filterValue]) => {
+      if (filterValue && filterValue.trim() !== '') {
+        tasksForColumn = tasksForColumn.filter(task => {
+          const displayValue = getDisplayValue(task, key);
+          return displayValue.toLowerCase().includes(filterValue.toLowerCase());
+        });
+      }
+    });
+    
+    // Возвращаем значения из отфильтрованных задач
+    return tasksForColumn.map(task => getDisplayValue(task, columnKey));
   };
   
   const handleCellDoubleClick = (task, columnKey) => {
