@@ -1,0 +1,159 @@
+.filter-manager-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.filter-manager-modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.filter-manager-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #999;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.filter-manager-content {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.filter-stats {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.filter-stats p {
+  margin: 0;
+  font-size: 15px;
+  color: #555;
+}
+
+.filter-stats strong {
+  color: #4CAF50;
+  font-size: 18px;
+}
+
+.active-filters-list {
+  margin-bottom: 20px;
+}
+
+.active-filters-list h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.active-filter-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #e8f5e9;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.filter-key {
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.filter-value {
+  color: #1b5e20;
+  flex: 1;
+}
+
+.filter-actions {
+  margin-bottom: 20px;
+}
+
+.clear-all-btn {
+  width: 100%;
+  padding: 12px;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-all-btn:hover:not(:disabled) {
+  background: #da190b;
+}
+
+.clear-all-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.filter-presets {
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+.filter-presets h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.presets-placeholder {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  background: #f8f9fa;
+  border-radius: 6px;
+  margin: 0;
+}
