@@ -155,7 +155,7 @@ function GanttChart({ tasks }) {
     return { minDate, maxDate, totalDays, timeMarks };
   }, [tasks, scale]);
 
-  // Синхронизация скролла
+  // Синхронизация скролла - улучшено для macOS
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     const timelineScroll = timelineScrollRef.current;
@@ -165,20 +165,24 @@ function GanttChart({ tasks }) {
     }
 
     let rafId = null;
+    let ticking = false;
 
     const handleScroll = () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
+      if (!ticking) {
+        rafId = requestAnimationFrame(() => {
+          if (timelineScroll && scrollContainer) {
+            timelineScroll.scrollLeft = scrollContainer.scrollLeft;
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
-
-      rafId = requestAnimationFrame(() => {
-        if (timelineScroll && scrollContainer) {
-          timelineScroll.scrollLeft = scrollContainer.scrollLeft;
-        }
-      });
     };
 
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    // passive: false для лучшей работы на macOS с трекпадом
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: false });
+    
+    // Принудительная синхронизация при монтировании
     timelineScroll.scrollLeft = scrollContainer.scrollLeft;
 
     return () => {
