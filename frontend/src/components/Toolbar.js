@@ -7,7 +7,8 @@ function Toolbar({
   showGantt, 
   onToggleGantt, 
   onShowColumnSettings,
-  onScheduleCleared 
+  onScheduleCleared,
+  onShowFilters
 }) {
   const fileInputRef = useRef(null);
 
@@ -75,6 +76,12 @@ function Toolbar({
     }
   };
 
+  const handleFilters = () => {
+    if (onShowFilters) {
+      onShowFilters();
+    }
+  };
+
   return (
     <div className="toolbar">
       <div className="toolbar-left">
@@ -113,6 +120,15 @@ function Toolbar({
       </div>
 
       <div className="toolbar-right">
+        {activeTab === 'schedule' && (
+          <button 
+            onClick={handleFilters}
+            className="toolbar-btn"
+            title="Управление фильтрами"
+          >
+            🔍 Фильтры
+          </button>
+        )}
         {(activeTab === 'schedule' || activeTab === 'monthly' || activeTab === 'daily') && (
           <button 
             onClick={handleColumnSettings}
