@@ -89,9 +89,10 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     
     const handleTaskUpdated = (message) => {
       console.log('Task updated:', message.data);
+      // Мерджим данные вместо полной замены - это предотвращает потерю полей
       setTasks(prevTasks => 
         prevTasks.map(task => 
-          task.id === message.data.id ? message.data : task
+          task.id === message.data.id ? { ...task, ...message.data } : task
         )
       );
     };
@@ -223,7 +224,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       
       await scheduleAPI.updateTask(editingCell.taskId, updateData);
       
-      // Обновляем локальное состояние
+      // Обновляем локальное состояние с мерджом
       setTasks(prevTasks => 
         prevTasks.map(t => 
           t.id === editingCell.taskId 
