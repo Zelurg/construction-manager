@@ -74,7 +74,17 @@ function MonthlyOrder({ onShowColumnSettings }) {
     
     const handleTaskUpdated = (message) => {
       console.log('Task updated, refreshing monthly view:', message.data);
-      loadMonthlyTasks();
+      // Мерджим данные вместо полной замены
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.task_id === message.data.id ? { ...task, ...message.data } : task
+        )
+      );
+      setAllTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.task_id === message.data.id ? { ...task, ...message.data } : task
+        )
+      );
     };
     
     websocketService.on('monthly_task_created', handleMonthlyTaskCreated);
@@ -148,6 +158,7 @@ function MonthlyOrder({ onShowColumnSettings }) {
       
       await scheduleAPI.updateTask(editingCell.taskId, updateData);
       
+      // Обновляем локальное состояние с мерджом
       setTasks(prevTasks => 
         prevTasks.map(t => 
           t.task_id === editingCell.taskId 
