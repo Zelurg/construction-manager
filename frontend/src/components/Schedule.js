@@ -3,37 +3,31 @@ import { scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
+import ColumnFilter from './ColumnFilter';
 import { useAuth } from '../contexts/AuthContext';
 
-// Пастельные цвета для разных уровней разделов
 const SECTION_COLORS = [
-  '#E8F4F8',  // level 0 - светло-голубой
-  '#F0F8E8',  // level 1 - светло-зеленый
-  '#FFF4E6',  // level 2 - светло-оранжевый
-  '#F8E8F4',  // level 3 - светло-розовый
-  '#E8F0F8',  // level 4 - светло-синий
+  '#E8F4F8',
+  '#F0F8E8',
+  '#FFF4E6',
+  '#F8E8F4',
+  '#E8F0F8',
 ];
 
 function Schedule({ showGantt, onShowColumnSettings }) {
   const { user } = useAuth();
   
-  // Используем useMemo для реактивного вычисления isAdmin
-  // Теперь isAdmin будет автоматически обновляться при изменении user
   const isAdmin = useMemo(() => {
     return user?.role === 'admin';
   }, [user]);
   
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
-  const [filters, setFilters] = useState({
-    code: '',
-    name: '',
-    unit: ''
-  });
+  const [filters, setFilters] = useState({});
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
-  const [editingCell, setEditingCell] = useState(null); // { taskId, field }
+  const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   
   const availableColumns = [
@@ -89,7 +83,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     
     const handleTaskUpdated = (message) => {
       console.log('Task updated:', message.data);
-      // Мерджим данные вместо полной замены - это предотвращает потерю полей
       setTasks(prevTasks => 
         prevTasks.map(task => 
           task.id === message.data.id ? { ...task, ...message.data } : task
@@ -139,7 +132,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     }
   };
   
-  // Получение полного пути раздела (хлебные крошки)
   const getBreadcrumb = (task) => {
     if (!task.parent_code) return '';
     
@@ -159,112 +151,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
   };
 
-  const applyFilters = () => {
-    let filtered = tasks;
-    
-    if (filters.code) {
-      filtered = filtered.filter(t => 
-        t.code.toLowerCase().includes(filters.code.toLowerCase())
-      );
-    }
-    if (filters.name) {
-      filtered = filtered.filter(t => 
-        t.name.toLowerCase().includes(filters.name.toLowerCase())
-      );
-    }
-    if (filters.unit) {
-      filtered = filtered.filter(t => 
-        t.unit && t.unit.toLowerCase().includes(filters.unit.toLowerCase())
-      );
-    }
-    
-    setFilteredTasks(filtered);
-  };
-
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
-  };
-  
-  // Начало редактирования ячейки
-  const handleCellDoubleClick = (task, columnKey) => {
-    // Проверка: редактировать могут только админы
-    if (!isAdmin) return;
-    
-    // Проверка: только плановые даты можно редактировать
-    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan') return;
-    
-    // Разделы не редактируем
-    if (task.is_section) return;
-    
-    setEditingCell({ taskId: task.id, field: columnKey });
-    // Преобразуем дату в формат YYYY-MM-DD для input[type="date"]
-    const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
-    setEditValue(dateValue);
-  };
-  
-  // Сохранение изменений
-  const handleCellBlur = async () => {
-    if (!editingCell) return;
-    
-    const task = tasks.find(t => t.id === editingCell.taskId);
-    if (!task) return;
-    
-    // Если значение не изменилось, просто закрываем редактирование
-    const currentValue = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
-    if (editValue === currentValue) {
-      setEditingCell(null);
-      return;
-    }
-    
-    try {
-      // Отправляем только изменённое поле
-      const updateData = {
-        [editingCell.field]: editValue || null
-      };
-      
-      await scheduleAPI.updateTask(editingCell.taskId, updateData);
-      
-      // Обновляем локальное состояние с мерджом
-      setTasks(prevTasks => 
-        prevTasks.map(t => 
-          t.id === editingCell.taskId 
-            ? { ...t, [editingCell.field]: editValue || null }
-            : t
-        )
-      );
-      
-      setEditingCell(null);
-    } catch (error) {
-      console.error('Ошибка обновления даты:', error);
-      // Интерцептор API уже показал сообщение при 401 ошибке
-      setEditingCell(null);
-    }
-  };
-  
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleCellBlur();
-    } else if (e.key === 'Escape') {
-      setEditingCell(null);
-    }
-  };
-  
-  const getCellValue = (task, columnKey) => {
-    // Проверка на режим редактирования
-    if (editingCell && editingCell.taskId === task.id && editingCell.field === columnKey) {
-      return (
-        <input
-          type="date"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleCellBlur}
-          onKeyDown={handleKeyDown}
-          autoFocus
-          style={{ width: '100%', padding: '4px' }}
-        />
-      );
-    }
-    
+  const getDisplayValue = (task, columnKey) => {
     switch(columnKey) {
       case 'volume_remaining':
         return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
@@ -293,22 +180,118 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       case 'start_date_plan':
       case 'end_date_plan':
         return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
-      case 'name':
-        // Добавляем хлебные крошки для отфильтрованных задач
-        const breadcrumb = (filters.code || filters.name) ? getBreadcrumb(task) : '';
-        return breadcrumb ? (
-          <span>
-            <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
-            {task.name}
-          </span>
-        ) : task.name;
-      case 'code':
-      case 'unit':
-      case 'executor':
-        return task[columnKey] || '-';
       default:
-        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
+        return task[columnKey] !== undefined && task[columnKey] !== null ? String(task[columnKey]) : '-';
     }
+  };
+
+  const applyFilters = () => {
+    let filtered = tasks;
+    
+    Object.entries(filters).forEach(([columnKey, filterValue]) => {
+      if (filterValue && filterValue.trim() !== '') {
+        filtered = filtered.filter(task => {
+          const displayValue = getDisplayValue(task, columnKey);
+          return displayValue.toLowerCase().includes(filterValue.toLowerCase());
+        });
+      }
+    });
+    
+    setFilteredTasks(filtered);
+  };
+
+  const handleFilterApply = (columnKey, filterValue) => {
+    setFilters(prev => ({
+      ...prev,
+      [columnKey]: filterValue
+    }));
+  };
+  
+  const getColumnValues = (columnKey) => {
+    return tasks.map(task => getDisplayValue(task, columnKey));
+  };
+  
+  const handleCellDoubleClick = (task, columnKey) => {
+    if (!isAdmin) return;
+    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan') return;
+    if (task.is_section) return;
+    
+    setEditingCell({ taskId: task.id, field: columnKey });
+    const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
+    setEditValue(dateValue);
+  };
+  
+  const handleCellBlur = async () => {
+    if (!editingCell) return;
+    
+    const task = tasks.find(t => t.id === editingCell.taskId);
+    if (!task) return;
+    
+    const currentValue = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
+    if (editValue === currentValue) {
+      setEditingCell(null);
+      return;
+    }
+    
+    try {
+      const updateData = {
+        [editingCell.field]: editValue || null
+      };
+      
+      await scheduleAPI.updateTask(editingCell.taskId, updateData);
+      
+      setTasks(prevTasks => 
+        prevTasks.map(t => 
+          t.id === editingCell.taskId 
+            ? { ...t, [editingCell.field]: editValue || null }
+            : t
+        )
+      );
+      
+      setEditingCell(null);
+    } catch (error) {
+      console.error('Ошибка обновления даты:', error);
+      setEditingCell(null);
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleCellBlur();
+    } else if (e.key === 'Escape') {
+      setEditingCell(null);
+    }
+  };
+  
+  const getCellValue = (task, columnKey) => {
+    if (editingCell && editingCell.taskId === task.id && editingCell.field === columnKey) {
+      return (
+        <input
+          type="date"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleCellBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          style={{ width: '100%', padding: '4px' }}
+        />
+      );
+    }
+    
+    const displayValue = getDisplayValue(task, columnKey);
+    
+    if (columnKey === 'name') {
+      const hasActiveFilters = Object.values(filters).some(f => f && f.trim() !== '');
+      const breadcrumb = hasActiveFilters ? getBreadcrumb(task) : '';
+      return breadcrumb ? (
+        <span>
+          <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
+          {task.name}
+        </span>
+      ) : task.name;
+    }
+    
+    return displayValue;
   };
   
   const getColumnLabel = (columnKey) => {
@@ -321,7 +304,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     localStorage.setItem('scheduleVisibleColumns', JSON.stringify(newVisibleColumns));
   };
   
-  // Получение цвета фона для раздела
   const getRowStyle = (task) => {
     if (!task.is_section) return {};
     
@@ -333,7 +315,6 @@ function Schedule({ showGantt, onShowColumnSettings }) {
     };
   };
   
-  // Стиль для редактируемых ячеек (только для админа)
   const getCellStyle = (task, columnKey) => {
     if (!isAdmin || task.is_section) return {};
     
@@ -397,15 +378,13 @@ function Schedule({ showGantt, onShowColumnSettings }) {
                 <tr>
                   {visibleColumns.map(columnKey => (
                     <th key={columnKey}>
-                      <div>{getColumnLabel(columnKey)}</div>
-                      {['code', 'name', 'unit'].includes(columnKey) && (
-                        <input 
-                          type="text" 
-                          placeholder="Фильтр..."
-                          value={filters[columnKey] || ''}
-                          onChange={(e) => handleFilterChange(columnKey, e.target.value)}
-                        />
-                      )}
+                      <ColumnFilter
+                        columnKey={columnKey}
+                        columnLabel={getColumnLabel(columnKey)}
+                        allValues={getColumnValues(columnKey)}
+                        currentFilter={filters[columnKey] || ''}
+                        onApplyFilter={handleFilterApply}
+                      />
                     </th>
                   ))}
                 </tr>
