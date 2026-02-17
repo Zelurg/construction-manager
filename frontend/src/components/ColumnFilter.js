@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import './ColumnFilter.css';
 
 function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onApplyFilter }) {
@@ -33,9 +33,22 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
     setIsOpen(false);
   };
 
-  const uniqueValues = [...new Set(allValues.filter(v => v !== null && v !== undefined && v !== '' && v !== '-'))]
-    .sort()
-    .slice(0, 100);
+  // Получаем уникальные значения
+  const uniqueValues = useMemo(() => {
+    return [...new Set(allValues.filter(v => v !== null && v !== undefined && v !== '' && v !== '-'))]
+      .sort()
+      .slice(0, 100);
+  }, [allValues]);
+
+  // Фильтруем список значений в зависимости от введённого текста
+  const filteredValues = useMemo(() => {
+    if (!filterValue || filterValue.trim() === '') {
+      return uniqueValues;
+    }
+    return uniqueValues.filter(value => 
+      String(value).toLowerCase().includes(filterValue.toLowerCase())
+    );
+  }, [uniqueValues, filterValue]);
 
   const hasActiveFilter = currentFilter && currentFilter !== '';
 
@@ -61,27 +74,27 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
               placeholder="Введите или выберите..."
               value={filterValue}
               onChange={(e) => setFilterValue(e.target.value)}
-              list={`${columnKey}-datalist`}
               autoFocus
             />
-            <datalist id={`${columnKey}-datalist`}>
-              {uniqueValues.map((value, index) => (
-                <option key={index} value={value} />
-              ))}
-            </datalist>
           </div>
           
-          {uniqueValues.length > 0 && (
+          {filteredValues.length > 0 && (
             <div className="filter-values-list">
-              {uniqueValues.map((value, index) => (
+              {filteredValues.map((value, index) => (
                 <div 
                   key={index} 
                   className="filter-value-item"
-                  onClick={() => setFilterValue(value)}
+                  onClick={() => setFilterValue(String(value))}
                 >
                   {value}
                 </div>
               ))}
+            </div>
+          )}
+          
+          {filteredValues.length === 0 && filterValue && (
+            <div className="filter-no-results">
+              Ничего не найдено
             </div>
           )}
           
