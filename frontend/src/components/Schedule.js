@@ -55,6 +55,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     { key: 'cost_remaining', label: 'Остаток стоимости', isBase: false, isCalculated: true },
     { key: 'machine_hours_total', label: 'Всего машиночасов', isBase: false, isCalculated: true },
     { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
+    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isBase: false, isCalculated: true },
   ];
   
   const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan'];
@@ -159,30 +160,112 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
   };
 
+  // Функция для получения всех дочерних работ (не разделов) для раздела
+  const getChildTasks = (sectionCode, tasksArray) => {
+    const children = [];
+    
+    const findChildren = (parentCode) => {
+      tasksArray.forEach(task => {
+        if (task.parent_code === parentCode) {
+          if (task.is_section) {
+            // Если это подраздел - ищем его детей
+            findChildren(task.code);
+          } else {
+            // Если это работа - добавляем в список
+            children.push(task);
+          }
+        }
+      });
+    };
+    
+    findChildren(sectionCode);
+    return children;
+  };
+
+  // Функция для вычисления суммы для раздела
+  const calculateSectionSum = (section, columnKey) => {
+    // Получаем все дочерние работы из отфильтрованного списка
+    const childTasks = getChildTasks(section.code, filteredTasks);
+    
+    let sum = 0;
+    
+    childTasks.forEach(task => {
+      switch(columnKey) {
+        case 'labor_total':
+          sum += (task.labor_per_unit || 0) * task.volume_plan;
+          break;
+        case 'labor_fact':
+          sum += (task.labor_per_unit || 0) * task.volume_fact;
+          break;
+        case 'labor_remaining':
+          sum += (task.labor_per_unit || 0) * (task.volume_plan - task.volume_fact);
+          break;
+        case 'cost_total':
+          sum += (task.unit_price || 0) * task.volume_plan;
+          break;
+        case 'cost_fact':
+          sum += (task.unit_price || 0) * task.volume_fact;
+          break;
+        case 'cost_remaining':
+          sum += (task.unit_price || 0) * (task.volume_plan - task.volume_fact);
+          break;
+        case 'machine_hours_total':
+          sum += (task.machine_hours_per_unit || 0) * task.volume_plan;
+          break;
+        case 'machine_hours_fact':
+          sum += (task.machine_hours_per_unit || 0) * task.volume_fact;
+          break;
+        case 'machine_hours_remaining':
+          sum += (task.machine_hours_per_unit || 0) * (task.volume_plan - task.volume_fact);
+          break;
+      }
+    });
+    
+    return sum;
+  };
+
   const getDisplayValue = (task, columnKey) => {
+    // Для разделов - суммируем
+    if (task.is_section) {
+      const sumColumns = [
+        'labor_total', 'labor_fact', 'labor_remaining',
+        'cost_total', 'cost_fact', 'cost_remaining',
+        'machine_hours_total', 'machine_hours_fact', 'machine_hours_remaining'
+      ];
+      
+      if (sumColumns.includes(columnKey)) {
+        const sum = calculateSectionSum(task, columnKey);
+        return sum.toFixed(2);
+      }
+      
+      return '-';
+    }
+    
+    // Для работ - обычные вычисления
     switch(columnKey) {
       case 'volume_remaining':
-        return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
+        return (task.volume_plan - task.volume_fact).toFixed(2);
       case 'labor_total':
-        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
+        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'labor_fact':
-        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
+        return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
       case 'labor_remaining':
-        if (task.is_section) return '-';
         const volRemaining = task.volume_plan - task.volume_fact;
         return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
       case 'cost_total':
-        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_plan).toFixed(2);
+        return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
       case 'cost_fact':
-        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_fact).toFixed(2);
+        return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
       case 'cost_remaining':
-        if (task.is_section) return '-';
         const costVolRemaining = task.volume_plan - task.volume_fact;
         return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
       case 'machine_hours_total':
-        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
+        return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
       case 'machine_hours_fact':
-        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
+        return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
+      case 'machine_hours_remaining':
+        const machineVolRemaining = task.volume_plan - task.volume_fact;
+        return ((task.machine_hours_per_unit || 0) * machineVolRemaining).toFixed(2);
       case 'start_date_contract':
       case 'end_date_contract':
       case 'start_date_plan':
@@ -220,15 +303,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setShowFilterManager(false);
   };
   
-  // Измененная функция: теперь берет значения из уже отфильтрованных задач,
-  // исключая текущий фильтруемый столбец
   const getColumnValues = (columnKey) => {
-    // Создаем временные фильтры без текущего столбца
     const otherFilters = Object.entries(filters).filter(([key]) => key !== columnKey);
     
     let tasksForColumn = tasks;
     
-    // Применяем все другие фильтры
     otherFilters.forEach(([key, filterValue]) => {
       if (filterValue && filterValue.trim() !== '') {
         tasksForColumn = tasksForColumn.filter(task => {
@@ -238,7 +317,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       }
     });
     
-    // Возвращаем значения из отфильтрованных задач
     return tasksForColumn.map(task => getDisplayValue(task, columnKey));
   };
   
