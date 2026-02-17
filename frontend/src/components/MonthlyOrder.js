@@ -1,28 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { monthlyAPI, scheduleAPI } from '../services/api';
 import websocketService from '../services/websocket';
+import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
+import ColumnFilter from './ColumnFilter';
+import FilterManager from './FilterManager';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
-  '#E8F4F8',  // level 0
-  '#F0F8E8',  // level 1
-  '#FFF4E6',  // level 2
-  '#F8E8F4',  // level 3
-  '#E8F0F8',  // level 4
+  '#E8F4F8',
+  '#F0F8E8',
+  '#FFF4E6',
+  '#F8E8F4',
+  '#E8F0F8',
 ];
 
-function MonthlyOrder({ onShowColumnSettings }) {
+function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  
+  const isAdmin = useMemo(() => {
+    return user?.role === 'admin';
+  }, [user]);
   
   const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
+  const [filteredTasks, setFilteredTasks] = useState([]);
+  const [filters, setFilters] = useState({});
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().substring(0, 7) + '-01'
   );
+  const [tableWidth, setTableWidth] = useState(60);
+  const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
-  const [editingCell, setEditingCell] = useState(null); // { taskId, field }
+  const [showFilterManager, setShowFilterManager] = useState(false);
+  const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   
   const availableColumns = [
@@ -48,6 +59,7 @@ function MonthlyOrder({ onShowColumnSettings }) {
     { key: 'cost_remaining', label: 'Остаток стоимости', isBase: false, isCalculated: true },
     { key: 'machine_hours_total', label: 'Всего машиночасов', isBase: false, isCalculated: true },
     { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
+    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isBase: false, isCalculated: true },
   ];
   
   const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining', 'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan'];
@@ -55,12 +67,22 @@ function MonthlyOrder({ onShowColumnSettings }) {
     const saved = localStorage.getItem('monthlyOrderVisibleColumns');
     return saved ? JSON.parse(saved) : defaultColumns;
   });
+  
+  const containerRef = useRef(null);
+  const tableScrollRef = useRef(null);
+  const ganttScrollRef = useRef(null);
 
   useEffect(() => {
     if (onShowColumnSettings) {
       onShowColumnSettings(() => setShowColumnSettings(true));
     }
   }, [onShowColumnSettings]);
+
+  useEffect(() => {
+    if (onShowFilters) {
+      onShowFilters(() => setShowFilterManager(true));
+    }
+  }, [onShowFilters]);
 
   useEffect(() => {
     loadMonthlyTasks();
@@ -74,7 +96,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
     
     const handleTaskUpdated = (message) => {
       console.log('Task updated, refreshing monthly view:', message.data);
-      // Мерджим данные вместо полной замены
       setTasks(prevTasks => 
         prevTasks.map(task => 
           task.task_id === message.data.id ? { ...task, ...message.data } : task
@@ -96,6 +117,10 @@ function MonthlyOrder({ onShowColumnSettings }) {
     };
   }, [selectedMonth]);
 
+  useEffect(() => {
+    applyFilters();
+  }, [tasks, filters]);
+
   const loadMonthlyTasks = async () => {
     try {
       const response = await monthlyAPI.getTasks(selectedMonth);
@@ -107,7 +132,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
     }
   };
   
-  // Получение полного пути раздела (хлебные крошки)
   const getBreadcrumb = (task) => {
     if (!task.parent_code) return '';
     
@@ -126,8 +150,160 @@ function MonthlyOrder({ onShowColumnSettings }) {
     
     return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
   };
+
+  const getChildTasks = (sectionCode, tasksArray) => {
+    const children = [];
+    
+    const findChildren = (parentCode) => {
+      tasksArray.forEach(task => {
+        if (task.parent_code === parentCode) {
+          if (task.is_section) {
+            findChildren(task.code);
+          } else {
+            children.push(task);
+          }
+        }
+      });
+    };
+    
+    findChildren(sectionCode);
+    return children;
+  };
+
+  const calculateSectionSum = (section, columnKey) => {
+    const childTasks = getChildTasks(section.code, filteredTasks);
+    
+    let sum = 0;
+    
+    childTasks.forEach(task => {
+      switch(columnKey) {
+        case 'labor_total':
+          sum += (task.labor_per_unit || 0) * task.volume_plan;
+          break;
+        case 'labor_fact':
+          sum += (task.labor_per_unit || 0) * task.volume_fact;
+          break;
+        case 'labor_remaining':
+          sum += (task.labor_per_unit || 0) * (task.volume_plan - task.volume_fact);
+          break;
+        case 'cost_total':
+          sum += (task.unit_price || 0) * task.volume_plan;
+          break;
+        case 'cost_fact':
+          sum += (task.unit_price || 0) * task.volume_fact;
+          break;
+        case 'cost_remaining':
+          sum += (task.unit_price || 0) * (task.volume_plan - task.volume_fact);
+          break;
+        case 'machine_hours_total':
+          sum += (task.machine_hours_per_unit || 0) * task.volume_plan;
+          break;
+        case 'machine_hours_fact':
+          sum += (task.machine_hours_per_unit || 0) * task.volume_fact;
+          break;
+        case 'machine_hours_remaining':
+          sum += (task.machine_hours_per_unit || 0) * (task.volume_plan - task.volume_fact);
+          break;
+      }
+    });
+    
+    return sum;
+  };
+
+  const getDisplayValue = (task, columnKey) => {
+    if (task.is_section) {
+      const sumColumns = [
+        'labor_total', 'labor_fact', 'labor_remaining',
+        'cost_total', 'cost_fact', 'cost_remaining',
+        'machine_hours_total', 'machine_hours_fact', 'machine_hours_remaining'
+      ];
+      
+      if (sumColumns.includes(columnKey)) {
+        const sum = calculateSectionSum(task, columnKey);
+        return sum.toFixed(2);
+      }
+      
+      return '-';
+    }
+    
+    switch(columnKey) {
+      case 'volume_remaining':
+        return (task.volume_plan - task.volume_fact).toFixed(2);
+      case 'labor_total':
+        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
+      case 'labor_fact':
+        return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
+      case 'labor_remaining':
+        const volRemaining = task.volume_plan - task.volume_fact;
+        return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
+      case 'cost_total':
+        return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
+      case 'cost_fact':
+        return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
+      case 'cost_remaining':
+        const costVolRemaining = task.volume_plan - task.volume_fact;
+        return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
+      case 'machine_hours_total':
+        return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
+      case 'machine_hours_fact':
+        return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
+      case 'machine_hours_remaining':
+        const machineVolRemaining = task.volume_plan - task.volume_fact;
+        return ((task.machine_hours_per_unit || 0) * machineVolRemaining).toFixed(2);
+      case 'start_date_contract':
+      case 'end_date_contract':
+      case 'start_date_plan':
+      case 'end_date_plan':
+        return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
+      default:
+        return task[columnKey] !== undefined && task[columnKey] !== null ? String(task[columnKey]) : '-';
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = tasks;
+    
+    Object.entries(filters).forEach(([columnKey, filterValue]) => {
+      if (filterValue && filterValue.trim() !== '') {
+        filtered = filtered.filter(task => {
+          const displayValue = getDisplayValue(task, columnKey);
+          return displayValue.toLowerCase().includes(filterValue.toLowerCase());
+        });
+      }
+    });
+    
+    setFilteredTasks(filtered);
+  };
+
+  const handleFilterApply = (columnKey, filterValue) => {
+    setFilters(prev => ({
+      ...prev,
+      [columnKey]: filterValue
+    }));
+  };
+
+  const handleClearAllFilters = () => {
+    setFilters({});
+    setShowFilterManager(false);
+  };
   
-  // Начало редактирования ячейки
+  const getColumnValues = (columnKey) => {
+    const otherFilters = Object.entries(filters).filter(([key]) => key !== columnKey);
+    
+    let tasksForColumn = tasks;
+    
+    otherFilters.forEach(([key, filterValue]) => {
+      if (filterValue && filterValue.trim() !== '') {
+        tasksForColumn = tasksForColumn.filter(task => {
+          const displayValue = getDisplayValue(task, key);
+          return displayValue.toLowerCase().includes(filterValue.toLowerCase());
+        });
+      }
+    });
+    
+    return tasksForColumn.map(task => getDisplayValue(task, columnKey));
+  };
+  
   const handleCellDoubleClick = (task, columnKey) => {
     if (!isAdmin) return;
     if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan') return;
@@ -138,7 +314,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
     setEditValue(dateValue);
   };
   
-  // Сохранение изменений
   const handleCellBlur = async () => {
     if (!editingCell) return;
     
@@ -158,7 +333,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
       
       await scheduleAPI.updateTask(editingCell.taskId, updateData);
       
-      // Обновляем локальное состояние с мерджом
       setTasks(prevTasks => 
         prevTasks.map(t => 
           t.task_id === editingCell.taskId 
@@ -170,7 +344,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
       setEditingCell(null);
     } catch (error) {
       console.error('Ошибка обновления даты:', error);
-      // Интерцептор API уже показал сообщение при 401 ошибке
       setEditingCell(null);
     }
   };
@@ -184,7 +357,6 @@ function MonthlyOrder({ onShowColumnSettings }) {
   };
   
   const getCellValue = (task, columnKey) => {
-    // Проверка на режим редактирования
     if (editingCell && editingCell.taskId === task.task_id && editingCell.field === columnKey) {
       return (
         <input
@@ -199,49 +371,20 @@ function MonthlyOrder({ onShowColumnSettings }) {
       );
     }
     
-    switch(columnKey) {
-      case 'volume_remaining':
-        return task.is_section ? '-' : (task.volume_plan - task.volume_fact).toFixed(2);
-      case 'labor_total':
-        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
-      case 'labor_fact':
-        return task.is_section ? '-' : ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
-      case 'labor_remaining':
-        if (task.is_section) return '-';
-        const volRemaining = task.volume_plan - task.volume_fact;
-        return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
-      case 'cost_total':
-        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_plan).toFixed(2);
-      case 'cost_fact':
-        return task.is_section ? '-' : ((task.unit_price || 0) * task.volume_fact).toFixed(2);
-      case 'cost_remaining':
-        if (task.is_section) return '-';
-        const costVolRemaining = task.volume_plan - task.volume_fact;
-        return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
-      case 'machine_hours_total':
-        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
-      case 'machine_hours_fact':
-        return task.is_section ? '-' : ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
-      case 'start_date_contract':
-      case 'end_date_contract':
-      case 'start_date_plan':
-      case 'end_date_plan':
-        return task[columnKey] ? new Date(task[columnKey]).toLocaleDateString('ru-RU') : '-';
-      case 'name':
-        const breadcrumb = getBreadcrumb(task);
-        return breadcrumb ? (
-          <span>
-            <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
-            {task.name}
-          </span>
-        ) : task.name;
-      case 'code':
-      case 'unit':
-      case 'executor':
-        return task[columnKey] || '-';
-      default:
-        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
+    const displayValue = getDisplayValue(task, columnKey);
+    
+    if (columnKey === 'name') {
+      const hasActiveFilters = Object.values(filters).some(f => f && f.trim() !== '');
+      const breadcrumb = hasActiveFilters ? getBreadcrumb(task) : '';
+      return breadcrumb ? (
+        <span>
+          <span style={{ color: '#999', fontSize: '0.85em' }}>{breadcrumb}</span>
+          {task.name}
+        </span>
+      ) : task.name;
     }
+    
+    return displayValue;
   };
   
   const getColumnLabel = (columnKey) => {
@@ -278,6 +421,38 @@ function MonthlyOrder({ onShowColumnSettings }) {
     return {};
   };
 
+  const handleMouseDown = (e) => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizing || !containerRef.current) return;
+      
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+      
+      if (newWidth >= 30 && newWidth <= 80) {
+        setTableWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
   return (
     <div className="monthly-order">
       <div className="month-selector">
@@ -289,43 +464,91 @@ function MonthlyOrder({ onShowColumnSettings }) {
         />
       </div>
 
-      {/* Добавлена обёртка с прокруткой */}
-      <div className="table-container-scrollable">
-        <table className="tasks-table">
-          <thead>
-            <tr>
-              {visibleColumns.map(columnKey => (
-                <th key={columnKey}>{getColumnLabel(columnKey)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map(task => (
-              <tr key={task.id} style={getRowStyle(task)}>
-                {visibleColumns.map(columnKey => (
-                  <td 
-                    key={columnKey} 
-                    style={getCellStyle(task, columnKey)}
-                    onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
-                    title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
-                  >
-                    {getCellValue(task, columnKey)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div 
+        className="schedule-container-integrated" 
+        ref={containerRef}
+        style={{ userSelect: isResizing ? 'none' : 'auto' }}
+      >
+        <div className="schedule-split-view">
+          <div 
+            className="schedule-table-section" 
+            style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
+            ref={tableScrollRef}
+          >
+            <div className="table-wrapper">
+              <table className="tasks-table-integrated">
+                <thead>
+                  <tr>
+                    {visibleColumns.map(columnKey => (
+                      <th key={columnKey}>
+                        <ColumnFilter
+                          columnKey={columnKey}
+                          columnLabel={getColumnLabel(columnKey)}
+                          allValues={getColumnValues(columnKey)}
+                          currentFilter={filters[columnKey] || ''}
+                          onApplyFilter={handleFilterApply}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTasks.map(task => (
+                    <tr key={task.id} style={getRowStyle(task)}>
+                      {visibleColumns.map(columnKey => (
+                        <td 
+                          key={columnKey} 
+                          style={getCellStyle(task, columnKey)}
+                          onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
+                          title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
+                        >
+                          {getCellValue(task, columnKey)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {showGantt && (
+            <div 
+              className="resize-divider"
+              onMouseDown={handleMouseDown}
+            >
+              <div className="resize-handle"></div>
+            </div>
+          )}
+
+          {showGantt && (
+            <div 
+              className="schedule-gantt-section"
+              style={{ width: `${100 - tableWidth}%` }}
+              ref={ganttScrollRef}
+            >
+              <GanttChart tasks={filteredTasks} />
+            </div>
+          )}
+        </div>
+        
+        {showColumnSettings && (
+          <ColumnSettings
+            availableColumns={availableColumns}
+            visibleColumns={visibleColumns}
+            onSave={handleSaveColumnSettings}
+            onClose={() => setShowColumnSettings(false)}
+          />
+        )}
+
+        {showFilterManager && (
+          <FilterManager
+            activeFilters={filters}
+            onClearAll={handleClearAllFilters}
+            onClose={() => setShowFilterManager(false)}
+          />
+        )}
       </div>
-      
-      {showColumnSettings && (
-        <ColumnSettings
-          availableColumns={availableColumns}
-          visibleColumns={visibleColumns}
-          onSave={handleSaveColumnSettings}
-          onClose={() => setShowColumnSettings(false)}
-        />
-      )}
     </div>
   );
 }
