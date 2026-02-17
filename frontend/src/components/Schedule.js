@@ -74,6 +74,12 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, [onShowColumnSettings]);
 
   useEffect(() => {
+    if (onShowFilters) {
+      onShowFilters(() => setShowFilterManager(true));
+    }
+  }, [onShowFilters]);
+
+  useEffect(() => {
     loadTasks();
     
     websocketService.connect();
