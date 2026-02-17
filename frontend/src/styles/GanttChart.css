@@ -71,13 +71,24 @@
   background: #fafafa;
   position: relative;
   flex-shrink: 0;
-  /* Скрываем скроллбар */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  /* Улучшенная поддержка прокрутки для macOS */
+  -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
 }
 
+/* Показываем скроллбар на macOS когда он нужен */
 .gantt-timeline-row::-webkit-scrollbar {
-  display: none;
+  height: 8px;
+  display: block;
+}
+
+.gantt-timeline-row::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.gantt-timeline-row::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
 }
 
 .gantt-timeline-content {
@@ -124,6 +135,11 @@
   flex: 1;
   overflow: auto;
   position: relative;
+  /* Критично для macOS */
+  -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
+  /* Предотвращаем "обрезание" контента */
+  min-height: 0;
 }
 
 .gantt-body-content {
@@ -132,6 +148,8 @@
   min-height: 100%;
   margin: 0;
   padding: 0;
+  /* Добавляем небольшой padding снизу для предотвращения обрезания */
+  padding-bottom: 1px;
 }
 
 .gantt-row-integrated {
