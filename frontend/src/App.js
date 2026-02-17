@@ -27,7 +27,8 @@ function App() {
   });
 
   const filtersHandlers = useRef({
-    schedule: null
+    schedule: null,
+    monthly: null
   });
   
   const scheduleKey = useRef(0);
@@ -187,7 +188,9 @@ function App() {
         )}
         {activeTab === 'monthly' && (
           <MonthlyOrder 
+            showGantt={showGantt}
             onShowColumnSettings={(handler) => columnSettingsHandlers.current.monthly = handler}
+            onShowFilters={(handler) => filtersHandlers.current.monthly = handler}
           />
         )}
         {activeTab === 'daily' && (
