@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import authService from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/AdminPanel.css';
 
 function AdminPanel() {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,14 +22,41 @@ function AdminPanel() {
     loadUsers();
   }, []);
 
+  useEffect(() => {
+    if (user && user.role === 'admin' && users.length === 0 && !loading) {
+      console.log('Повторная загрузка пользователей после обновления контекста');
+      loadUsers();
+    }
+  }, [user]);
+
   const loadUsers = async () => {
     try {
       setLoading(true);
+      setError('');
+      
+      console.log('Загрузка списка пользователей...');
       const data = await authService.getAllUsers();
+      
+      console.log('Получено пользователей:', data.length);
+      
+      if (!data || data.length === 0) {
+        console.warn('Список пользователей пуст');
+      }
+      
       setUsers(data);
       setError('');
     } catch (err) {
-      setError('Ошибка загрузки пользователей');
+      console.error('Ошибка загрузки пользователей:', err);
+      
+      if (err.response?.status === 401) {
+        setError('Ошибка аутентификации. Попробуйте войти заново.');
+      } else if (err.response?.status === 403) {
+        setError('Доступ запрещен. Требуются права администратора.');
+      } else {
+        setError('Ошибка загрузки пользователей: ' + (err.response?.data?.detail || err.message));
+      }
+      
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -66,7 +95,8 @@ function AdminPanel() {
       await authService.deleteUser(userId);
       await loadUsers();
     } catch (err) {
-      alert('Ошибка при удалении пользователя');
+      console.error('Ошибка удаления:', err);
+      alert('Ошибка при удалении пользователя: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -75,7 +105,6 @@ function AdminPanel() {
     
     try {
       if (editingUser) {
-        // Обновление
         const updateData = {
           email: formData.email,
           full_name: formData.full_name,
@@ -86,13 +115,13 @@ function AdminPanel() {
         }
         await authService.updateUser(editingUser.id, updateData);
       } else {
-        // Создание
         await authService.createUser(formData);
       }
       
       setShowModal(false);
       await loadUsers();
     } catch (err) {
+      console.error('Ошибка сохранения:', err);
       alert(err.response?.data?.detail || 'Ошибка при сохранении');
     }
   };
@@ -107,63 +136,99 @@ function AdminPanel() {
   };
 
   if (loading) {
-    return <div className="admin-panel"><p>Загрузка...</p></div>;
+    return (
+      <div className="admin-panel">
+        <div className="loading-spinner">
+          <p>Загрузка пользователей...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="admin-panel">
       <div className="admin-header">
         <h2>Управление пользователями</h2>
-        <button onClick={handleCreate} className="btn-primary">
-          + Добавить пользователя
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            onClick={loadUsers} 
+            className="btn-refresh"
+            title="Обновить список"
+          >
+            🔄 Обновить
+          </button>
+          <button onClick={handleCreate} className="btn-primary">
+            + Добавить пользователя
+          </button>
+        </div>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && (
+        <div className="error-message">
+          {error}
+          <button 
+            onClick={loadUsers} 
+            style={{ marginLeft: '10px', padding: '5px 10px' }}
+          >
+            Повторить
+          </button>
+        </div>
+      )}
 
-      <table className="users-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Имя пользователя</th>
-            <th>Email</th>
-            <th>Полное имя</th>
-            <th>Роль</th>
-            <th>Дата создания</th>
-            <th>Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map(user => (
-            <tr key={user.id}>
-              <td>{user.id}</td>
-              <td>{user.username}</td>
-              <td>{user.email}</td>
-              <td>{user.full_name}</td>
-              <td>
-                <span className={`role-badge role-${user.role}`}>
-                  {getRoleName(user.role)}
-                </span>
-              </td>
-              <td>{new Date(user.created_at).toLocaleDateString('ru-RU')}</td>
-              <td>
-                <button 
-                  onClick={() => handleEdit(user)} 
-                  className="btn-edit"
-                >
-                  Изменить
-                </button>
-                <button 
-                  onClick={() => handleDelete(user.id)} 
-                  className="btn-delete"
-                >
-                  Удалить
-                </button>
-              </td>
+      {!error && users.length === 0 && (
+        <div className="info-message">
+          <p>Список пользователей пуст. Попробуйте обновить страницу или проверьте соединение.</p>
+          <button onClick={loadUsers} className="btn-primary">
+            Обновить список
+          </button>
+        </div>
+      )}
+
+      {users.length > 0 && (
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Имя пользователя</th>
+              <th>Email</th>
+              <th>Полное имя</th>
+              <th>Роль</th>
+              <th>Дата создания</th>
+              <th>Действия</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map(user => (
+              <tr key={user.id}>
+                <td>{user.id}</td>
+                <td>{user.username}</td>
+                <td>{user.email}</td>
+                <td>{user.full_name}</td>
+                <td>
+                  <span className={`role-badge role-${user.role}`}>
+                    {getRoleName(user.role)}
+                  </span>
+                </td>
+                <td>{new Date(user.created_at).toLocaleDateString('ru-RU')}</td>
+                <td>
+                  <button 
+                    onClick={() => handleEdit(user)} 
+                    className="btn-edit"
+                  >
+                    Изменить
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(user.id)} 
+                    className="btn-delete"
+                  >
+                    Удалить
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
