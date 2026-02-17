@@ -120,7 +120,7 @@ function Toolbar({
       </div>
 
       <div className="toolbar-right">
-        {activeTab === 'schedule' && (
+        {(activeTab === 'schedule' || activeTab === 'monthly') && (
           <button 
             onClick={handleFilters}
             className="toolbar-btn"
@@ -138,7 +138,7 @@ function Toolbar({
             ⚙️ Колонки
           </button>
         )}
-        {activeTab === 'schedule' && (
+        {(activeTab === 'schedule' || activeTab === 'monthly') && (
           <button 
             onClick={onToggleGantt}
             className={`toolbar-btn ${showGantt ? 'active' : ''}`}
