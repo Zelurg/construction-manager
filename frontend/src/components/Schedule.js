@@ -4,6 +4,7 @@ import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
+import FilterManager from './FilterManager';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
@@ -14,7 +15,7 @@ const SECTION_COLORS = [
   '#E8F0F8',
 ];
 
-function Schedule({ showGantt, onShowColumnSettings }) {
+function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   
   const isAdmin = useMemo(() => {
@@ -27,6 +28,7 @@ function Schedule({ showGantt, onShowColumnSettings }) {
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [showFilterManager, setShowFilterManager] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   
@@ -205,6 +207,11 @@ function Schedule({ showGantt, onShowColumnSettings }) {
       ...prev,
       [columnKey]: filterValue
     }));
+  };
+
+  const handleClearAllFilters = () => {
+    setFilters({});
+    setShowFilterManager(false);
   };
   
   const getColumnValues = (columnKey) => {
@@ -435,6 +442,14 @@ function Schedule({ showGantt, onShowColumnSettings }) {
           visibleColumns={visibleColumns}
           onSave={handleSaveColumnSettings}
           onClose={() => setShowColumnSettings(false)}
+        />
+      )}
+
+      {showFilterManager && (
+        <FilterManager
+          activeFilters={filters}
+          onClearAll={handleClearAllFilters}
+          onClose={() => setShowFilterManager(false)}
         />
       )}
     </div>
