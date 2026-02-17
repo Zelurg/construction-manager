@@ -170,7 +170,7 @@ function MonthlyOrder({ onShowColumnSettings }) {
       setEditingCell(null);
     } catch (error) {
       console.error('Ошибка обновления даты:', error);
-      alert('Ошибка обновления даты');
+      // Интерцептор API уже показал сообщение при 401 ошибке
       setEditingCell(null);
     }
   };
