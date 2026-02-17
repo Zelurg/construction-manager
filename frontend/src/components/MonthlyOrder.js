@@ -278,31 +278,34 @@ function MonthlyOrder({ onShowColumnSettings }) {
         />
       </div>
 
-      <table className="tasks-table">
-        <thead>
-          <tr>
-            {visibleColumns.map(columnKey => (
-              <th key={columnKey}>{getColumnLabel(columnKey)}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map(task => (
-            <tr key={task.id} style={getRowStyle(task)}>
+      {/* Добавлена обёртка с прокруткой */}
+      <div className="table-container-scrollable">
+        <table className="tasks-table">
+          <thead>
+            <tr>
               {visibleColumns.map(columnKey => (
-                <td 
-                  key={columnKey} 
-                  style={getCellStyle(task, columnKey)}
-                  onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
-                  title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
-                >
-                  {getCellValue(task, columnKey)}
-                </td>
+                <th key={columnKey}>{getColumnLabel(columnKey)}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tasks.map(task => (
+              <tr key={task.id} style={getRowStyle(task)}>
+                {visibleColumns.map(columnKey => (
+                  <td 
+                    key={columnKey} 
+                    style={getCellStyle(task, columnKey)}
+                    onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
+                    title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
+                  >
+                    {getCellValue(task, columnKey)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       
       {showColumnSettings && (
         <ColumnSettings
