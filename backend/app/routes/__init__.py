@@ -7,6 +7,7 @@ from .import_export import router as import_export_router
 from .employees import router as employees_router
 from .executors import router as executors_router
 from .equipment import router as equipment_router
+from .equipment_usage import router as equipment_usage_router
 
 router = APIRouter()
 
@@ -18,3 +19,4 @@ router.include_router(import_export_router, prefix="/import-export", tags=["impo
 router.include_router(employees_router, prefix="/employees", tags=["employees"])
 router.include_router(executors_router, prefix="/executors", tags=["executors"])
 router.include_router(equipment_router, prefix="/equipment", tags=["equipment"])
+router.include_router(equipment_usage_router, prefix="/equipment-usage", tags=["equipment-usage"])
