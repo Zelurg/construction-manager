@@ -346,7 +346,7 @@ function DailyOrders({ onShowColumnSettings }) {
     localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(newVisibleColumns));
   };
 
-  // Расчет эффективности
+  // Расчет эффективности по трудозатратам
   const getEfficiencyStatus = () => {
     if (!executorsStats) return { color: 'gray', text: '', label: '' };
     
@@ -380,7 +380,42 @@ function DailyOrders({ onShowColumnSettings }) {
     };
   };
 
+  // Расчет эффективности по машиночасам
+  const getEquipmentEfficiencyStatus = () => {
+    if (!equipmentStats) return { color: 'gray', text: '', label: '' };
+    
+    const worked = equipmentStats.total_machine_hours; // Отработано машиночасов
+    const needed = equipmentStats.total_work_machine_hours; // Машиночасы по выполненным работам
+    const diff = needed - worked;
+    
+    // Если разница меньше 1 часа - это норма
+    if (Math.abs(diff) < 1) {
+      return { 
+        color: 'blue', 
+        text: needed.toFixed(1),
+        label: 'норма'
+      };
+    }
+    
+    // Если работ выполнено БОЛЬШЕ - перевыполнение
+    if (diff > 0) {
+      return { 
+        color: 'green', 
+        text: needed.toFixed(1),
+        label: 'перевыполнение'
+      };
+    }
+    
+    // Если работ выполнено МЕНЬШЕ - отставание
+    return { 
+      color: 'red', 
+      text: needed.toFixed(1),
+      label: 'отставание'
+    };
+  };
+
   const efficiencyStatus = getEfficiencyStatus();
+  const equipmentEfficiencyStatus = getEquipmentEfficiencyStatus();
 
   return (
     <div className="daily-orders">
@@ -398,6 +433,7 @@ function DailyOrders({ onShowColumnSettings }) {
         {(executorsStats?.executors_count > 0 || equipmentStats?.equipment_count > 0) && (
           <div className="executors-info">
             <div className="executors-summary">
+              {/* Сначала люди */}
               {executorsStats && executorsStats.executors_count > 0 && (
                 <>
                   <span>👥 {executorsStats.executors_count} чел.</span>
@@ -406,15 +442,18 @@ function DailyOrders({ onShowColumnSettings }) {
                     📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
                   </span>
                   {executorsStats.responsible && (
-                    <span>👨‍💼 {executorsStats.responsible.full_name}</span>
+                    <span>👨‍💼 Ответственный: {executorsStats.responsible.full_name}</span>
                   )}
                 </>
               )}
+              {/* Потом техника */}
               {equipmentStats && equipmentStats.equipment_count > 0 && (
                 <>
                   <span>🚜 {equipmentStats.equipment_count} ед.</span>
                   <span>⏱️ {equipmentStats.total_machine_hours.toFixed(1)} м-ч</span>
-                  <span>📊 {equipmentStats.total_work_machine_hours.toFixed(1)} м-ч</span>
+                  <span style={{ color: equipmentEfficiencyStatus.color }}>
+                    📊 {equipmentEfficiencyStatus.text} м-ч ({equipmentEfficiencyStatus.label})
+                  </span>
                 </>
               )}
             </div>
