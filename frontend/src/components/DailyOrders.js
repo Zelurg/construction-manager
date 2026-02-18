@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { dailyAPI, scheduleAPI, employeesAPI, executorsAPI } from '../services/api';
+import { dailyAPI, scheduleAPI, employeesAPI, executorsAPI, equipmentUsageAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import ColumnSettings from './ColumnSettings';
+import EquipmentUsageModal from './EquipmentUsageModal';
 import '../styles/DailyOrders.css';
 
 function DailyOrders({ onShowColumnSettings }) {
@@ -13,6 +14,7 @@ function DailyOrders({ onShowColumnSettings }) {
   );
   const [showModal, setShowModal] = useState(false);
   const [showExecutorsModal, setShowExecutorsModal] = useState(false);
+  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [formData, setFormData] = useState({
     task_id: '',
@@ -23,6 +25,7 @@ function DailyOrders({ onShowColumnSettings }) {
   // Состояние для исполнителей
   const [employees, setEmployees] = useState([]);
   const [executorsStats, setExecutorsStats] = useState(null);
+  const [equipmentStats, setEquipmentStats] = useState(null);
   const [selectedEmployees, setSelectedEmployees] = useState({});
   const [responsibleId, setResponsibleId] = useState('');
   
@@ -58,6 +61,7 @@ function DailyOrders({ onShowColumnSettings }) {
     loadTasks();
     loadEmployees();
     loadExecutorsStats();
+    loadEquipmentStats();
     
     websocketService.connect();
     
@@ -65,6 +69,7 @@ function DailyOrders({ onShowColumnSettings }) {
       console.log('✅ WebSocket: daily_work_created', message);
       loadDailyWorks();
       loadExecutorsStats(); // Обновляем статистику в реальном времени
+      loadEquipmentStats();
     };
     
     const handleTaskUpdated = (message) => {
@@ -72,11 +77,17 @@ function DailyOrders({ onShowColumnSettings }) {
       loadDailyWorks();
       loadTasks();
       loadExecutorsStats(); // Обновляем статистику при обновлении задачи
+      loadEquipmentStats();
     };
     
     const handleExecutorChanged = (message) => {
       console.log('✅ WebSocket: executor changed', message);
       loadExecutorsStats();
+    };
+    
+    const handleEquipmentChanged = (message) => {
+      console.log('✅ WebSocket: equipment changed', message);
+      loadEquipmentStats();
     };
     
     console.log('🔌 Подписка на WebSocket события...');
@@ -85,6 +96,9 @@ function DailyOrders({ onShowColumnSettings }) {
     websocketService.on('executor_added', handleExecutorChanged);
     websocketService.on('executor_updated', handleExecutorChanged);
     websocketService.on('executor_deleted', handleExecutorChanged);
+    websocketService.on('equipment_usage_added', handleEquipmentChanged);
+    websocketService.on('equipment_usage_updated', handleEquipmentChanged);
+    websocketService.on('equipment_usage_deleted', handleEquipmentChanged);
     
     return () => {
       console.log('❌ Отписка от WebSocket событий');
@@ -93,6 +107,9 @@ function DailyOrders({ onShowColumnSettings }) {
       websocketService.off('executor_added', handleExecutorChanged);
       websocketService.off('executor_updated', handleExecutorChanged);
       websocketService.off('executor_deleted', handleExecutorChanged);
+      websocketService.off('equipment_usage_added', handleEquipmentChanged);
+      websocketService.off('equipment_usage_updated', handleEquipmentChanged);
+      websocketService.off('equipment_usage_deleted', handleEquipmentChanged);
     };
   }, [selectedDate]);
 
@@ -155,6 +172,17 @@ function DailyOrders({ onShowColumnSettings }) {
       }
     } catch (error) {
       console.error('Ошибка загрузки статистики исполнителей:', error);
+    }
+  };
+
+  const loadEquipmentStats = async () => {
+    try {
+      console.log('📊 Загрузка статистики техники...');
+      const response = await equipmentUsageAPI.getStats(selectedDate);
+      console.log('✅ Статистика техники загружена:', response.data);
+      setEquipmentStats(response.data);
+    } catch (error) {
+      console.error('Ошибка загрузки статистики техники:', error);
     }
   };
 
@@ -366,17 +394,28 @@ function DailyOrders({ onShowColumnSettings }) {
           />
         </div>
         
-        {/* Информация об исполнителях */}
-        {executorsStats && executorsStats.executors_count > 0 && (
+        {/* Информация об исполнителях и технике */}
+        {(executorsStats?.executors_count > 0 || equipmentStats?.equipment_count > 0) && (
           <div className="executors-info">
             <div className="executors-summary">
-              <span>👥 {executorsStats.executors_count} чел.</span>
-              <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
-              <span style={{ color: efficiencyStatus.color }}>
-                📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
-              </span>
-              {executorsStats.responsible && (
-                <span>👨‍💼 {executorsStats.responsible.full_name}</span>
+              {executorsStats && executorsStats.executors_count > 0 && (
+                <>
+                  <span>👥 {executorsStats.executors_count} чел.</span>
+                  <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
+                  <span style={{ color: efficiencyStatus.color }}>
+                    📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
+                  </span>
+                  {executorsStats.responsible && (
+                    <span>👨‍💼 {executorsStats.responsible.full_name}</span>
+                  )}
+                </>
+              )}
+              {equipmentStats && equipmentStats.equipment_count > 0 && (
+                <>
+                  <span>🚜 {equipmentStats.equipment_count} ед.</span>
+                  <span>⏱️ {equipmentStats.total_machine_hours.toFixed(1)} м-ч</span>
+                  <span>📊 {equipmentStats.total_work_machine_hours.toFixed(1)} м-ч</span>
+                </>
               )}
             </div>
           </div>
@@ -385,6 +424,9 @@ function DailyOrders({ onShowColumnSettings }) {
         <div style={{ display: 'flex', gap: '10px' }}>
           <button onClick={handleOpenExecutorsModal} className="btn-secondary">
             👥 Указать исполнителей
+          </button>
+          <button onClick={() => setShowEquipmentModal(true)} className="btn-secondary">
+            🚜 Указать технику
           </button>
           <button onClick={handleAddWork} className="btn-primary">
             + Внести объём
@@ -584,6 +626,18 @@ function DailyOrders({ onShowColumnSettings }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Модальное окно для указания техники */}
+      {showEquipmentModal && (
+        <EquipmentUsageModal
+          date={selectedDate}
+          onClose={() => setShowEquipmentModal(false)}
+          onUpdate={() => {
+            loadDailyWorks();
+            loadEquipmentStats();
+          }}
+        />
       )}
       
       {showColumnSettings && (
