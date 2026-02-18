@@ -68,7 +68,7 @@ function DailyOrders({ onShowColumnSettings }) {
     const handleDailyWorkCreated = (message) => {
       console.log('✅ WebSocket: daily_work_created', message);
       loadDailyWorks();
-      loadExecutorsStats(); // Обновляем статистику в реальном времени
+      loadExecutorsStats();
       loadEquipmentStats();
     };
     
@@ -76,7 +76,7 @@ function DailyOrders({ onShowColumnSettings }) {
       console.log('✅ WebSocket: task_updated', message);
       loadDailyWorks();
       loadTasks();
-      loadExecutorsStats(); // Обновляем статистику при обновлении задачи
+      loadExecutorsStats();
       loadEquipmentStats();
     };
     
@@ -149,7 +149,6 @@ function DailyOrders({ onShowColumnSettings }) {
       console.log('✅ Статистика загружена:', response.data);
       setExecutorsStats(response.data);
       
-      // Заполняем selectedEmployees из загруженных данных
       const newSelected = {};
       response.data.executors.forEach(exec => {
         if (!exec.is_responsible) {
@@ -161,7 +160,6 @@ function DailyOrders({ onShowColumnSettings }) {
       });
       setSelectedEmployees(newSelected);
       
-      // Устанавливаем ответственного
       if (response.data.responsible) {
         const responsibleExec = response.data.executors.find(e => e.is_responsible);
         if (responsibleExec) {
@@ -211,14 +209,12 @@ function DailyOrders({ onShowColumnSettings }) {
 
   const handleSaveExecutors = async () => {
     try {
-      // Сначала удаляем всех старых исполнителей
       if (executorsStats && executorsStats.executors) {
         for (const exec of executorsStats.executors) {
           await executorsAPI.delete(exec.id);
         }
       }
       
-      // Добавляем ответственного
       if (responsibleId) {
         await executorsAPI.create({
           date: selectedDate,
@@ -228,7 +224,6 @@ function DailyOrders({ onShowColumnSettings }) {
         });
       }
       
-      // Добавляем исполнителей
       for (const [employeeId, data] of Object.entries(selectedEmployees)) {
         await executorsAPI.create({
           date: selectedDate,
@@ -346,72 +341,36 @@ function DailyOrders({ onShowColumnSettings }) {
     localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(newVisibleColumns));
   };
 
-  // Расчет эффективности по трудозатратам
   const getEfficiencyStatus = () => {
     if (!executorsStats) return { color: 'gray', text: '', label: '' };
     
-    const worked = executorsStats.total_hours_worked; // Отработано часов исполнителями
-    const needed = executorsStats.total_labor_hours; // Трудозатраты по выполненным работам
-    const diff = needed - worked; // Разница: сколько работ выполнено относительно часов
+    const worked = executorsStats.total_hours_worked;
+    const needed = executorsStats.total_labor_hours;
+    const diff = needed - worked;
     
-    // Если разница меньше 1 часа - это норма
     if (Math.abs(diff) < 1) {
-      return { 
-        color: 'blue', 
-        text: needed.toFixed(1),
-        label: 'норма'
-      };
+      return { color: 'blue', text: needed.toFixed(1), label: 'норма' };
     }
-    
-    // Если работ выполнено БОЛЬШЕ, чем отработано часов - перевыполнение
     if (diff > 0) {
-      return { 
-        color: 'green', 
-        text: needed.toFixed(1),
-        label: 'перевыполнение'
-      };
+      return { color: 'green', text: needed.toFixed(1), label: 'перевыполнение' };
     }
-    
-    // Если работ выполнено МЕНЬШЕ - отставание
-    return { 
-      color: 'red', 
-      text: needed.toFixed(1),
-      label: 'отставание'
-    };
+    return { color: 'red', text: needed.toFixed(1), label: 'отставание' };
   };
 
-  // Расчет эффективности по машиночасам
   const getEquipmentEfficiencyStatus = () => {
     if (!equipmentStats) return { color: 'gray', text: '', label: '' };
     
-    const worked = equipmentStats.total_machine_hours; // Отработано машиночасов
-    const needed = equipmentStats.total_work_machine_hours; // Машиночасы по выполненным работам
+    const worked = equipmentStats.total_machine_hours;
+    const needed = equipmentStats.total_work_machine_hours;
     const diff = needed - worked;
     
-    // Если разница меньше 1 часа - это норма
     if (Math.abs(diff) < 1) {
-      return { 
-        color: 'blue', 
-        text: needed.toFixed(1),
-        label: 'норма'
-      };
+      return { color: 'blue', text: needed.toFixed(1), label: 'норма' };
     }
-    
-    // Если работ выполнено БОЛЬШЕ - перевыполнение
     if (diff > 0) {
-      return { 
-        color: 'green', 
-        text: needed.toFixed(1),
-        label: 'перевыполнение'
-      };
+      return { color: 'green', text: needed.toFixed(1), label: 'перевыполнение' };
     }
-    
-    // Если работ выполнено МЕНЬШЕ - отставание
-    return { 
-      color: 'red', 
-      text: needed.toFixed(1),
-      label: 'отставание'
-    };
+    return { color: 'red', text: needed.toFixed(1), label: 'отставание' };
   };
 
   const efficiencyStatus = getEfficiencyStatus();
@@ -432,31 +391,29 @@ function DailyOrders({ onShowColumnSettings }) {
         {/* Информация об исполнителях и технике */}
         {(executorsStats?.executors_count > 0 || equipmentStats?.equipment_count > 0) && (
           <div className="executors-info">
-            <div className="executors-summary">
-              {/* Сначала люди */}
-              {executorsStats && executorsStats.executors_count > 0 && (
-                <>
-                  <span>👥 {executorsStats.executors_count} чел.</span>
-                  <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
-                  <span style={{ color: efficiencyStatus.color }}>
-                    📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
-                  </span>
-                  {executorsStats.responsible && (
-                    <span>👨‍💼 Ответственный: {executorsStats.responsible.full_name}</span>
-                  )}
-                </>
-              )}
-              {/* Потом техника */}
-              {equipmentStats && equipmentStats.equipment_count > 0 && (
-                <>
-                  <span>🚜 {equipmentStats.equipment_count} ед.</span>
-                  <span>⏱️ {equipmentStats.total_machine_hours.toFixed(1)} м-ч</span>
-                  <span style={{ color: equipmentEfficiencyStatus.color }}>
-                    📊 {equipmentEfficiencyStatus.text} м-ч ({equipmentEfficiencyStatus.label})
-                  </span>
-                </>
-              )}
-            </div>
+            {/* Блок с людьми */}
+            {executorsStats && executorsStats.executors_count > 0 && (
+              <div className="stats-row">
+                <span>👥 {executorsStats.executors_count} чел.</span>
+                <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
+                <span style={{ color: efficiencyStatus.color }}>
+                  📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
+                </span>
+                {executorsStats.responsible && (
+                  <span>👨‍💼 Ответственный: {executorsStats.responsible.full_name}</span>
+                )}
+              </div>
+            )}
+            {/* Блок с техникой */}
+            {equipmentStats && equipmentStats.equipment_count > 0 && (
+              <div className="stats-row">
+                <span>🚜 {equipmentStats.equipment_count} ед.</span>
+                <span>⏱️ {equipmentStats.total_machine_hours.toFixed(1)} м-ч</span>
+                <span style={{ color: equipmentEfficiencyStatus.color }}>
+                  📊 {equipmentEfficiencyStatus.text} м-ч ({equipmentEfficiencyStatus.label})
+                </span>
+              </div>
+            )}
           </div>
         )}
         
@@ -502,7 +459,6 @@ function DailyOrders({ onShowColumnSettings }) {
         </table>
       </div>
 
-      {/* Модальное окно для внесения объёма */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -576,14 +532,12 @@ function DailyOrders({ onShowColumnSettings }) {
         </div>
       )}
 
-      {/* Модальное окно для указания исполнителей */}
       {showExecutorsModal && (
         <div className="modal-overlay" onClick={() => setShowExecutorsModal(false)}>
           <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
             <h3>Указать исполнителей за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
 
             <div className="executors-form">
-              {/* Ответственный */}
               <div className="form-group">
                 <label>Ответственный (прораб):</label>
                 <select
@@ -604,7 +558,6 @@ function DailyOrders({ onShowColumnSettings }) {
 
               <hr />
 
-              {/* Список исполнителей */}
               <div className="form-group">
                 <label>Исполнители работ:</label>
                 <div className="executors-list">
@@ -645,7 +598,6 @@ function DailyOrders({ onShowColumnSettings }) {
                 </div>
               </div>
 
-              {/* Итоговая статистика */}
               {Object.keys(selectedEmployees).length > 0 && (
                 <div className="executors-summary-box">
                   <strong>Итого:</strong>
@@ -667,7 +619,6 @@ function DailyOrders({ onShowColumnSettings }) {
         </div>
       )}
 
-      {/* Модальное окно для указания техники */}
       {showEquipmentModal && (
         <EquipmentUsageModal
           date={selectedDate}
