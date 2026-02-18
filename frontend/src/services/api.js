@@ -156,4 +156,22 @@ export const equipmentAPI = {
   activate: (id) => api.patch(`/equipment/${id}/activate`),
 };
 
+// Новые API для использования техники за день
+export const equipmentUsageAPI = {
+  // Получить список техники за конкретную дату
+  getByDate: (date) => api.get('/equipment-usage/', { params: { work_date: date } }),
+  
+  // Получить статистику по технике за день
+  getStats: (date) => api.get('/equipment-usage/stats', { params: { work_date: date } }),
+  
+  // Добавить технику на день
+  create: (usage) => api.post('/equipment-usage/', usage),
+  
+  // Обновить данные об использовании техники
+  update: (id, usage) => api.put(`/equipment-usage/${id}`, usage),
+  
+  // Удалить технику из дня
+  delete: (id) => api.delete(`/equipment-usage/${id}`),
+};
+
 export default api;
