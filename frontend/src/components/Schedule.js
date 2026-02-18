@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { scheduleAPI } from '../services/api';
+import { scheduleAPI, employeesAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
@@ -31,6 +31,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [showFilterManager, setShowFilterManager] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [employees, setEmployees] = useState([]);
   
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -46,7 +47,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
     { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
     { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
-    { key: 'executor', label: 'Исполнитель', isBase: false },
+    { key: 'executor', label: 'Исполнитель', isBase: false, editable: true },
     { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
     { key: 'labor_fact', label: 'Трудозатраты факт', isBase: false, isCalculated: true },
     { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
@@ -82,6 +83,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   useEffect(() => {
     loadTasks();
+    loadEmployees();
     
     websocketService.connect();
     
@@ -138,6 +140,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       setTasks(response.data);
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
+    }
+  };
+  
+  const loadEmployees = async () => {
+    try {
+      const response = await employeesAPI.getAll({ active_only: true });
+      setEmployees(response.data);
+    } catch (error) {
+      console.error('Ошибка загрузки сотрудников:', error);
     }
   };
   
@@ -323,12 +334,17 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   
   const handleCellDoubleClick = (task, columnKey) => {
     if (!isAdmin) return;
-    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan') return;
+    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan' && columnKey !== 'executor') return;
     if (task.is_section) return;
     
     setEditingCell({ taskId: task.id, field: columnKey });
-    const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
-    setEditValue(dateValue);
+    
+    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') {
+      const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
+      setEditValue(dateValue);
+    } else if (columnKey === 'executor') {
+      setEditValue(task[columnKey] || '');
+    }
   };
   
   const handleCellBlur = async () => {
@@ -337,7 +353,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     const task = tasks.find(t => t.id === editingCell.taskId);
     if (!task) return;
     
-    const currentValue = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
+    let currentValue = task[editingCell.field];
+    if (editingCell.field === 'start_date_plan' || editingCell.field === 'end_date_plan') {
+      currentValue = currentValue ? new Date(currentValue).toISOString().split('T')[0] : '';
+    } else {
+      currentValue = currentValue || '';
+    }
+    
     if (editValue === currentValue) {
       setEditingCell(null);
       return;
@@ -360,7 +382,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       
       setEditingCell(null);
     } catch (error) {
-      console.error('Ошибка обновления даты:', error);
+      console.error('Ошибка обновления поля:', error);
       setEditingCell(null);
     }
   };
@@ -375,17 +397,37 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   
   const getCellValue = (task, columnKey) => {
     if (editingCell && editingCell.taskId === task.id && editingCell.field === columnKey) {
-      return (
-        <input
-          type="date"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleCellBlur}
-          onKeyDown={handleKeyDown}
-          autoFocus
-          style={{ width: '100%', padding: '4px' }}
-        />
-      );
+      if (columnKey === 'executor') {
+        return (
+          <select
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleCellBlur}
+            onKeyDown={handleKeyDown}
+            autoFocus
+            style={{ width: '100%', padding: '4px' }}
+          >
+            <option value="">Не выбран</option>
+            {employees.map(emp => (
+              <option key={emp.id} value={emp.full_name}>
+                {emp.full_name}
+              </option>
+            ))}
+          </select>
+        );
+      } else {
+        return (
+          <input
+            type="date"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleCellBlur}
+            onKeyDown={handleKeyDown}
+            autoFocus
+            style={{ width: '100%', padding: '4px' }}
+          />
+        );
+      }
     }
     
     const displayValue = getDisplayValue(task, columnKey);
@@ -428,7 +470,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const getCellStyle = (task, columnKey) => {
     if (!isAdmin || task.is_section) return {};
     
-    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') {
+    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan' || columnKey === 'executor') {
       return {
         cursor: 'pointer',
         backgroundColor: editingCell?.taskId === task.id && editingCell?.field === columnKey ? '#ffffcc' : 'inherit'
@@ -507,7 +549,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         key={columnKey} 
                         style={getCellStyle(task, columnKey)}
                         onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
-                        title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') ? 'Двойной клик для редактирования' : ''}
+                        title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan' || columnKey === 'executor') ? 'Двойной клик для редактирования' : ''}
                       >
                         {getCellValue(task, columnKey)}
                       </td>
