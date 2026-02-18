@@ -132,4 +132,28 @@ export const executorsAPI = {
   delete: (id) => api.delete(`/executors/${id}`),
 };
 
+// Новые API для справочника техники
+export const equipmentAPI = {
+  // Получить список всей техники
+  getAll: (params = {}) => api.get('/equipment/', { params }),
+  
+  // Получить технику по ID
+  getById: (id) => api.get(`/equipment/${id}`),
+  
+  // Создать новую технику
+  create: (equipment) => api.post('/equipment/', equipment),
+  
+  // Обновить данные техники
+  update: (id, equipment) => api.put(`/equipment/${id}`, equipment),
+  
+  // Удалить технику
+  delete: (id) => api.delete(`/equipment/${id}`),
+  
+  // Деактивировать технику (безопасная альтернатива удалению)
+  deactivate: (id) => api.patch(`/equipment/${id}/deactivate`),
+  
+  // Активировать технику
+  activate: (id) => api.patch(`/equipment/${id}/activate`),
+};
+
 export default api;
