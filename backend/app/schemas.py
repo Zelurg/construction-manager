@@ -208,3 +208,58 @@ class DailyExecutorStats(BaseModel):
     executors_count: int
     responsible: Optional[Employee] = None
     executors: List[DailyExecutorWithEmployee]
+
+# Equipment schemas - схемы для справочника техники
+class EquipmentBase(BaseModel):
+    equipment_type: str = Field(..., min_length=1)
+    model: str = Field(..., min_length=1)
+    registration_number: str = Field(..., min_length=1)
+    is_active: bool = Field(default=True)
+
+class EquipmentCreate(EquipmentBase):
+    pass
+
+class EquipmentUpdate(BaseModel):
+    equipment_type: Optional[str] = Field(default=None, min_length=1)
+    model: Optional[str] = Field(default=None, min_length=1)
+    registration_number: Optional[str] = Field(default=None, min_length=1)
+    is_active: Optional[bool] = Field(default=None)
+
+class Equipment(EquipmentBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# DailyEquipmentUsage schemas - схемы для использования техники за день
+class DailyEquipmentUsageBase(BaseModel):
+    date: date
+    equipment_id: int = Field(..., gt=0)
+    machine_hours: float = Field(default=8.0, gt=0, le=24)
+
+class DailyEquipmentUsageCreate(DailyEquipmentUsageBase):
+    pass
+
+class DailyEquipmentUsageUpdate(BaseModel):
+    machine_hours: Optional[float] = Field(default=None, gt=0, le=24)
+
+class DailyEquipmentUsage(DailyEquipmentUsageBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Расширенная схема с информацией о технике
+class DailyEquipmentUsageWithEquipment(DailyEquipmentUsage):
+    equipment: Equipment
+
+# Схема для получения статистики по технике за день
+class DailyEquipmentStats(BaseModel):
+    date: date
+    total_machine_hours: float
+    total_work_machine_hours: float
+    equipment_count: int
+    equipment_usage: List[DailyEquipmentUsageWithEquipment]
