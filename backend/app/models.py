@@ -104,3 +104,31 @@ class DailyExecutor(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     employee = relationship("Employee", back_populates="daily_executors")
+
+# Модели для справочника техники
+class Equipment(Base):
+    """Модель техники - справочник"""
+    __tablename__ = "equipment"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    equipment_type = Column(String, nullable=False)  # Вид техники (экскаватор, кран, бульдозер и т.д.)
+    model = Column(String, nullable=False)  # Модель техники
+    registration_number = Column(String, nullable=False, unique=True)  # Гос. номер (уникальный)
+    is_active = Column(Boolean, default=True, nullable=False)  # Активна ли техника
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Связь с техникой, используемой в работах
+    daily_equipment_usage = relationship("DailyEquipmentUsage", back_populates="equipment")
+
+class DailyEquipmentUsage(Base):
+    """Модель использования техники за конкретный день"""
+    __tablename__ = "daily_equipment_usage"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False, index=True)  # Дата работы
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
+    machine_hours = Column(Float, nullable=False, default=8.0)  # Отработанные машиночасы
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    equipment = relationship("Equipment", back_populates="daily_equipment_usage")
