@@ -1,0 +1,221 @@
+/* Стили для модальных окон исполнителей и техники */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content.executors-modal {
+  background: white;
+  padding: 25px;
+  border-radius: 8px;
+  max-width: 800px;
+  width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 10px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.4em;
+  color: #333;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.close-button:hover {
+  color: #d32f2f;
+}
+
+.add-form {
+  background: #f5f5f5;
+  padding: 20px;
+  border-radius: 6px;
+  margin-bottom: 25px;
+}
+
+.add-form h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #444;
+}
+
+.form-row {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+}
+
+.form-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #555;
+  font-size: 0.9em;
+}
+
+.form-group select,
+.form-group input[type="number"] {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-group select:focus,
+.form-group input[type="number"]:focus {
+  outline: none;
+  border-color: #2196F3;
+}
+
+.btn-add {
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-add:hover {
+  background: #45a049;
+}
+
+.list-container {
+  margin-top: 20px;
+}
+
+.list-container h4 {
+  margin-bottom: 15px;
+  color: #444;
+}
+
+.no-data {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+  font-style: italic;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.usage-table thead {
+  background: #f5f5f5;
+}
+
+.usage-table th,
+.usage-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.usage-table th {
+  font-weight: 600;
+  color: #555;
+  font-size: 0.9em;
+  text-transform: uppercase;
+}
+
+.usage-table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.usage-table tfoot {
+  font-weight: bold;
+  background: #f5f5f5;
+}
+
+.hours-input {
+  width: 80px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.hours-input:focus {
+  outline: none;
+  border-color: #2196F3;
+}
+
+.btn-delete-small {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 5px;
+  transition: transform 0.2s;
+}
+
+.btn-delete-small:hover {
+  transform: scale(1.2);
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 1.1em;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .modal-content.executors-modal {
+    width: 95%;
+    padding: 15px;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .usage-table {
+    font-size: 0.9em;
+  }
+
+  .usage-table th,
+  .usage-table td {
+    padding: 8px;
+  }
+}
