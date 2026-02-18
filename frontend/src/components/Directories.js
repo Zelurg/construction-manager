@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import Employees from './Employees';
+import Equipment from './Equipment';
 import '../styles/Directories.css';
 
 /**
  * Компонент для управления справочниками
- * Пока есть только справочник сотрудников,
- * но структура позволяет добавлять новые
  */
 function Directories() {
   const [activeSubTab, setActiveSubTab] = useState('employees');
@@ -24,27 +23,18 @@ function Directories() {
         >
           Сотрудники
         </button>
-        {/* Здесь можно добавить другие справочники в будущем */}
-        {/*
         <button
           className={activeSubTab === 'equipment' ? 'active' : ''}
           onClick={() => setActiveSubTab('equipment')}
         >
-          Оборудование
+          Техника
         </button>
-        <button
-          className={activeSubTab === 'materials' ? 'active' : ''}
-          onClick={() => setActiveSubTab('materials')}
-        >
-          Материалы
-        </button>
-        */}
       </nav>
 
       {/* Контент выбранной подвкладки */}
       <div className="directories-content">
         {activeSubTab === 'employees' && <Employees />}
-        {/* Другие справочники будут здесь */}
+        {activeSubTab === 'equipment' && <Equipment />}
       </div>
     </div>
   );
