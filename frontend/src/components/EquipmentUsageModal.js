@@ -1,31 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { equipmentAPI, equipmentUsageAPI } from '../services/api';
-import '../styles/ExecutorsModal.css'; // Используем те же стили, что и для исполнителей
+import '../styles/ExecutorsModal.css';
 
-/**
- * Модальное окно для управления техникой за день
- */
-function EquipmentUsageModal({ date, onClose, onUpdate }) {
-  const [equipment, setEquipment] = useState([]); // Вся доступная техника
-  const [usage, setUsage] = useState([]); // Техника на этот день
+function EquipmentUsageModal({ date, brigadeId, onClose, onUpdate }) {
+  const [equipment, setEquipment] = useState([]);
+  const [usage, setUsage] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
   const [machineHours, setMachineHours] = useState(8.0);
 
   useEffect(() => {
     loadData();
-  }, [date]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, brigadeId]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      // Загружаем список активной техники
       const equipmentResponse = await equipmentAPI.getAll({ active_only: true });
       setEquipment(equipmentResponse.data);
 
-      // Загружаем технику на этот день
-      const usageResponse = await equipmentUsageAPI.getByDate(date);
-      setUsage(usageResponse.data);
+      // Загружаем статистику с фильтром по бригаде
+      const statsResponse = await equipmentUsageAPI.getStats(date, brigadeId);
+      setUsage(statsResponse.data?.equipment_usage || []);
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
       alert('Ошибка загрузки данных о технике');
@@ -39,42 +36,33 @@ function EquipmentUsageModal({ date, onClose, onUpdate }) {
       alert('Выберите технику');
       return;
     }
-
     if (machineHours <= 0 || machineHours > 24) {
       alert('Машиночасы должны быть от 0 до 24');
       return;
     }
-
     try {
       await equipmentUsageAPI.create({
-        date: date,
+        date,
         equipment_id: parseInt(selectedEquipmentId),
-        machine_hours: parseFloat(machineHours)
+        machine_hours: parseFloat(machineHours),
+        brigade_id: brigadeId ?? null,  // Передаём brigade_id
       });
-
-      // Обновляем список
       await loadData();
-      onUpdate(); // Обновляем родительский компонент
-
-      // Сбрасываем форму
+      onUpdate && onUpdate();
       setSelectedEquipmentId('');
       setMachineHours(8.0);
     } catch (error) {
       console.error('Ошибка добавления:', error);
-      const errorMessage = error.response?.data?.detail || 'Ошибка добавления техники';
-      alert(errorMessage);
+      alert(error.response?.data?.detail || 'Ошибка добавления техники');
     }
   };
 
   const handleDelete = async (usageId) => {
-    if (!window.confirm('Удалить эту технику из дня?')) {
-      return;
-    }
-
+    if (!window.confirm('Удалить эту технику из дня?')) return;
     try {
       await equipmentUsageAPI.delete(usageId);
       await loadData();
-      onUpdate();
+      onUpdate && onUpdate();
     } catch (error) {
       console.error('Ошибка удаления:', error);
       alert('Ошибка удаления техники');
@@ -86,20 +74,16 @@ function EquipmentUsageModal({ date, onClose, onUpdate }) {
       alert('Машиночасы должны быть от 0 до 24');
       return;
     }
-
     try {
-      await equipmentUsageAPI.update(usageId, {
-        machine_hours: parseFloat(newHours)
-      });
+      await equipmentUsageAPI.update(usageId, { machine_hours: parseFloat(newHours) });
       await loadData();
-      onUpdate();
+      onUpdate && onUpdate();
     } catch (error) {
       console.error('Ошибка обновления:', error);
       alert('Ошибка обновления машиночасов');
     }
   };
 
-  // Фильтруем доступную технику (исключаем уже добавленную)
   const usedEquipmentIds = usage.map(u => u.equipment_id);
   const availableEquipment = equipment.filter(e => !usedEquipmentIds.includes(e.id));
 
@@ -115,13 +99,12 @@ function EquipmentUsageModal({ date, onClose, onUpdate }) {
           <div className="loading">Загрузка...</div>
         ) : (
           <>
-            {/* Форма добавления */}
             <div className="add-form">
               <h4>Добавить технику</h4>
               <div className="form-row">
                 <div className="form-group">
                   <label>Техника</label>
-                  <select 
+                  <select
                     value={selectedEquipmentId}
                     onChange={(e) => setSelectedEquipmentId(e.target.value)}
                   >
@@ -133,26 +116,19 @@ function EquipmentUsageModal({ date, onClose, onUpdate }) {
                     ))}
                   </select>
                 </div>
-
                 <div className="form-group">
                   <label>Машиночасы</label>
                   <input
                     type="number"
                     value={machineHours}
                     onChange={(e) => setMachineHours(e.target.value)}
-                    min="0.1"
-                    max="24"
-                    step="0.5"
+                    min="0.1" max="24" step="0.5"
                   />
                 </div>
-
-                <button onClick={handleAdd} className="btn-add">
-                  + Добавить
-                </button>
+                <button onClick={handleAdd} className="btn-add">+ Добавить</button>
               </div>
             </div>
 
-            {/* Список добавленной техники */}
             <div className="list-container">
               <h4>Техника на этот день</h4>
               {usage.length === 0 ? (
@@ -181,9 +157,7 @@ function EquipmentUsageModal({ date, onClose, onUpdate }) {
                             type="number"
                             value={u.machine_hours}
                             onChange={(e) => handleUpdateMachineHours(u.id, e.target.value)}
-                            min="0.1"
-                            max="24"
-                            step="0.5"
+                            min="0.1" max="24" step="0.5"
                             className="hours-input"
                           />
                         </td>
@@ -192,18 +166,15 @@ function EquipmentUsageModal({ date, onClose, onUpdate }) {
                             onClick={() => handleDelete(u.id)}
                             className="btn-delete-small"
                             title="Удалить"
-                          >
-                            🗑️
-                          </button>
+                          >🗑️</button>
                         </td>
+
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan="4" style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                        Итого:
-                      </td>
+                      <td colSpan="4" style={{ textAlign: 'right', fontWeight: 'bold' }}>Итого:</td>
                       <td style={{ fontWeight: 'bold' }}>
                         {usage.reduce((sum, u) => sum + u.machine_hours, 0).toFixed(1)} м-ч
                       </td>
