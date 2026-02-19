@@ -8,40 +8,33 @@ import Directories from './components/Directories';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import Toolbar from './components/Toolbar';
+import ProjectSelect from './components/ProjectSelect';
+import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import authService from './services/authService';
 import { importExportAPI } from './services/api';
 import './styles/Toolbar.css';
 import './styles/GanttChart.css';
 
-function App() {
+// ─── Внутренний компонент (имеет доступ к ProjectContext) ──────────────────
+function AppInner() {
   const [activeTab, setActiveTab] = useState('schedule');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showGantt, setShowGantt] = useState(true);
-  
-  const columnSettingsHandlers = useRef({
-    schedule: null,
-    monthly: null,
-    daily: null
-  });
+  const { currentProject, setCurrentProject, clearProject } = useProject();
 
-  const filtersHandlers = useRef({
-    schedule: null,
-    monthly: null
-  });
-  
+  const columnSettingsHandlers = useRef({ schedule: null, monthly: null, daily: null });
+  const filtersHandlers = useRef({ schedule: null, monthly: null });
   const scheduleKey = useRef(0);
 
   useEffect(() => {
     const token = authService.getToken();
     const currentUser = authService.getCurrentUser();
-    
     if (token && currentUser) {
       setIsAuthenticated(true);
       setUser(currentUser);
     }
-    
     setLoading(false);
   }, []);
 
@@ -49,153 +42,143 @@ function App() {
     const currentUser = authService.getCurrentUser();
     setIsAuthenticated(true);
     setUser(currentUser);
+    // Сбрасываем выбранный объект при новом логине
+    clearProject();
   };
 
   const handleLogout = () => {
     authService.logout();
+    clearProject();
     setIsAuthenticated(false);
     setUser(null);
   };
 
+  const handleProjectSelect = (project) => {
+    setCurrentProject(project);
+    // При смене объекта сбрасываем вкладку на График
+    setActiveTab('schedule');
+    scheduleKey.current += 1;
+  };
+
+  const handleSwitchProject = () => {
+    // Не очищаем currentProject совсем — просто показываем экран выбора
+    // Очистка произойдёт только при выборе нового объекта
+    clearProject();
+  };
+
   const handleDownloadTemplate = async () => {
     try {
-      const response = await importExportAPI.downloadTemplate();
+      const response = await importExportAPI.exportTasks();
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'template_schedule.xlsx');
+      link.setAttribute('download', `export_${currentProject?.name || 'schedule'}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Ошибка скачивания шаблона:', error);
-      alert('Ошибка скачивания шаблона');
+      alert('Ошибка скачивания: ' + (error.response?.data?.detail || error.message));
     }
   };
 
   const handleUploadTemplate = async (file) => {
     try {
       const response = await importExportAPI.uploadTemplate(file);
-      alert(`Успешно обработано задач: ${response.data.tasks_processed}\n` +
-            (response.data.errors.length > 0 ? `Ошибки:\n${response.data.errors.join('\n')}` : ''));
+      alert(
+        `Успешно обработано задач: ${response.data.tasks_processed}\n` +
+        (response.data.errors.length > 0 ? `Ошибки:\n${response.data.errors.join('\n')}` : '')
+      );
       window.location.reload();
     } catch (error) {
-      console.error('Ошибка загрузки файла:', error);
       alert('Ошибка загрузки файла: ' + (error.response?.data?.detail || error.message));
     }
   };
 
-  const handleToggleGantt = () => {
-    setShowGantt(!showGantt);
-  };
-  
   const handleShowColumnSettings = () => {
     const handler = columnSettingsHandlers.current[activeTab];
-    if (handler) {
-      handler();
-    }
+    if (handler) handler();
   };
 
   const handleShowFilters = () => {
     const handler = filtersHandlers.current[activeTab];
-    if (handler) {
-      handler();
-    }
-  };
-  
-  const handleScheduleCleared = () => {
-    scheduleKey.current += 1;
+    if (handler) handler();
   };
 
-  if (loading) {
-    return <div>Загрузка...</div>;
-  }
+  const handleScheduleCleared = () => { scheduleKey.current += 1; };
 
-  const MainApp = () => (
+  if (loading) return <div>Загрузка...</div>;
+
+  // ─── Рабочее пространство объекта ─────────────────────────────────────────
+  const WorkspaceApp = () => (
     <div className="app">
       <header className="header">
         <div className="header-content">
-          <h1>Управление строительными проектами</h1>
+          <div className="header-left">
+            <h1>Управление строительными проектами</h1>
+            {currentProject && (
+              <div className="current-project-badge">
+                <span className="project-badge-icon">🏗</span>
+                <span className="project-badge-name">{currentProject.name}</span>
+                <button
+                  className="btn-switch-project"
+                  onClick={handleSwitchProject}
+                  title="Сменить объект"
+                >
+                  ⇄ Сменить объект
+                </button>
+              </div>
+            )}
+          </div>
           <div className="user-info-header">
             <span className="user-name">{user?.full_name}</span>
             <span className="user-role">({user?.role})</span>
-            <button onClick={handleLogout} className="btn-logout-header">
-              Выйти
-            </button>
+            <button onClick={handleLogout} className="btn-logout-header">Выйти</button>
           </div>
         </div>
       </header>
-      
+
       <nav className="tabs">
-        <button 
-          className={activeTab === 'schedule' ? 'active' : ''} 
-          onClick={() => setActiveTab('schedule')}
-        >
-          График
-        </button>
-        <button 
-          className={activeTab === 'monthly' ? 'active' : ''} 
-          onClick={() => setActiveTab('monthly')}
-        >
-          Наряд на месяц
-        </button>
-        <button 
-          className={activeTab === 'daily' ? 'active' : ''} 
-          onClick={() => setActiveTab('daily')}
-        >
-          Ежедневные наряды
-        </button>
-        <button 
-          className={activeTab === 'analytics' ? 'active' : ''} 
-          onClick={() => setActiveTab('analytics')}
-        >
-          Аналитика
-        </button>
-        <button 
-          className={activeTab === 'directories' ? 'active' : ''} 
-          onClick={() => setActiveTab('directories')}
-        >
-          Справочники
-        </button>
+        <button className={activeTab === 'schedule' ? 'active' : ''} onClick={() => setActiveTab('schedule')}>График</button>
+        <button className={activeTab === 'monthly'  ? 'active' : ''} onClick={() => setActiveTab('monthly')}>Наряд на месяц</button>
+        <button className={activeTab === 'daily'    ? 'active' : ''} onClick={() => setActiveTab('daily')}>Ежедневные наряды</button>
+        <button className={activeTab === 'analytics'? 'active' : ''} onClick={() => setActiveTab('analytics')}>Аналитика</button>
+        <button className={activeTab === 'directories'? 'active' : ''} onClick={() => setActiveTab('directories')}>Справочники</button>
         {user?.role === 'admin' && (
-          <button 
-            className={activeTab === 'admin' ? 'active' : ''} 
-            onClick={() => setActiveTab('admin')}
-          >
-            Админ-панель
-          </button>
+          <button className={activeTab === 'admin' ? 'active' : ''} onClick={() => setActiveTab('admin')}>Админ-панель</button>
         )}
       </nav>
 
-      <Toolbar 
+      <Toolbar
         activeTab={activeTab}
         showGantt={showGantt}
-        onToggleGantt={handleToggleGantt}
+        onToggleGantt={() => setShowGantt(!showGantt)}
         onShowColumnSettings={handleShowColumnSettings}
         onShowFilters={handleShowFilters}
         onScheduleCleared={handleScheduleCleared}
+        onDownloadTemplate={handleDownloadTemplate}
+        onUploadTemplate={handleUploadTemplate}
       />
 
       <main className="content">
         {activeTab === 'schedule' && (
-          <Schedule 
+          <Schedule
             key={scheduleKey.current}
             showGantt={showGantt}
-            onShowColumnSettings={(handler) => columnSettingsHandlers.current.schedule = handler}
-            onShowFilters={(handler) => filtersHandlers.current.schedule = handler}
+            onShowColumnSettings={(h) => (columnSettingsHandlers.current.schedule = h)}
+            onShowFilters={(h) => (filtersHandlers.current.schedule = h)}
           />
         )}
         {activeTab === 'monthly' && (
-          <MonthlyOrder 
+          <MonthlyOrder
             showGantt={showGantt}
-            onShowColumnSettings={(handler) => columnSettingsHandlers.current.monthly = handler}
-            onShowFilters={(handler) => filtersHandlers.current.monthly = handler}
+            onShowColumnSettings={(h) => (columnSettingsHandlers.current.monthly = h)}
+            onShowFilters={(h) => (filtersHandlers.current.monthly = h)}
           />
         )}
         {activeTab === 'daily' && (
-          <DailyOrders 
-            onShowColumnSettings={(handler) => columnSettingsHandlers.current.daily = handler}
+          <DailyOrders
+            onShowColumnSettings={(h) => (columnSettingsHandlers.current.daily = h)}
           />
         )}
         {activeTab === 'analytics' && <Analytics />}
@@ -208,29 +191,35 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route 
-          path="/login" 
+        <Route
+          path="/login"
           element={
-            !isAuthenticated ? (
-              <Login onLoginSuccess={handleLoginSuccess} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          } 
+            !isAuthenticated
+              ? <Login onLoginSuccess={handleLoginSuccess} />
+              : <Navigate to="/" replace />
+          }
         />
-
-        <Route 
-          path="/" 
+        <Route
+          path="/"
           element={
-            isAuthenticated ? (
-              <MainApp />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          } 
+            !isAuthenticated
+              ? <Navigate to="/login" replace />
+              : !currentProject
+                ? <ProjectSelect user={user} onLogout={handleLogout} onSelect={handleProjectSelect} />
+                : <WorkspaceApp />
+          }
         />
       </Routes>
     </Router>
+  );
+}
+
+// ─── Корневой компонент — оборачивает в Provider ───────────────────────────
+function App() {
+  return (
+    <ProjectProvider>
+      <AppInner />
+    </ProjectProvider>
   );
 }
 
