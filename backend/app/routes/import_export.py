@@ -61,7 +61,7 @@ async def import_tasks(
                 continue
             codes_seen.add(code)
 
-            # Определяем уровень по отступам
+            # Определяем уровень по отступам в наименовании
             raw_name = task_data.get('name', '')
             if isinstance(raw_name, str):
                 spaces = len(raw_name) - len(raw_name.lstrip())
@@ -69,7 +69,7 @@ async def import_tasks(
             else:
                 level = 0
 
-            # Определяем is_section
+            # Определяем is_section (нет единицы измерения)
             unit = task_data.get('unit')
             is_section = not unit or str(unit).strip() == ''
 
@@ -94,15 +94,26 @@ async def import_tasks(
                         pass
                 return None
 
+            start_contract = parse_date(task_data.get('start_date_contract'))
+            end_contract   = parse_date(task_data.get('end_date_contract'))
+            start_plan     = parse_date(task_data.get('start_date_plan'))
+            end_plan       = parse_date(task_data.get('end_date_plan'))
+
+            # Если плановые даты не заполнены — копируем из контрактных
+            if start_plan is None:
+                start_plan = start_contract
+            if end_plan is None:
+                end_plan = end_contract
+
             tasks_to_create.append({
                 "code": code, "name": name.strip(),
                 "unit": str(unit).strip() if unit and str(unit).strip() else None,
                 "volume_plan": parse_float(task_data.get('volume_plan')),
                 "volume_fact": 0.0,
-                "start_date_contract": parse_date(task_data.get('start_date_contract')),
-                "end_date_contract": parse_date(task_data.get('end_date_contract')),
-                "start_date_plan": parse_date(task_data.get('start_date_plan')),
-                "end_date_plan": parse_date(task_data.get('end_date_plan')),
+                "start_date_contract": start_contract,
+                "end_date_contract":   end_contract,
+                "start_date_plan":     start_plan,
+                "end_date_plan":       end_plan,
                 "unit_price": parse_float(task_data.get('unit_price')),
                 "labor_per_unit": parse_float(task_data.get('labor_per_unit')),
                 "machine_hours_per_unit": parse_float(task_data.get('machine_hours_per_unit')),
@@ -116,7 +127,7 @@ async def import_tasks(
         except Exception as e:
             errors.append(f"Строка {row_num}: {str(e)}")
 
-    # Определяем parent_code
+    # Определяем parent_code через стек уровней
     stack = []
     for t in tasks_to_create:
         while stack and stack[-1]['level'] >= t['level']:
