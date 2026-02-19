@@ -5,16 +5,13 @@ from typing import Optional, List
 class TaskBase(BaseModel):
     code: str
     name: str
-    unit: Optional[str] = None  # Опционально для разделов
+    unit: Optional[str] = None
     volume_plan: Optional[float] = 0
     volume_fact: Optional[float] = 0
-    # Контрактные даты
     start_date_contract: Optional[date] = None
     end_date_contract: Optional[date] = None
-    # Плановые даты
     start_date_plan: Optional[date] = None
     end_date_plan: Optional[date] = None
-    # Дополнительные поля
     unit_price: Optional[float] = 0
     labor_per_unit: Optional[float] = 0
     machine_hours_per_unit: Optional[float] = 0
@@ -32,13 +29,10 @@ class TaskUpdate(BaseModel):
     unit: Optional[str] = None
     volume_plan: Optional[float] = None
     volume_fact: Optional[float] = None
-    # Контрактные даты
     start_date_contract: Optional[date] = None
     end_date_contract: Optional[date] = None
-    # Плановые даты
     start_date_plan: Optional[date] = None
     end_date_plan: Optional[date] = None
-    # Дополнительные поля
     unit_price: Optional[float] = None
     labor_per_unit: Optional[float] = None
     machine_hours_per_unit: Optional[float] = None
@@ -67,11 +61,33 @@ class MonthlyTask(MonthlyTaskBase):
     class Config:
         from_attributes = True
 
+# --- Brigade schemas ---
+
+class BrigadeCreate(BaseModel):
+    date: date
+    name: str = Field(default="Бригада", min_length=1)
+
+class BrigadeUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1)
+
+class Brigade(BaseModel):
+    id: int
+    date: date
+    name: str
+    order: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- DailyWork schemas ---
+
 class DailyWorkBase(BaseModel):
     task_id: int
     date: date
     volume: float
     description: Optional[str] = None
+    brigade_id: Optional[int] = None
 
 class DailyWorkCreate(DailyWorkBase):
     pass
@@ -87,19 +103,16 @@ class DailyWorkWithTask(DailyWork):
     name: str
     unit: str
 
-# Analytics schema - расширенная версия
+# Analytics schema
 class Analytics(BaseModel):
     total_progress_percent: float
     time_progress_percent: float
-    # Трудозатраты
     labor_plan: float
     labor_fact: float
     labor_remaining: float
-    # Машиночасы
     machine_hours_plan: float
     machine_hours_fact: float
     machine_hours_remaining: float
-    # Стоимость
     cost_plan: float
     cost_fact: float
     cost_remaining: float
@@ -153,7 +166,7 @@ class ImportResult(BaseModel):
     tasks_processed: int
     errors: List[str] = []
 
-# Employee schemas - новые схемы для сотрудников
+# Employee schemas
 class EmployeeBase(BaseModel):
     full_name: str = Field(..., min_length=1)
     position: str = Field(..., min_length=1)
@@ -175,12 +188,13 @@ class Employee(EmployeeBase):
     class Config:
         from_attributes = True
 
-# DailyExecutor schemas - схемы для исполнителей работ за день
+# DailyExecutor schemas
 class DailyExecutorBase(BaseModel):
     date: date
     employee_id: int = Field(..., gt=0)
     hours_worked: float = Field(default=10.0, gt=0, le=24)
     is_responsible: bool = Field(default=False)
+    brigade_id: Optional[int] = None
 
 class DailyExecutorCreate(DailyExecutorBase):
     pass
@@ -196,11 +210,9 @@ class DailyExecutor(DailyExecutorBase):
     class Config:
         from_attributes = True
 
-# Расширенная схема с информацией о сотруднике
 class DailyExecutorWithEmployee(DailyExecutor):
     employee: Employee
 
-# Схема для получения статистики по дню
 class DailyExecutorStats(BaseModel):
     date: date
     total_hours_worked: float
@@ -209,7 +221,7 @@ class DailyExecutorStats(BaseModel):
     responsible: Optional[Employee] = None
     executors: List[DailyExecutorWithEmployee]
 
-# Equipment schemas - схемы для справочника техники
+# Equipment schemas
 class EquipmentBase(BaseModel):
     equipment_type: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
@@ -233,11 +245,12 @@ class Equipment(EquipmentBase):
     class Config:
         from_attributes = True
 
-# DailyEquipmentUsage schemas - схемы для использования техники за день
+# DailyEquipmentUsage schemas
 class DailyEquipmentUsageBase(BaseModel):
     date: date
     equipment_id: int = Field(..., gt=0)
     machine_hours: float = Field(default=8.0, gt=0, le=24)
+    brigade_id: Optional[int] = None
 
 class DailyEquipmentUsageCreate(DailyEquipmentUsageBase):
     pass
@@ -252,14 +265,25 @@ class DailyEquipmentUsage(DailyEquipmentUsageBase):
     class Config:
         from_attributes = True
 
-# Расширенная схема с информацией о технике
 class DailyEquipmentUsageWithEquipment(DailyEquipmentUsage):
     equipment: Equipment
 
-# Схема для получения статистики по технике за день
 class DailyEquipmentStats(BaseModel):
     date: date
     total_machine_hours: float
     total_work_machine_hours: float
     equipment_count: int
     equipment_usage: List[DailyEquipmentUsageWithEquipment]
+
+# Brigade stats (полная инфа по бригаде за день)
+class BrigadeStats(BaseModel):
+    brigade: Brigade
+    executors_count: int
+    total_hours_worked: float
+    total_labor_hours: float
+    responsible: Optional[Employee] = None
+    executors: List[DailyExecutorWithEmployee]
+    equipment_count: int
+    total_machine_hours: float
+    equipment_usage: List[DailyEquipmentUsageWithEquipment]
+    works: List[dict]  # список работ с деталями

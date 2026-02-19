@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { dailyAPI, scheduleAPI, employeesAPI, executorsAPI, equipmentUsageAPI } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  dailyAPI, scheduleAPI, employeesAPI,
+  equipmentUsageAPI, brigadesAPI
+} from '../services/api';
 import websocketService from '../services/websocket';
 import ColumnSettings from './ColumnSettings';
 import EquipmentUsageModal from './EquipmentUsageModal';
@@ -7,25 +10,29 @@ import ExecutorsModal from './ExecutorsModal';
 import '../styles/DailyOrders.css';
 
 function DailyOrders({ onShowColumnSettings }) {
-  const [works, setWorks] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [allTasks, setAllTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
-  const [showModal, setShowModal] = useState(false);
-  const [showExecutorsModal, setShowExecutorsModal] = useState(false);
-  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
-  const [showColumnSettings, setShowColumnSettings] = useState(false);
-  const [formData, setFormData] = useState({
-    task_id: '',
-    volume: '',
-    description: ''
-  });
 
+  // Бригады со всей статистикой
+  const [brigadesStats, setBrigadesStats] = useState([]);
+
+  // Общие данные
+  const [tasks, setTasks] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [executorsStats, setExecutorsStats] = useState(null);
-  const [equipmentStats, setEquipmentStats] = useState(null);
+
+  // Модалки
+  const [showAddWorkModal, setShowAddWorkModal] = useState(false);
+  const [addWorkBrigadeId, setAddWorkBrigadeId] = useState(null);
+  const [showExecutorsModal, setShowExecutorsModal] = useState(false);
+  const [executorsModalBrigadeId, setExecutorsModalBrigadeId] = useState(null);
+  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
+  const [equipmentModalBrigadeId, setEquipmentModalBrigadeId] = useState(null);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+
+  // Форма добавления работы
+  const [formData, setFormData] = useState({ task_id: '', volume: '', description: '' });
 
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -54,132 +61,112 @@ function DailyOrders({ onShowColumnSettings }) {
     }
   }, [onShowColumnSettings]);
 
+  const loadAll = useCallback(async () => {
+    try {
+      const [brigRes, tasksRes, empRes] = await Promise.all([
+        brigadesAPI.getStats(selectedDate),
+        scheduleAPI.getTasks(),
+        employeesAPI.getAll({ active_only: true }),
+      ]);
+      setBrigadesStats(brigRes.data);
+      setAllTasks(tasksRes.data);
+      setTasks(tasksRes.data.filter(t => !t.is_section));
+      setEmployees(empRes.data);
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error);
+    }
+  }, [selectedDate]);
+
   useEffect(() => {
-    loadDailyWorks();
-    loadTasks();
-    loadEmployees();
-    loadExecutorsStats();
-    loadEquipmentStats();
+    loadAll();
 
     websocketService.connect();
 
-    const handleDailyWorkCreated = (message) => {
-      console.log('✅ WebSocket: daily_work_created', message);
-      loadDailyWorks();
-      loadExecutorsStats();
-      loadEquipmentStats();
-    };
+    const reload = () => loadAll();
 
-    const handleTaskUpdated = (message) => {
-      console.log('✅ WebSocket: task_updated', message);
-      loadDailyWorks();
-      loadTasks();
-      loadExecutorsStats();
-      loadEquipmentStats();
-    };
-
-    const handleExecutorChanged = (message) => {
-      console.log('✅ WebSocket: executor changed', message);
-      loadExecutorsStats();
-    };
-
-    const handleEquipmentChanged = (message) => {
-      console.log('✅ WebSocket: equipment changed', message);
-      loadEquipmentStats();
-    };
-
-    console.log('🔌 Подписка на WebSocket события...');
-    websocketService.on('daily_work_created', handleDailyWorkCreated);
-    websocketService.on('task_updated', handleTaskUpdated);
-    websocketService.on('executor_added', handleExecutorChanged);
-    websocketService.on('executor_updated', handleExecutorChanged);
-    websocketService.on('executor_deleted', handleExecutorChanged);
-    websocketService.on('equipment_usage_added', handleEquipmentChanged);
-    websocketService.on('equipment_usage_updated', handleEquipmentChanged);
-    websocketService.on('equipment_usage_deleted', handleEquipmentChanged);
+    websocketService.on('daily_work_created', reload);
+    websocketService.on('task_updated', reload);
+    websocketService.on('executor_added', reload);
+    websocketService.on('executor_updated', reload);
+    websocketService.on('executor_deleted', reload);
+    websocketService.on('equipment_usage_added', reload);
+    websocketService.on('equipment_usage_updated', reload);
+    websocketService.on('equipment_usage_deleted', reload);
+    websocketService.on('brigade_created', reload);
+    websocketService.on('brigade_updated', reload);
+    websocketService.on('brigade_deleted', reload);
 
     return () => {
-      console.log('❌ Отписка от WebSocket событий');
-      websocketService.off('daily_work_created', handleDailyWorkCreated);
-      websocketService.off('task_updated', handleTaskUpdated);
-      websocketService.off('executor_added', handleExecutorChanged);
-      websocketService.off('executor_updated', handleExecutorChanged);
-      websocketService.off('executor_deleted', handleExecutorChanged);
-      websocketService.off('equipment_usage_added', handleEquipmentChanged);
-      websocketService.off('equipment_usage_updated', handleEquipmentChanged);
-      websocketService.off('equipment_usage_deleted', handleEquipmentChanged);
+      websocketService.off('daily_work_created', reload);
+      websocketService.off('task_updated', reload);
+      websocketService.off('executor_added', reload);
+      websocketService.off('executor_updated', reload);
+      websocketService.off('executor_deleted', reload);
+      websocketService.off('equipment_usage_added', reload);
+      websocketService.off('equipment_usage_updated', reload);
+      websocketService.off('equipment_usage_deleted', reload);
+      websocketService.off('brigade_created', reload);
+      websocketService.off('brigade_updated', reload);
+      websocketService.off('brigade_deleted', reload);
     };
-  }, [selectedDate]);
+  }, [loadAll]);
 
-  const loadDailyWorks = async () => {
+  // --- Добавление бригады ---
+  const handleAddBrigade = async () => {
     try {
-      const response = await dailyAPI.getWorks(selectedDate);
-      setWorks(response.data);
+      const num = brigadesStats.length + 1;
+      await brigadesAPI.create({ date: selectedDate, name: `Бригада ${num}` });
+      await loadAll();
     } catch (error) {
-      console.error('Ошибка загрузки ежедневных работ:', error);
+      console.error('Ошибка создания бригады:', error);
+      alert('Ошибка создания бригады');
     }
   };
 
-  const loadTasks = async () => {
+  // --- Удаление бригады ---
+  const handleDeleteBrigade = async (brigadeId, brigadeName) => {
+    if (!window.confirm(`Удалить "${brigadeName}"? Работы, исполнители и техника этой бригады останутся в БД, но открепятся от неё.`)) return;
     try {
-      const response = await scheduleAPI.getTasks();
-      setAllTasks(response.data);
-      const workTasks = response.data.filter(task => !task.is_section);
-      setTasks(workTasks);
+      await brigadesAPI.delete(brigadeId);
+      await loadAll();
     } catch (error) {
-      console.error('Ошибка загрузки задач:', error);
+      console.error('Ошибка удаления бригады:', error);
+      alert('Ошибка удаления бригады');
     }
   };
 
-  const loadEmployees = async () => {
+  // --- Переименование бригады ---
+  const handleRenameBrigade = async (brigadeId, currentName) => {
+    const newName = window.prompt('Новое название бригады:', currentName);
+    if (!newName || newName.trim() === '') return;
     try {
-      const response = await employeesAPI.getAll({ active_only: true });
-      setEmployees(response.data);
+      await brigadesAPI.update(brigadeId, { name: newName.trim() });
+      await loadAll();
     } catch (error) {
-      console.error('Ошибка загрузки сотрудников:', error);
+      console.error('Ошибка переименования:', error);
+      alert('Ошибка переименования бригады');
     }
   };
 
-  const loadExecutorsStats = async () => {
-    try {
-      console.log('📊 Загрузка статистики исполнителей...');
-      const response = await executorsAPI.getStats(selectedDate);
-      console.log('✅ Статистика загружена:', response.data);
-      setExecutorsStats(response.data);
-    } catch (error) {
-      console.error('Ошибка загрузки статистики исполнителей:', error);
-    }
-  };
-
-  const loadEquipmentStats = async () => {
-    try {
-      console.log('📊 Загрузка статистики техники...');
-      const response = await equipmentUsageAPI.getStats(selectedDate);
-      console.log('✅ Статистика техники загружена:', response.data);
-      setEquipmentStats(response.data);
-    } catch (error) {
-      console.error('Ошибка загрузки статистики техники:', error);
-    }
-  };
-
-  const handleAddWork = () => {
+  // --- Добавление работы ---
+  const handleOpenAddWork = (brigadeId) => {
+    setAddWorkBrigadeId(brigadeId);
     setFormData({ task_id: '', volume: '', description: '' });
-    setShowModal(true);
+    setShowAddWorkModal(true);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmitWork = async (e) => {
     e.preventDefault();
     try {
-      const workData = {
+      await dailyAPI.createWork({
         task_id: parseInt(formData.task_id),
         date: selectedDate,
         volume: parseFloat(formData.volume),
-        description: formData.description || null
-      };
-      await dailyAPI.createWork(workData);
-      setShowModal(false);
-      await loadDailyWorks();
-      await loadTasks();
+        description: formData.description || null,
+        brigade_id: addWorkBrigadeId,
+      });
+      setShowAddWorkModal(false);
+      await loadAll();
     } catch (error) {
       alert('Ошибка при добавлении работы');
       console.error(error);
@@ -198,17 +185,14 @@ function DailyOrders({ onShowColumnSettings }) {
       if (parentTask) {
         breadcrumbs.unshift(parentTask.name);
         currentCode = parentTask.parent_code;
-      } else {
-        break;
-      }
+      } else break;
     }
     return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
   };
 
   const getCellValue = (work, columnKey) => {
-    const task = allTasks.find(t => t.code === work.code);
-    switch(columnKey) {
-      case 'name':
+    switch (columnKey) {
+      case 'name': {
         const breadcrumb = getBreadcrumb(work);
         return breadcrumb ? (
           <span>
@@ -216,63 +200,47 @@ function DailyOrders({ onShowColumnSettings }) {
             {work.name}
           </span>
         ) : work.name;
+      }
       case 'labor_total':
-        if (!task) return '-';
-        return (work.volume * (task.labor_per_unit || 0)).toFixed(2);
+        return work.labor_per_unit != null
+          ? (work.volume * (work.labor_per_unit || 0)).toFixed(2)
+          : '-';
       case 'cost_total':
-        if (!task) return '-';
-        return (work.volume * (task.unit_price || 0)).toFixed(2);
+        return work.unit_price != null
+          ? (work.volume * (work.unit_price || 0)).toFixed(2)
+          : '-';
       case 'machine_hours_total':
-        if (!task) return '-';
-        return (work.volume * (task.machine_hours_per_unit || 0)).toFixed(2);
-      case 'executor':
-      case 'unit_price':
-      case 'labor_per_unit':
-      case 'machine_hours_per_unit':
-        if (!task) return '-';
-        return task[columnKey] !== undefined && task[columnKey] !== null ? task[columnKey] : '-';
+        return work.machine_hours_per_unit != null
+          ? (work.volume * (work.machine_hours_per_unit || 0)).toFixed(2)
+          : '-';
       case 'description':
         return work[columnKey] || '-';
       default:
-        return work[columnKey] || '-';
+        return work[columnKey] !== undefined && work[columnKey] !== null ? work[columnKey] : '-';
     }
   };
 
-  const getColumnLabel = (columnKey) => {
-    const column = availableColumns.find(col => col.key === columnKey);
-    return column ? column.label : columnKey;
+  const getColumnLabel = (key) => {
+    const col = availableColumns.find(c => c.key === key);
+    return col ? col.label : key;
   };
 
-  const handleSaveColumnSettings = (newVisibleColumns) => {
-    setVisibleColumns(newVisibleColumns);
-    localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(newVisibleColumns));
+  const handleSaveColumnSettings = (cols) => {
+    setVisibleColumns(cols);
+    localStorage.setItem('dailyOrdersVisibleColumns', JSON.stringify(cols));
   };
 
-  const getEfficiencyStatus = () => {
-    if (!executorsStats) return { color: 'gray', text: '', label: '' };
-    const needed = executorsStats.total_labor_hours;
-    const worked = executorsStats.total_hours_worked;
+  const getEfficiencyStatus = (worked, needed) => {
+    if (needed == null) return { color: 'gray', label: '' };
     const diff = needed - worked;
     if (Math.abs(diff) < 1) return { color: 'blue', text: needed.toFixed(1), label: 'норма' };
     if (diff > 0) return { color: 'green', text: needed.toFixed(1), label: 'перевыполнение' };
     return { color: 'red', text: needed.toFixed(1), label: 'отставание' };
   };
-
-  const getEquipmentEfficiencyStatus = () => {
-    if (!equipmentStats) return { color: 'gray', text: '', label: '' };
-    const needed = equipmentStats.total_work_machine_hours;
-    const worked = equipmentStats.total_machine_hours;
-    const diff = needed - worked;
-    if (Math.abs(diff) < 1) return { color: 'blue', text: needed.toFixed(1), label: 'норма' };
-    if (diff > 0) return { color: 'green', text: needed.toFixed(1), label: 'перевыполнение' };
-    return { color: 'red', text: needed.toFixed(1), label: 'отставание' };
-  };
-
-  const efficiencyStatus = getEfficiencyStatus();
-  const equipmentEfficiencyStatus = getEquipmentEfficiencyStatus();
 
   return (
     <div className="daily-orders">
+      {/* Шапка: выбор даты и кнопка добавить бригаду */}
       <div className="controls-header">
         <div className="date-selector">
           <label>Выберите дату:</label>
@@ -282,85 +250,131 @@ function DailyOrders({ onShowColumnSettings }) {
             onChange={(e) => setSelectedDate(e.target.value)}
           />
         </div>
+        <button onClick={handleAddBrigade} className="btn-primary">
+          + Добавить бригаду
+        </button>
+      </div>
 
-        {(executorsStats?.executors_count > 0 || equipmentStats?.equipment_count > 0) && (
-          <div className="executors-info">
-            {executorsStats && executorsStats.executors_count > 0 && (
-              <div className="stats-row">
-                <span>👥 {executorsStats.executors_count} чел.</span>
-                <span>⏱️ {executorsStats.total_hours_worked.toFixed(1)} ч/ч</span>
-                <span style={{ color: efficiencyStatus.color }}>
-                  📊 {efficiencyStatus.text} ч/ч ({efficiencyStatus.label})
-                </span>
-                {executorsStats.responsible && (
-                  <span>👨‍💼 Ответственный: {executorsStats.responsible.full_name}</span>
-                )}
-              </div>
-            )}
-            {equipmentStats && equipmentStats.equipment_count > 0 && (
-              <div className="stats-row">
-                <span>🚜 {equipmentStats.equipment_count} ед.</span>
-                <span>⏱️ {equipmentStats.total_machine_hours.toFixed(1)} м-ч</span>
-                <span style={{ color: equipmentEfficiencyStatus.color }}>
-                  📊 {equipmentEfficiencyStatus.text} м-ч ({equipmentEfficiencyStatus.label})
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => setShowExecutorsModal(true)} className="btn-secondary">
-            👥 Указать исполнителей
-          </button>
-          <button onClick={() => setShowEquipmentModal(true)} className="btn-secondary">
-            🚜 Указать технику
-          </button>
-          <button onClick={handleAddWork} className="btn-primary">
-            + Внести объём
-          </button>
+      {/* Блоки бригад */}
+      {brigadesStats.length === 0 ? (
+        <div className="no-brigades-hint">
+          Нажмите «+ Добавить бригаду», чтобы начать вносить данные за этот день.
         </div>
-      </div>
+      ) : (
+        brigadesStats.map((bs) => {
+          const efEx = getEfficiencyStatus(bs.total_hours_worked, bs.total_labor_hours);
+          const efEq = getEfficiencyStatus(bs.total_machine_hours,
+            bs.works.reduce((s, w) => s + (w.volume * (w.machine_hours_per_unit || 0)), 0));
 
-      <div className="table-container">
-        <table className="tasks-table">
-          <thead>
-            <tr>
-              {visibleColumns.map(columnKey => (
-                <th key={columnKey}>{getColumnLabel(columnKey)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {works.length === 0 ? (
-              <tr>
-                <td colSpan={visibleColumns.length} style={{ textAlign: 'center', padding: '20px' }}>
-                  Нет данных за выбранную дату
-                </td>
-              </tr>
-            ) : (
-              works.map(work => (
-                <tr key={work.id}>
-                  {visibleColumns.map(columnKey => (
-                    <td key={columnKey}>{getCellValue(work, columnKey)}</td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+          return (
+            <div key={bs.brigade.id} className="brigade-block">
+              {/* Заголовок бригады */}
+              <div className="brigade-header">
+                <div className="brigade-title-row">
+                  <h3 className="brigade-name">{bs.brigade.name}</h3>
+                  <div className="brigade-actions">
+                    <button
+                      onClick={() => handleRenameBrigade(bs.brigade.id, bs.brigade.name)}
+                      className="btn-icon" title="Переименовать"
+                    >✏️</button>
+                    <button
+                      onClick={() => handleDeleteBrigade(bs.brigade.id, bs.brigade.name)}
+                      className="btn-icon" title="Удалить бригаду"
+                    >🗑️</button>
+                  </div>
+                </div>
 
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                {/* Статистика бригады */}
+                <div className="executors-info">
+                  {(bs.executors_count > 0 || bs.responsible) && (
+                    <div className="stats-row">
+                      {bs.executors_count > 0 && (
+                        <>
+                          <span>👥 {bs.executors_count} чел.</span>
+                          <span>⏱️ {bs.total_hours_worked.toFixed(1)} ч/ч</span>
+                          <span style={{ color: efEx.color }}>
+                            📊 {efEx.text} ч/ч ({efEx.label})
+                          </span>
+                        </>
+                      )}
+                      {bs.responsible && (
+                        <span>👨‍💼 Ответственный: {bs.responsible.full_name}</span>
+                      )}
+                    </div>
+                  )}
+                  {bs.equipment_count > 0 && (
+                    <div className="stats-row">
+                      <span>🚜 {bs.equipment_count} ед.</span>
+                      <span>⏱️ {bs.total_machine_hours.toFixed(1)} м-ч</span>
+                      <span style={{ color: efEq.color }}>
+                        📊 {efEq.text} м-ч ({efEq.label})
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Кнопки управления бригадой */}
+                <div className="brigade-controls">
+                  <button
+                    onClick={() => { setExecutorsModalBrigadeId(bs.brigade.id); setShowExecutorsModal(true); }}
+                    className="btn-secondary"
+                  >👥 Исполнители</button>
+                  <button
+                    onClick={() => { setEquipmentModalBrigadeId(bs.brigade.id); setShowEquipmentModal(true); }}
+                    className="btn-secondary"
+                  >🚜 Техника</button>
+                  <button
+                    onClick={() => handleOpenAddWork(bs.brigade.id)}
+                    className="btn-primary"
+                  >+ Внести объём</button>
+                </div>
+              </div>
+
+              {/* Таблица работ бригады */}
+              <div className="table-container">
+                <table className="tasks-table">
+                  <thead>
+                    <tr>
+                      {visibleColumns.map(key => (
+                        <th key={key}>{getColumnLabel(key)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bs.works.length === 0 ? (
+                      <tr>
+                        <td colSpan={visibleColumns.length} style={{ textAlign: 'center', padding: '12px', color: '#999' }}>
+                          Работы не внесены
+                        </td>
+                      </tr>
+                    ) : (
+                      bs.works.map(work => (
+                        <tr key={work.id}>
+                          {visibleColumns.map(key => (
+                            <td key={key}>{getCellValue(work, key)}</td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Модалка добавления работы */}
+      {showAddWorkModal && (
+        <div className="modal-overlay" onClick={() => setShowAddWorkModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Внести объём работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmitWork}>
               <div className="form-group">
                 <label>Выберите работу *</label>
                 <select
                   value={formData.task_id}
-                  onChange={(e) => setFormData({...formData, task_id: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, task_id: e.target.value })}
                   required
                 >
                   <option value="">Выберите...</option>
@@ -372,28 +386,27 @@ function DailyOrders({ onShowColumnSettings }) {
                 </select>
               </div>
 
-              {formData.task_id && (
-                <div className="task-info" style={{
-                  background: '#f5f5f5',
-                  padding: '10px',
-                  borderRadius: '4px',
-                  marginBottom: '15px',
-                  fontSize: '14px'
-                }}>
-                  <strong>Информация о задаче:</strong><br/>
-                  План: {getTaskInfo(parseInt(formData.task_id))?.volume_plan} {getTaskInfo(parseInt(formData.task_id))?.unit}<br/>
-                  Факт: {getTaskInfo(parseInt(formData.task_id))?.volume_fact} {getTaskInfo(parseInt(formData.task_id))?.unit}<br/>
-                  Осталось: {(getTaskInfo(parseInt(formData.task_id))?.volume_plan - getTaskInfo(parseInt(formData.task_id))?.volume_fact).toFixed(2)} {getTaskInfo(parseInt(formData.task_id))?.unit}
-                </div>
-              )}
+              {formData.task_id && (() => {
+                const t = getTaskInfo(parseInt(formData.task_id));
+                return t ? (
+                  <div className="task-info" style={{
+                    background: '#f5f5f5', padding: '10px',
+                    borderRadius: '4px', marginBottom: '15px', fontSize: '14px'
+                  }}>
+                    <strong>Информация о задаче:</strong><br />
+                    План: {t.volume_plan} {t.unit}<br />
+                    Факт: {t.volume_fact} {t.unit}<br />
+                    Осталось: {(t.volume_plan - t.volume_fact).toFixed(2)} {t.unit}
+                  </div>
+                ) : null;
+              })()}
 
               <div className="form-group">
                 <label>Объем выполненных работ *</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="number" step="0.01"
                   value={formData.volume}
-                  onChange={(e) => setFormData({...formData, volume: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
                   placeholder="Введите объём"
                   required
                 />
@@ -403,7 +416,7 @@ function DailyOrders({ onShowColumnSettings }) {
                 <label>Описание (необязательно)</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Комментарий к выполненным работам"
                   rows="3"
                   style={{ width: '100%', resize: 'vertical' }}
@@ -411,41 +424,36 @@ function DailyOrders({ onShowColumnSettings }) {
               </div>
 
               <div className="modal-actions">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-cancel">
-                  Отмена
-                </button>
-                <button type="submit" className="btn-submit">
-                  Сохранить
-                </button>
+                <button type="button" onClick={() => setShowAddWorkModal(false)} className="btn-cancel">Отмена</button>
+                <button type="submit" className="btn-submit">Сохранить</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* Модалка исполнителей */}
       {showExecutorsModal && (
         <ExecutorsModal
           date={selectedDate}
           employees={employees}
+          brigadeId={executorsModalBrigadeId}
           onClose={() => setShowExecutorsModal(false)}
-          onUpdate={() => {
-            loadDailyWorks();
-            loadExecutorsStats();
-          }}
+          onUpdate={loadAll}
         />
       )}
 
+      {/* Модалка техники */}
       {showEquipmentModal && (
         <EquipmentUsageModal
           date={selectedDate}
+          brigadeId={equipmentModalBrigadeId}
           onClose={() => setShowEquipmentModal(false)}
-          onUpdate={() => {
-            loadDailyWorks();
-            loadEquipmentStats();
-          }}
+          onUpdate={loadAll}
         />
       )}
 
+      {/* Настройки колонок */}
       {showColumnSettings && (
         <ColumnSettings
           availableColumns={availableColumns}

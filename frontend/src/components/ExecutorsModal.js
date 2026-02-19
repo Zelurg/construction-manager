@@ -2,14 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { executorsAPI } from '../services/api';
 import '../styles/ExecutorsModal.css';
 
-/**
- * Модальное окно для управления исполнителями за день
- * UI максимально повторяет EquipmentUsageModal.
- */
-function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
+function ExecutorsModal({ date, employees = [], brigadeId, onClose, onUpdate }) {
   const [loading, setLoading] = useState(true);
   const [executors, setExecutors] = useState([]);
-
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [hoursWorked, setHoursWorked] = useState(10.0);
   const [responsibleId, setResponsibleId] = useState('');
@@ -17,15 +12,14 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [date, brigadeId]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const statsResponse = await executorsAPI.getStats(date);
+      const statsResponse = await executorsAPI.getStats(date, brigadeId);
       const list = statsResponse.data?.executors || [];
       setExecutors(list);
-
       const responsibleExec = list.find(e => e.is_responsible);
       setResponsibleId(responsibleExec ? responsibleExec.employee_id.toString() : '');
     } catch (error) {
@@ -38,19 +32,22 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
 
   const responsibleEmployeeIdNum = responsibleId ? parseInt(responsibleId) : null;
 
-  const usedEmployeeIds = useMemo(() => {
-    return executors.filter(e => !e.is_responsible).map(e => e.employee_id);
-  }, [executors]);
+  const usedEmployeeIds = useMemo(
+    () => executors.filter(e => !e.is_responsible).map(e => e.employee_id),
+    [executors]
+  );
 
-  const availableEmployees = useMemo(() => {
-    return (employees || [])
+  const availableEmployees = useMemo(
+    () => (employees || [])
       .filter(emp => emp.id !== responsibleEmployeeIdNum)
-      .filter(emp => !usedEmployeeIds.includes(emp.id));
-  }, [employees, responsibleEmployeeIdNum, usedEmployeeIds]);
+      .filter(emp => !usedEmployeeIds.includes(emp.id)),
+    [employees, responsibleEmployeeIdNum, usedEmployeeIds]
+  );
 
-  const nonResponsibleExecutors = useMemo(() => {
-    return executors.filter(e => !e.is_responsible);
-  }, [executors]);
+  const nonResponsibleExecutors = useMemo(
+    () => executors.filter(e => !e.is_responsible),
+    [executors]
+  );
 
   const getEmployeeLabel = (empId) => {
     const emp = (employees || []).find(e => e.id === empId);
@@ -60,51 +57,42 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
   const handleSetResponsible = async () => {
     try {
       const old = executors.find(e => e.is_responsible);
-      if (old) {
-        await executorsAPI.delete(old.id);
-      }
+      if (old) await executorsAPI.delete(old.id);
       if (responsibleId) {
         await executorsAPI.create({
           date,
           employee_id: parseInt(responsibleId),
           hours_worked: 10.0,
           is_responsible: true,
+          brigade_id: brigadeId,
         });
       }
       await loadData();
       onUpdate && onUpdate();
     } catch (error) {
       console.error('Ошибка сохранения ответственного:', error);
-      const errorMessage = error.response?.data?.detail || 'Ошибка сохранения ответственного';
-      alert(errorMessage);
+      alert(error.response?.data?.detail || 'Ошибка сохранения ответственного');
     }
   };
 
   const handleAdd = async () => {
-    if (!selectedEmployeeId) {
-      alert('Выберите исполнителя');
-      return;
-    }
+    if (!selectedEmployeeId) { alert('Выберите исполнителя'); return; }
     const h = parseFloat(hoursWorked);
-    if (!(h > 0) || h > 24) {
-      alert('Часы должны быть от 0 до 24');
-      return;
-    }
+    if (!(h > 0) || h > 24) { alert('Часы должны быть от 0 до 24'); return; }
     try {
       await executorsAPI.create({
         date,
         employee_id: parseInt(selectedEmployeeId),
         hours_worked: h,
         is_responsible: false,
+        brigade_id: brigadeId,
       });
       await loadData();
       onUpdate && onUpdate();
       setSelectedEmployeeId('');
       setHoursWorked(10.0);
     } catch (error) {
-      console.error('Ошибка добавления исполнителя:', error);
-      const errorMessage = error.response?.data?.detail || 'Ошибка добавления исполнителя';
-      alert(errorMessage);
+      alert(error.response?.data?.detail || 'Ошибка добавления исполнителя');
     }
   };
 
@@ -115,28 +103,23 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
       await loadData();
       onUpdate && onUpdate();
     } catch (error) {
-      console.error('Ошибка удаления исполнителя:', error);
       alert('Ошибка удаления исполнителя');
     }
   };
 
   const handleUpdateHours = async (executorId, newHours) => {
     const h = parseFloat(newHours);
-    if (!(h > 0) || h > 24) {
-      alert('Часы должны быть от 0 до 24');
-      return;
-    }
+    if (!(h > 0) || h > 24) { alert('Часы должны быть от 0 до 24'); return; }
     try {
       await executorsAPI.update(executorId, { hours_worked: h });
       await loadData();
       onUpdate && onUpdate();
     } catch (error) {
-      console.error('Ошибка обновления часов:', error);
       alert('Ошибка обновления часов');
     }
   };
 
-  const totalHours = nonResponsibleExecutors.reduce((sum, e) => sum + (e.hours_worked || 0), 0);
+  const totalHours = nonResponsibleExecutors.reduce((s, e) => s + (e.hours_worked || 0), 0);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -150,7 +133,6 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
           <div className="loading">Загрузка...</div>
         ) : (
           <>
-            {/* Блок ответственного */}
             <div className="add-form">
               <h4>Ответственный (прораб)</h4>
               <div className="form-row">
@@ -165,13 +147,10 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
                     ))}
                   </select>
                 </div>
-                <button onClick={handleSetResponsible} className="btn-add">
-                  💾 Сохранить
-                </button>
+                <button onClick={handleSetResponsible} className="btn-add">💾 Сохранить</button>
               </div>
             </div>
 
-            {/* Форма добавления исполнителя */}
             <div className="add-form">
               <h4>Добавить исполнителя</h4>
               <div className="form-row">
@@ -189,22 +168,15 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
                 <div className="form-group">
                   <label>Часы</label>
                   <input
-                    type="number"
-                    value={hoursWorked}
+                    type="number" value={hoursWorked}
                     onChange={(e) => setHoursWorked(e.target.value)}
-                    min="0.1"
-                    max="24"
-                    step="0.5"
-                    className="hours-input"
+                    min="0.1" max="24" step="0.5" className="hours-input"
                   />
                 </div>
-                <button onClick={handleAdd} className="btn-add">
-                  + Добавить
-                </button>
+                <button onClick={handleAdd} className="btn-add">+ Добавить</button>
               </div>
             </div>
 
-            {/* Список исполнителей */}
             <div className="list-container">
               <h4>Исполнители на этот день</h4>
               {nonResponsibleExecutors.length === 0 ? (
@@ -212,37 +184,22 @@ function ExecutorsModal({ date, employees = [], onClose, onUpdate }) {
               ) : (
                 <table className="usage-table">
                   <thead>
-                    <tr>
-                      <th>№</th>
-                      <th>Сотрудник</th>
-                      <th>Часы</th>
-                      <th>Действия</th>
-                    </tr>
+                    <tr><th>№</th><th>Сотрудник</th><th>Часы</th><th>Действия</th></tr>
                   </thead>
                   <tbody>
-                    {nonResponsibleExecutors.map((e, index) => (
+                    {nonResponsibleExecutors.map((e, i) => (
                       <tr key={e.id}>
-                        <td>{index + 1}</td>
+                        <td>{i + 1}</td>
                         <td>{getEmployeeLabel(e.employee_id)}</td>
                         <td>
                           <input
-                            type="number"
-                            value={e.hours_worked}
+                            type="number" value={e.hours_worked}
                             onChange={(ev) => handleUpdateHours(e.id, ev.target.value)}
-                            min="0.1"
-                            max="24"
-                            step="0.5"
-                            className="hours-input"
+                            min="0.1" max="24" step="0.5" className="hours-input"
                           />
                         </td>
                         <td>
-                          <button
-                            onClick={() => handleDelete(e.id)}
-                            className="btn-delete-small"
-                            title="Удалить"
-                          >
-                            🗑️
-                          </button>
+                          <button onClick={() => handleDelete(e.id)} className="btn-delete-small" title="Удалить">🗑️</button>
                         </td>
                       </tr>
                     ))}
