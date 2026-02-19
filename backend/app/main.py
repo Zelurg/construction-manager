@@ -22,8 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Auth & users
-# Внимание: prefix НЕ указываем здесь, он уже задан внутри каждого роутера
+# Auth & users — prefix уже внутри роутеров
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
@@ -45,8 +44,9 @@ app.include_router(employees.router, prefix="/employees", tags=["employees"])
 app.include_router(equipment.router, prefix="/equipment", tags=["equipment"])
 app.include_router(equipment_usage.router, prefix="/equipment-usage", tags=["equipment-usage"])
 
-# WebSocket
-app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
+# WebSocket — внутри роутера уже есть @router.websocket("/ws"),
+# поэтому prefix ЗДЕСЬ НЕ указываем — иначе путь станет /ws/ws
+app.include_router(websocket.router)
 
 
 @app.get("/")
