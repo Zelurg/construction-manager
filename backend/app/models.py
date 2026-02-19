@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -40,9 +40,14 @@ class User(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    # Код уникален только в рамках одного проекта
+    __table_args__ = (
+        UniqueConstraint('project_id', 'code', name='uq_tasks_project_code'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
-    code = Column(String, index=True)
+    code = Column(String, index=True)  # не unique глобально!
     name = Column(String, nullable=False)
     unit = Column(String, nullable=True)
     volume_plan = Column(Float, nullable=True, default=0)
