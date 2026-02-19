@@ -1,5 +1,5 @@
 /* ========================================
-   БАЗОВЫЕ СТИЛИ (исходные)
+   BASE
    ======================================== */
 
 * {
@@ -10,7 +10,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: #f5f5f5;
+  background-color: #f0f2f5;
 }
 
 .app {
@@ -20,96 +20,122 @@ body {
 }
 
 /* ========================================
-   HEADER (обновлен для авторизации)
+   HEADER — единый стиль
    ======================================== */
 
 .header {
-  background-color: #1976d2;
-  color: white;
-  padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: #1a2332;
+  color: #fff;
+  padding: 16px 32px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  flex-shrink: 0;
 }
 
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .header h1 {
-  font-size: 1.8rem;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header h1::before {
+  content: '🏗';
+  font-size: 22px;
 }
 
 .user-info-header {
   display: flex;
   align-items: center;
   gap: 10px;
+  font-size: 14px;
 }
 
 .user-name {
-  font-weight: 500;
-  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
 }
 
 .user-role {
   font-size: 13px;
-  opacity: 0.9;
+  color: #94a3b8;
 }
 
 .btn-logout-header {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 6px 16px;
-  border-radius: 4px;
+  background: transparent;
+  border: 1px solid #475569;
+  color: #cbd5e1;
+  padding: 6px 14px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: background 0.3s;
+  font-size: 13px;
+  transition: all 0.2s;
 }
-
 .btn-logout-header:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
 }
 
 /* ========================================
-   TABS (исходные)
+   TABS
    ======================================== */
 
 .tabs {
   display: flex;
-  background-color: white;
-  border-bottom: 2px solid #e0e0e0;
-  padding: 0 1rem;
+  background: #ffffff;
+  border-bottom: 2px solid #e2e8f0;
+  padding: 0 16px;
+  flex-shrink: 0;
 }
 
 .tabs button {
-  padding: 1rem 2rem;
+  padding: 14px 24px;
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 1rem;
-  color: #666;
+  font-size: 14px;
+  color: #64748b;
   border-bottom: 3px solid transparent;
-  transition: all 0.3s;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
 .tabs button:hover {
-  background-color: #f5f5f5;
+  background: #f8fafc;
+  color: #1e293b;
 }
 
 .tabs button.active {
-  color: #1976d2;
-  border-bottom-color: #1976d2;
+  color: #2563eb;
+  border-bottom-color: #2563eb;
 }
 
 .content {
   flex: 1;
-  padding: 2rem;
+  padding: 1.5rem;
+  padding-left: 80px;
+  overflow: hidden;
 }
 
 /* ========================================
-   SCHEDULE (исходные)
+   SCHEDULE
    ======================================== */
 
 .schedule-container {
@@ -168,30 +194,22 @@ body {
 .show-gantt {
   margin-top: 1rem;
   padding: 0.5rem 1rem;
-  background-color: #1976d2;
+  background-color: #2563eb;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.show-gantt {
-  margin-bottom: 1rem;
-}
+.show-gantt { margin-bottom: 1rem; }
 
 /* ========================================
-   GANTT CHART (исходные)
+   GANTT CHART
    ======================================== */
 
-.gantt-chart h3 {
-  margin-bottom: 1rem;
-  color: #333;
-}
+.gantt-chart h3 { margin-bottom: 1rem; color: #333; }
 
-.gantt-timeline {
-  overflow-y: auto;
-  max-height: 600px;
-}
+.gantt-timeline { overflow-y: auto; max-height: 600px; }
 
 .gantt-row {
   display: flex;
@@ -217,7 +235,7 @@ body {
 .gantt-bar {
   position: absolute;
   height: 100%;
-  background-color: #1976d2;
+  background-color: #2563eb;
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -239,7 +257,7 @@ body {
 }
 
 /* ========================================
-   MONTHLY ORDER (обновленные)
+   MONTHLY ORDER
    ======================================== */
 
 .monthly-order {
@@ -267,13 +285,11 @@ body {
   font-size: 1rem;
 }
 
-/* Контейнер с прокруткой для таблицы Наряд на месяц */
 .table-container-scrollable {
   flex: 1;
   overflow: auto;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
-  /* Поддержка macOS */
   -webkit-overflow-scrolling: touch;
   will-change: scroll-position;
   min-height: 0;
@@ -284,29 +300,13 @@ body {
   width: max-content;
 }
 
-/* Скроллбары для таблицы Наряд на месяц */
-.table-container-scrollable::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-.table-container-scrollable::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 6px;
-}
-
-.table-container-scrollable::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 6px;
-  border: 2px solid #f1f1f1;
-}
-
-.table-container-scrollable::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
+.table-container-scrollable::-webkit-scrollbar { width: 12px; height: 12px; }
+.table-container-scrollable::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
+.table-container-scrollable::-webkit-scrollbar-thumb { background: #888; border-radius: 6px; border: 2px solid #f1f1f1; }
+.table-container-scrollable::-webkit-scrollbar-thumb:hover { background: #555; }
 
 /* ========================================
-   DAILY ORDERS (исходные)
+   DAILY ORDERS
    ======================================== */
 
 .daily-orders {
@@ -337,9 +337,7 @@ body {
   margin-bottom: 2rem;
 }
 
-.add-work-form h3 {
-  margin-bottom: 1rem;
-}
+.add-work-form h3 { margin-bottom: 1rem; }
 
 .add-work-form form {
   display: flex;
@@ -355,33 +353,20 @@ body {
   font-size: 1rem;
 }
 
-.add-work-form select {
-  flex: 1;
-  min-width: 200px;
-}
-
-.add-work-form input[type="number"] {
-  width: 150px;
-}
-
-.add-work-form input[type="text"] {
-  flex: 1;
-  min-width: 200px;
-}
+.add-work-form select { flex: 1; min-width: 200px; }
+.add-work-form input[type="number"] { width: 150px; }
+.add-work-form input[type="text"] { flex: 1; min-width: 200px; }
 
 .add-work-form button {
   padding: 0.5rem 2rem;
-  background-color: #4caf50;
+  background-color: #16a34a;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 1rem;
 }
-
-.add-work-form button:hover {
-  background-color: #45a049;
-}
+.add-work-form button:hover { background-color: #15803d; }
 
 .works-grid {
   display: grid;
@@ -397,44 +382,15 @@ body {
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   transition: transform 0.2s;
 }
-
-.work-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-.work-card h4 {
-  color: #1976d2;
-  margin-bottom: 0.5rem;
-}
-
-.work-name {
-  color: #666;
-  margin-bottom: 1rem;
-  font-size: 0.95rem;
-}
-
-.work-details {
-  border-top: 1px solid #e0e0e0;
-  padding-top: 1rem;
-}
-
-.work-volume {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: #4caf50;
-  display: block;
-  margin-bottom: 0.5rem;
-}
-
-.work-description {
-  color: #999;
-  font-size: 0.9rem;
-  font-style: italic;
-}
+.work-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+.work-card h4 { color: #2563eb; margin-bottom: 0.5rem; }
+.work-name { color: #666; margin-bottom: 1rem; font-size: 0.95rem; }
+.work-details { border-top: 1px solid #e0e0e0; padding-top: 1rem; }
+.work-volume { font-size: 1.2rem; font-weight: 600; color: #16a34a; display: block; margin-bottom: 0.5rem; }
+.work-description { color: #999; font-size: 0.9rem; font-style: italic; }
 
 /* ========================================
-   ANALYTICS (исходные)
+   ANALYTICS
    ======================================== */
 
 .analytics {
@@ -444,10 +400,7 @@ body {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.analytics h2 {
-  margin-bottom: 2rem;
-  color: #333;
-}
+.analytics h2 { margin-bottom: 2rem; color: #333; }
 
 .analytics-grid {
   display: grid;
@@ -462,25 +415,11 @@ body {
   border: 1px solid #e0e0e0;
 }
 
-.analytics-card h3 {
-  margin-bottom: 1rem;
-  color: #1976d2;
-}
+.analytics-card h3 { margin-bottom: 1rem; color: #2563eb; }
 
-.widget-stats {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e0e0e0;
-}
-
-.widget-stats p {
-  margin: 0.5rem 0;
-  color: #666;
-}
-
-.widget-stats strong {
-  color: #333;
-}
+.widget-stats { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; }
+.widget-stats p { margin: 0.5rem 0; color: #666; }
+.widget-stats strong { color: #333; }
 
 .import-export-panel {
   display: flex;
@@ -492,7 +431,7 @@ body {
 .btn-download-template,
 .btn-upload-template {
   padding: 10px 20px;
-  background-color: #4472C4;
+  background-color: #2563eb;
   color: white;
   border: none;
   border-radius: 5px;
@@ -500,29 +439,11 @@ body {
   font-size: 14px;
   transition: background-color 0.3s;
 }
-
 .btn-download-template:hover,
-.btn-upload-template:hover {
-  background-color: #365a9c;
-}
-
-.btn-upload-template {
-  display: inline-block;
-}
+.btn-upload-template:hover { background-color: #1d4ed8; }
 
 /* ========================================
-   LAYOUT С ОТСТУПОМ ДЛЯ TOOLBAR
-   ======================================== */
-
-.content {
-  flex: 1;
-  padding: 1.5rem;
-  padding-left: 80px;
-  overflow: hidden;
-}
-
-/* ========================================
-   ИНТЕГРИРОВАННЫЙ SCHEDULE LAYOUT
+   INTEGRATED SCHEDULE LAYOUT
    ======================================== */
 
 .schedule-container-integrated {
@@ -530,7 +451,7 @@ body {
   height: calc(100vh - 180px);
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -551,7 +472,6 @@ body {
   transition: width 0.1s ease-out;
   display: flex;
   flex-direction: column;
-  /* Критичные свойства для macOS */
   -webkit-overflow-scrolling: touch;
   will-change: scroll-position;
   min-height: 0;
@@ -561,7 +481,6 @@ body {
   min-width: fit-content;
   display: flex;
   flex-direction: column;
-  /* Добавляем для предотвращения обрезания */
   min-height: 0;
   flex: 1;
 }
@@ -572,20 +491,16 @@ body {
   background: white;
 }
 
-/* Шапка таблицы - фиксированная */
 .tasks-table-integrated thead {
   position: sticky;
   top: 0;
   background: #f5f5f5;
   z-index: 10;
-  /* Для Safari на macOS */
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
 }
 
-.tasks-table-integrated thead tr {
-  height: 70px;
-}
+.tasks-table-integrated thead tr { height: 70px; }
 
 .tasks-table-integrated th {
   padding: 8px 12px;
@@ -600,11 +515,7 @@ body {
   font-size: 13px;
 }
 
-.tasks-table-integrated th div {
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-
+.tasks-table-integrated th div { margin-bottom: 6px; font-size: 13px; }
 .tasks-table-integrated th input {
   padding: 4px 8px;
   border: 1px solid #ddd;
@@ -613,11 +524,7 @@ body {
   font-size: 12px;
 }
 
-/* Тело таблицы */
-.tasks-table-integrated tbody tr {
-  height: 50px;
-}
-
+.tasks-table-integrated tbody tr { height: 50px; }
 .tasks-table-integrated td {
   padding: 8px 12px;
   text-align: left;
@@ -626,12 +533,8 @@ body {
   white-space: nowrap;
   vertical-align: middle;
 }
+.tasks-table-integrated tbody tr:hover { background-color: #f9f9f9; }
 
-.tasks-table-integrated tbody tr:hover {
-  background-color: #f9f9f9;
-}
-
-/* Разделитель */
 .resize-divider {
   width: 8px;
   background: #e0e0e0;
@@ -641,10 +544,7 @@ body {
   transition: background 0.2s;
   z-index: 20;
 }
-
-.resize-divider:hover {
-  background: #1976d2;
-}
+.resize-divider:hover { background: #2563eb; }
 
 .resize-handle {
   position: absolute;
@@ -657,12 +557,8 @@ body {
   border-radius: 2px;
   opacity: 0.8;
 }
+.resize-divider:hover .resize-handle { opacity: 1; }
 
-.resize-divider:hover .resize-handle {
-  opacity: 1;
-}
-
-/* Секция диаграммы */
 .schedule-gantt-section {
   flex: 1;
   overflow: hidden;
@@ -672,23 +568,7 @@ body {
   transition: width 0.1s ease-out;
 }
 
-/* Скроллбары - улучшенная видимость на macOS */
-.schedule-table-section::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-.schedule-table-section::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 6px;
-}
-
-.schedule-table-section::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 6px;
-  border: 2px solid #f1f1f1;
-}
-
-.schedule-table-section::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
+.schedule-table-section::-webkit-scrollbar { width: 12px; height: 12px; }
+.schedule-table-section::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
+.schedule-table-section::-webkit-scrollbar-thumb { background: #888; border-radius: 6px; border: 2px solid #f1f1f1; }
+.schedule-table-section::-webkit-scrollbar-thumb:hover { background: #555; }
