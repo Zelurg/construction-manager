@@ -23,9 +23,10 @@ app.add_middleware(
 )
 
 # Auth & users
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(users.router, prefix="/users", tags=["users"])
-app.include_router(admin.router, prefix="/admin", tags=["admin"])
+# Внимание: prefix НЕ указываем здесь, он уже задан внутри каждого роутера
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(admin.router)
 
 # Projects
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
