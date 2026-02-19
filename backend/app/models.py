@@ -1,13 +1,30 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
 import enum
 
+
+class Project(Base):
+    """Строительный объект"""
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    is_archived = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    tasks = relationship("Task", back_populates="project")
+    brigades = relationship("Brigade", back_populates="project")
+
+
 class UserRole(str, enum.Enum):
     admin = "admin"
     user = "user"
     viewer = "viewer"
+
 
 class User(Base):
     __tablename__ = "users"
@@ -20,10 +37,12 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class Task(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, unique=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    code = Column(String, index=True)
     name = Column(String, nullable=False)
     unit = Column(String, nullable=True)
     volume_plan = Column(Float, nullable=True, default=0)
@@ -40,8 +59,11 @@ class Task(Base):
     level = Column(Integer, default=0, nullable=False)
     parent_code = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="tasks")
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
     daily_works = relationship("DailyWork", back_populates="task")
+
 
 class MonthlyTask(Base):
     __tablename__ = "monthly_tasks"
@@ -51,33 +73,40 @@ class MonthlyTask(Base):
     volume_plan = Column(Float, nullable=False)
     task = relationship("Task", back_populates="monthly_tasks")
 
+
 class Brigade(Base):
     """Бригада/звено за конкретный день"""
     __tablename__ = "brigades"
     id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     date = Column(Date, nullable=False, index=True)
     name = Column(String, nullable=False, default="Бригада")
     order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="brigades")
     daily_works = relationship("DailyWork", back_populates="brigade")
     daily_executors = relationship("DailyExecutor", back_populates="brigade")
     daily_equipment_usage = relationship("DailyEquipmentUsage", back_populates="brigade")
 
+
 class DailyWork(Base):
     __tablename__ = "daily_works"
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)  # NULL для сопутствующих
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)
     date = Column(Date, nullable=False)
-    volume = Column(Float, nullable=False)           # для сопутствующих — человекочасы
+    volume = Column(Float, nullable=False)
     description = Column(String, nullable=True)
     brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)
-    is_ancillary = Column(Boolean, default=False, nullable=False)  # флаг сопутствующих работ
+    is_ancillary = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
     task = relationship("Task", back_populates="daily_works")
     brigade = relationship("Brigade", back_populates="daily_works")
 
+
 class Employee(Base):
-    """Справочник сотрудников"""
+    """Справочник сотрудников (глобальный)"""
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
@@ -86,6 +115,7 @@ class Employee(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     daily_executors = relationship("DailyExecutor", back_populates="employee")
+
 
 class DailyExecutor(Base):
     """Исполнитель работ за конкретный день"""
@@ -97,11 +127,13 @@ class DailyExecutor(Base):
     is_responsible = Column(Boolean, default=False, nullable=False)
     brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
     employee = relationship("Employee", back_populates="daily_executors")
     brigade = relationship("Brigade", back_populates="daily_executors")
 
+
 class Equipment(Base):
-    """Справочник техники"""
+    """Справочник техники (глобальный)"""
     __tablename__ = "equipment"
     id = Column(Integer, primary_key=True, index=True)
     equipment_type = Column(String, nullable=False)
@@ -112,6 +144,7 @@ class Equipment(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     daily_equipment_usage = relationship("DailyEquipmentUsage", back_populates="equipment")
 
+
 class DailyEquipmentUsage(Base):
     """Использование техники за конкретный день"""
     __tablename__ = "daily_equipment_usage"
@@ -121,5 +154,6 @@ class DailyEquipmentUsage(Base):
     machine_hours = Column(Float, nullable=False, default=8.0)
     brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
     equipment = relationship("Equipment", back_populates="daily_equipment_usage")
     brigade = relationship("Brigade", back_populates="daily_equipment_usage")

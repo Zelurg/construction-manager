@@ -1,132 +1,86 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, extract, func
-from typing import List
-from datetime import date, datetime
+from typing import List, Optional
+from datetime import date
 from .. import models, schemas
 from ..database import get_db
+from ..dependencies import get_current_user
+from .projects import touch_project
 
 router = APIRouter()
 
-@router.get("/tasks", response_model=List[schemas.MonthlyTask])
-def get_monthly_tasks(month: date, db: Session = Depends(get_db)):
-    tasks = db.query(models.MonthlyTask).filter(models.MonthlyTask.month == month).all()
-    return tasks
 
-@router.post("/tasks", response_model=schemas.MonthlyTask)
-def create_monthly_task(task: schemas.MonthlyTaskCreate, db: Session = Depends(get_db)):
-    db_task = models.MonthlyTask(**task.dict())
-    db.add(db_task)
+@router.get("/", response_model=List[schemas.MonthlyTask])
+def get_monthly_tasks(
+    month: Optional[date] = None,
+    project_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.MonthlyTask)
+    if month:
+        query = query.filter(models.MonthlyTask.month == month)
+    if project_id is not None:
+        query = query.join(models.Task).filter(models.Task.project_id == project_id)
+    return query.all()
+
+
+@router.post("/", response_model=schemas.MonthlyTask)
+def create_monthly_task(
+    monthly_task: schemas.MonthlyTaskCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    task = db.query(models.Task).filter(models.Task.id == monthly_task.task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    existing = db.query(models.MonthlyTask).filter(
+        models.MonthlyTask.task_id == monthly_task.task_id,
+        models.MonthlyTask.month == monthly_task.month
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Месячный план для этой задачи уже существует")
+
+    db_monthly = models.MonthlyTask(**monthly_task.dict())
+    db.add(db_monthly)
     db.commit()
-    db.refresh(db_task)
-    return db_task
+    db.refresh(db_monthly)
+    touch_project(task.project_id, db)
+    return db_monthly
 
-@router.get("/tasks/with-details")
-def get_monthly_tasks_with_details(month: str, db: Session = Depends(get_db)):
-    """
-    Получить все задачи, которые выполняются в выбранном месяце.
-    
-    Логика:
-    - month приходит в формате "2026-02-01" (первый день месяца)
-    - Находим все задачи, у которых период выполнения (плановые даты) 
-      пересекается с выбранным месяцем
-    - Разделы показываются только если в них есть работы в этом месяце
-    """
-    try:
-        # Парсим входящую дату (формат: "2026-02-01")
-        month_date = datetime.strptime(month, "%Y-%m-%d").date()
-        
-        # Вычисляем первый и последний день месяца
-        first_day = month_date.replace(day=1)
-        # Получаем первый день следующего месяца
-        if month_date.month == 12:
-            last_day = month_date.replace(year=month_date.year + 1, month=1, day=1)
-        else:
-            last_day = month_date.replace(month=month_date.month + 1, day=1)
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Неверный формат даты. Ожидается YYYY-MM-DD")
-    
-    # Получаем ТОЛЬКО работы (не разделы), которые пересекаются с выбранным месяцем
-    # Используем ПЛАНОВЫЕ даты для фильтрации
-    work_tasks = db.query(models.Task).filter(
-        and_(
-            models.Task.is_section == False,  # Только работы
-            models.Task.start_date_plan.isnot(None),
-            models.Task.end_date_plan.isnot(None),
-            models.Task.start_date_plan < last_day,
-            models.Task.end_date_plan >= first_day
-        )
-    ).all()
-    
-    # Если нет работ - возвращаем пустой массив
-    if not work_tasks:
-        return []
-    
-    # Собираем все уникальные parent_code от работ
-    parent_codes = set()
-    for task in work_tasks:
-        if task.parent_code:
-            # Добавляем всю цепочку родителей
-            current_code = task.parent_code
-            while current_code:
-                parent_codes.add(current_code)
-                parent_task = db.query(models.Task).filter(models.Task.code == current_code).first()
-                if parent_task and parent_task.parent_code:
-                    current_code = parent_task.parent_code
-                else:
-                    break
-    
-    # Получаем только нужные разделы
-    sections = db.query(models.Task).filter(
-        and_(
-            models.Task.is_section == True,
-            models.Task.code.in_(parent_codes)
-        )
-    ).all() if parent_codes else []
-    
-    # Объединяем разделы и работы
-    all_tasks = sections + work_tasks
-    
-    # Сортируем по code
-    all_tasks.sort(key=lambda x: x.code)
-    
-    result = []
-    for task in all_tasks:
-        # Пытаемся найти запись в MonthlyTask для этого месяца
-        monthly_task = db.query(models.MonthlyTask).filter(
-            and_(
-                models.MonthlyTask.task_id == task.id,
-                models.MonthlyTask.month == first_day
-            )
-        ).first()
-        
-        # Если есть запись в MonthlyTask, берём оттуда плановый объём
-        # Иначе используем общий плановый объём задачи
-        volume_plan = monthly_task.volume_plan if monthly_task else task.volume_plan
-        
-        result.append({
-            "id": monthly_task.id if monthly_task else task.id,
-            "task_id": task.id,
-            "code": task.code,
-            "name": task.name,
-            "unit": task.unit,
-            "volume_plan": volume_plan,
-            "volume_fact": task.volume_fact,
-            # Возвращаем все 4 поля дат
-            "start_date_contract": task.start_date_contract.isoformat() if task.start_date_contract else None,
-            "end_date_contract": task.end_date_contract.isoformat() if task.end_date_contract else None,
-            "start_date_plan": task.start_date_plan.isoformat() if task.start_date_plan else None,
-            "end_date_plan": task.end_date_plan.isoformat() if task.end_date_plan else None,
-            # Поля для breadcrumbs
-            "parent_code": task.parent_code,
-            "is_section": task.is_section,
-            "level": task.level,
-            # Дополнительные поля
-            "unit_price": task.unit_price,
-            "labor_per_unit": task.labor_per_unit,
-            "machine_hours_per_unit": task.machine_hours_per_unit,
-            "executor": task.executor
-        })
-    
-    return result
+
+@router.put("/{monthly_id}", response_model=schemas.MonthlyTask)
+def update_monthly_task(
+    monthly_id: int,
+    monthly_task: schemas.MonthlyTaskCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    db_monthly = db.query(models.MonthlyTask).filter(models.MonthlyTask.id == monthly_id).first()
+    if not db_monthly:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    task = db.query(models.Task).filter(models.Task.id == db_monthly.task_id).first()
+    for key, value in monthly_task.dict().items():
+        setattr(db_monthly, key, value)
+    db.commit()
+    db.refresh(db_monthly)
+    if task:
+        touch_project(task.project_id, db)
+    return db_monthly
+
+
+@router.delete("/{monthly_id}")
+def delete_monthly_task(
+    monthly_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    db_monthly = db.query(models.MonthlyTask).filter(models.MonthlyTask.id == monthly_id).first()
+    if not db_monthly:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    task = db.query(models.Task).filter(models.Task.id == db_monthly.task_id).first()
+    db.delete(db_monthly)
+    db.commit()
+    if task:
+        touch_project(task.project_id, db)
+    return {"message": "Запись удалена", "id": monthly_id}

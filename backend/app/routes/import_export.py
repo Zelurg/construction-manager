@@ -1,273 +1,187 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from datetime import datetime, date
-import pandas as pd
+from sqlalchemy import func
+from typing import List, Optional
 import openpyxl
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 from io import BytesIO
-from typing import List
 from .. import models, schemas
 from ..database import get_db
+from ..dependencies import get_current_user
+from .projects import touch_project
 
 router = APIRouter()
 
-def detect_section_level(code: str) -> int:
-    """
-    Определяет уровень вложенности по количеству точек в шифре
-    Примеры:
-    - "1" -> level 0
-    - "1.1" -> level 1
-    - "1.1.1" -> level 2
-    - "1.1.1.1" -> level 3
-    """
-    return code.count('.')
+COLUMN_MAP = {
+    'A': 'code', 'B': 'name', 'C': 'unit',
+    'D': 'volume_plan', 'E': 'start_date_contract', 'F': 'end_date_contract',
+    'G': 'start_date_plan', 'H': 'end_date_plan',
+    'I': 'unit_price', 'J': 'labor_per_unit', 'K': 'machine_hours_per_unit',
+    'L': 'executor',
+}
 
-def get_parent_code(code: str) -> str:
-    """
-    Получает шифр родительского раздела
-    Примеры:
-    - "1.1.2" -> "1.1"
-    - "1.1" -> "1"
-    - "1" -> None
-    """
-    parts = code.split('.')
-    if len(parts) <= 1:
-        return None
-    return '.'.join(parts[:-1])
 
-@router.get("/template/download")
-def download_template():
-    """Скачать шаблон Excel для импорта графика"""
+@router.post("/import")
+async def import_tasks(
+    file: UploadFile = File(...),
+    project_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Поддерживаются только файлы .xlsx и .xls")
+
+    content = await file.read()
+    wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
+    ws = wb.active
+
+    tasks_processed = 0
+    errors = []
+    tasks_to_create = []
+    codes_seen = set()
+
+    for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if not any(row):
+            continue
+        try:
+            task_data = {}
+            cols = list('ABCDEFGHIJKL')
+            for i, col in enumerate(cols):
+                if i < len(row):
+                    task_data[COLUMN_MAP[col]] = row[i]
+
+            code = str(task_data.get('code', '')).strip() if task_data.get('code') else None
+            name = str(task_data.get('name', '')).strip() if task_data.get('name') else None
+            if not code or not name:
+                errors.append(f"Строка {row_num}: пропущен код или название")
+                continue
+            if code in codes_seen:
+                errors.append(f"Строка {row_num}: дублирующийся код '{code}'")
+                continue
+            codes_seen.add(code)
+
+            # Определяем уровень по отступам
+            raw_name = task_data.get('name', '')
+            if isinstance(raw_name, str):
+                spaces = len(raw_name) - len(raw_name.lstrip())
+                level = spaces // 2
+            else:
+                level = 0
+
+            # Определяем is_section
+            unit = task_data.get('unit')
+            is_section = not unit or str(unit).strip() == ''
+
+            def parse_float(v):
+                if v is None or str(v).strip() in ('', '-', 'None'):
+                    return 0.0
+                try:
+                    return float(str(v).replace(',', '.'))
+                except:
+                    return 0.0
+
+            def parse_date(v):
+                if v is None:
+                    return None
+                if hasattr(v, 'date'):
+                    return v.date()
+                from datetime import datetime as dt
+                for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y'):
+                    try:
+                        return dt.strptime(str(v).strip(), fmt).date()
+                    except:
+                        pass
+                return None
+
+            tasks_to_create.append({
+                "code": code, "name": name.strip(),
+                "unit": str(unit).strip() if unit and str(unit).strip() else None,
+                "volume_plan": parse_float(task_data.get('volume_plan')),
+                "volume_fact": 0.0,
+                "start_date_contract": parse_date(task_data.get('start_date_contract')),
+                "end_date_contract": parse_date(task_data.get('end_date_contract')),
+                "start_date_plan": parse_date(task_data.get('start_date_plan')),
+                "end_date_plan": parse_date(task_data.get('end_date_plan')),
+                "unit_price": parse_float(task_data.get('unit_price')),
+                "labor_per_unit": parse_float(task_data.get('labor_per_unit')),
+                "machine_hours_per_unit": parse_float(task_data.get('machine_hours_per_unit')),
+                "executor": str(task_data.get('executor', '')).strip() or None,
+                "is_section": is_section,
+                "level": level,
+                "parent_code": None,
+                "project_id": project_id,
+            })
+            tasks_processed += 1
+        except Exception as e:
+            errors.append(f"Строка {row_num}: {str(e)}")
+
+    # Определяем parent_code
+    stack = []
+    for t in tasks_to_create:
+        while stack and stack[-1]['level'] >= t['level']:
+            stack.pop()
+        t['parent_code'] = stack[-1]['code'] if stack else None
+        if t['is_section']:
+            stack.append(t)
+
+    # Очищаем старые задачи проекта и вставляем новые
+    db.query(models.Task).filter(models.Task.project_id == project_id).delete()
+    db.bulk_insert_mappings(models.Task, tasks_to_create)
+    db.commit()
+    touch_project(project_id, db)
+
+    return {"tasks_processed": tasks_processed, "errors": errors}
+
+
+@router.get("/export")
+def export_tasks(
+    project_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.Task)
+    if project_id is not None:
+        query = query.filter(models.Task.project_id == project_id)
+    tasks = query.order_by(models.Task.code).all()
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "График работ"
-    
-    # Заголовки - добавлены контрактные даты
-    headers = [
-        "Шифр", 
-        "Наименование работ", 
-        "Ед. изм.", 
-        "Объем план", 
-        "Дата начала (контракт)", 
-        "Дата окончания (контракт)",
-        "Цена за ед.",
-        "Трудозатраты на ед. (чел-час)",
-        "Машиночасы на ед.",
-        "Исполнитель"
-    ]
-    ws.append(headers)
-    
-    # Стилизация заголовков
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws.title = "График"
+
+    headers = ['Код', 'Наименование', 'Ед.изм.', 'Объём план',
+               'Нач.контракт', 'Оконч.контракт', 'Нач.план', 'Оконч.план',
+               'Цена за ед.', 'Трудозатраты/ед.', 'Машиночасы/ед.', 'Исполнитель']
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
-    border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    
-    for col_num, cell in enumerate(ws[1], 1):
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=header)
         cell.fill = header_fill
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = border
-        if col_num <= 2:
-            ws.column_dimensions[cell.column_letter].width = 25
-        elif col_num <= 6:
-            ws.column_dimensions[cell.column_letter].width = 18
-        else:
-            ws.column_dimensions[cell.column_letter].width = 25
-    
-    # Примеры данных с иерархическими разделами
-    examples = [
-        # Раздел уровня 0 (без ед. изм.)
-        ["1.", "Раздел CMP", "", "", "", "", "", "", "", ""],
-        # Подраздел уровня 1
-        ["1.1", "Строительные работы", "", "", "", "", "", "", "", ""],
-        # Работы уровня 2
-        ["1.1.1", "Земляные работы", "м³", 1000, "2026-01-01", "2026-02-15", 150.5, 0.5, 0.25, "Бригада №1"],
-        ["1.1.2", "Бетонные работы", "м³", 500, "2026-02-16", "2026-03-30", 350.75, 1.2, 0.8, "Бригада №2"],
-        ["1.1.3", "Кирпичная кладка", "м³", 250, "2026-04-01", "2026-05-15", 280, 2.5, 0.1, "Бригада №3"]
-    ]
-    
-    for row_data in examples:
-        ws.append(row_data)
-    
-    # Форматирование столбцов с датами (колонки 5-6)
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=5, max_col=6):
-        for cell in row:
-            cell.number_format = 'YYYY-MM-DD'
-            cell.border = border
-    
-    # Форматирование остальных ячеек
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=10):
-        for cell in row:
-            if cell.column < 5 or cell.column > 6:
-                cell.border = border
-    
-    # Сохранение в BytesIO
+        cell.alignment = Alignment(horizontal='center')
+
+    for row_num, task in enumerate(tasks, 2):
+        indent = '  ' * task.level if task.level else ''
+        ws.cell(row=row_num, column=1, value=task.code)
+        ws.cell(row=row_num, column=2, value=f"{indent}{task.name}")
+        ws.cell(row=row_num, column=3, value=task.unit)
+        ws.cell(row=row_num, column=4, value=task.volume_plan)
+        ws.cell(row=row_num, column=5, value=str(task.start_date_contract) if task.start_date_contract else None)
+        ws.cell(row=row_num, column=6, value=str(task.end_date_contract) if task.end_date_contract else None)
+        ws.cell(row=row_num, column=7, value=str(task.start_date_plan) if task.start_date_plan else None)
+        ws.cell(row=row_num, column=8, value=str(task.end_date_plan) if task.end_date_plan else None)
+        ws.cell(row=row_num, column=9, value=task.unit_price)
+        ws.cell(row=row_num, column=10, value=task.labor_per_unit)
+        ws.cell(row=row_num, column=11, value=task.machine_hours_per_unit)
+        ws.cell(row=row_num, column=12, value=task.executor)
+        if task.is_section:
+            for col in range(1, 13):
+                ws.cell(row=row_num, column=col).font = Font(bold=True)
+
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-    
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=template_schedule.xlsx"}
+        headers={"Content-Disposition": "attachment; filename=schedule_export.xlsx"}
     )
-
-@router.post("/template/upload")
-async def upload_template(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
-    """Загрузить заполненный шаблон Excel"""
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="Файл должен быть в формате Excel (.xlsx или .xls)")
-    
-    try:
-        # Чтение файла
-        contents = await file.read()
-        df = pd.read_excel(BytesIO(contents))
-        
-        # Проверка наличия необходимых колонок
-        required_columns = ["Шифр", "Наименование работ"]
-        if not all(col in df.columns for col in required_columns):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Файл должен содержать колонки: {', '.join(required_columns)}"
-            )
-        
-        created_tasks = []
-        errors = []
-        
-        # Обработка каждой строки
-        for idx, row in df.iterrows():
-            try:
-                # Пропускаем строки с пустыми значениями
-                if pd.isna(row["Шифр"]) or pd.isna(row["Наименование работ"]):
-                    continue
-                
-                code = str(row["Шифр"]).strip()
-                name = str(row["Наименование работ"]).strip()
-                
-                # Определяем, является ли строка разделом
-                # Раздел = нет единицы измерения
-                unit = row.get("Ед. изм.", "")
-                is_section = pd.isna(unit) or str(unit).strip() == ""
-                
-                # Определяем уровень и родителя
-                level = detect_section_level(code)
-                parent_code = get_parent_code(code)
-                
-                # Проверка существования задачи
-                existing_task = db.query(models.Task).filter(models.Task.code == code).first()
-                
-                if is_section:
-                    # Обработка раздела
-                    if existing_task:
-                        existing_task.name = name
-                        existing_task.is_section = True
-                        existing_task.level = level
-                        existing_task.parent_code = parent_code
-                        db.commit()
-                        created_tasks.append({"action": "updated", "code": code, "type": "section"})
-                    else:
-                        task = models.Task(
-                            code=code,
-                            name=name,
-                            unit=None,
-                            volume_plan=0,
-                            volume_fact=0,
-                            start_date_contract=None,
-                            end_date_contract=None,
-                            start_date_plan=None,
-                            end_date_plan=None,
-                            is_section=True,
-                            level=level,
-                            parent_code=parent_code
-                        )
-                        db.add(task)
-                        db.commit()
-                        created_tasks.append({"action": "created", "code": code, "type": "section"})
-                else:
-                    # Обработка работы
-                    # Преобразование дат (из Excel загружаются контрактные даты)
-                    start_date_contract = pd.to_datetime(row["Дата начала (контракт)"]).date() if "Дата начала (контракт)" in row and not pd.isna(row["Дата начала (контракт)"]) else None
-                    end_date_contract = pd.to_datetime(row["Дата окончания (контракт)"]).date() if "Дата окончания (контракт)" in row and not pd.isna(row["Дата окончания (контракт)"]) else None
-                    
-                    if not start_date_contract or not end_date_contract:
-                        errors.append(f"Строка {idx + 2} ({code}): отсутствуют даты")
-                        continue
-                    
-                    # Плановые даты = контрактные при первом импорте
-                    start_date_plan = start_date_contract
-                    end_date_plan = end_date_contract
-                    
-                    # Читаем опциональные поля
-                    volume_plan = float(row.get("Объем план", 0)) if "Объем план" in row and not pd.isna(row["Объем план"]) else 0
-                    unit_price = float(row.get("Цена за ед.", 0)) if "Цена за ед." in row and not pd.isna(row["Цена за ед."]) else 0
-                    labor_per_unit = float(row.get("Трудозатраты на ед. (чел-час)", 0)) if "Трудозатраты на ед. (чел-час)" in row and not pd.isna(row["Трудозатраты на ед. (чел-час)"]) else 0
-                    machine_hours_per_unit = float(row.get("Машиночасы на ед.", 0)) if "Машиночасы на ед." in row and not pd.isna(row["Машиночасы на ед."]) else 0
-                    executor = str(row.get("Исполнитель", "")) if "Исполнитель" in row and not pd.isna(row["Исполнитель"]) else None
-                    
-                    if existing_task:
-                        # Обновление
-                        existing_task.name = name
-                        existing_task.unit = str(unit).strip()
-                        existing_task.volume_plan = volume_plan
-                        existing_task.start_date_contract = start_date_contract
-                        existing_task.end_date_contract = end_date_contract
-                        # Плановые даты не перезаписываем если они уже есть
-                        if not existing_task.start_date_plan:
-                            existing_task.start_date_plan = start_date_plan
-                        if not existing_task.end_date_plan:
-                            existing_task.end_date_plan = end_date_plan
-                        existing_task.unit_price = unit_price
-                        existing_task.labor_per_unit = labor_per_unit
-                        existing_task.machine_hours_per_unit = machine_hours_per_unit
-                        existing_task.executor = executor
-                        existing_task.is_section = False
-                        existing_task.level = level
-                        existing_task.parent_code = parent_code
-                        db.commit()
-                        created_tasks.append({"action": "updated", "code": code, "type": "task"})
-                    else:
-                        # Создание
-                        task = models.Task(
-                            code=code,
-                            name=name,
-                            unit=str(unit).strip(),
-                            volume_plan=volume_plan,
-                            volume_fact=0,
-                            start_date_contract=start_date_contract,
-                            end_date_contract=end_date_contract,
-                            start_date_plan=start_date_plan,
-                            end_date_plan=end_date_plan,
-                            unit_price=unit_price,
-                            labor_per_unit=labor_per_unit,
-                            machine_hours_per_unit=machine_hours_per_unit,
-                            executor=executor,
-                            is_section=False,
-                            level=level,
-                            parent_code=parent_code
-                        )
-                        db.add(task)
-                        db.commit()
-                        created_tasks.append({"action": "created", "code": code, "type": "task"})
-                    
-            except Exception as e:
-                errors.append(f"Строка {idx + 2}: {str(e)}")
-                continue
-        
-        return {
-            "success": True,
-            "tasks_processed": len(created_tasks),
-            "tasks": created_tasks,
-            "errors": errors
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка обработки файла: {str(e)}")
