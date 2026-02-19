@@ -43,7 +43,6 @@ class TaskUpdate(BaseModel):
 
 class Task(TaskBase):
     id: int
-
     class Config:
         from_attributes = True
 
@@ -57,7 +56,6 @@ class MonthlyTaskCreate(MonthlyTaskBase):
 
 class MonthlyTask(MonthlyTaskBase):
     id: int
-
     class Config:
         from_attributes = True
 
@@ -76,25 +74,24 @@ class Brigade(BaseModel):
     name: str
     order: int
     created_at: datetime
-
     class Config:
         from_attributes = True
 
 # --- DailyWork schemas ---
 
 class DailyWorkBase(BaseModel):
-    task_id: int
+    task_id: Optional[int] = None          # None для сопутствующих работ
     date: date
-    volume: float
+    volume: float                           # для сопутствующих — человекочасы
     description: Optional[str] = None
     brigade_id: Optional[int] = None
+    is_ancillary: bool = False              # флаг сопутствующих работ
 
 class DailyWorkCreate(DailyWorkBase):
     pass
 
 class DailyWork(DailyWorkBase):
     id: int
-
     class Config:
         from_attributes = True
 
@@ -103,7 +100,7 @@ class DailyWorkWithTask(DailyWork):
     name: str
     unit: str
 
-# Analytics schema
+# Analytics
 class Analytics(BaseModel):
     total_progress_percent: float
     time_progress_percent: float
@@ -117,7 +114,7 @@ class Analytics(BaseModel):
     cost_fact: float
     cost_remaining: float
 
-# Auth schemas
+# Auth
 class UserBase(BaseModel):
     username: str
     email: str
@@ -144,13 +141,11 @@ class UserResponse(BaseModel):
     full_name: str
     role: str
     created_at: datetime
-
     class Config:
         from_attributes = True
 
 class User(UserBase):
     id: int
-
     class Config:
         from_attributes = True
 
@@ -166,7 +161,7 @@ class ImportResult(BaseModel):
     tasks_processed: int
     errors: List[str] = []
 
-# Employee schemas
+# Employee
 class EmployeeBase(BaseModel):
     full_name: str = Field(..., min_length=1)
     position: str = Field(..., min_length=1)
@@ -184,11 +179,10 @@ class Employee(EmployeeBase):
     id: int
     created_at: datetime
     updated_at: datetime
-
     class Config:
         from_attributes = True
 
-# DailyExecutor schemas
+# DailyExecutor
 class DailyExecutorBase(BaseModel):
     date: date
     employee_id: int = Field(..., gt=0)
@@ -206,7 +200,6 @@ class DailyExecutorUpdate(BaseModel):
 class DailyExecutor(DailyExecutorBase):
     id: int
     created_at: datetime
-
     class Config:
         from_attributes = True
 
@@ -221,7 +214,7 @@ class DailyExecutorStats(BaseModel):
     responsible: Optional[Employee] = None
     executors: List[DailyExecutorWithEmployee]
 
-# Equipment schemas
+# Equipment
 class EquipmentBase(BaseModel):
     equipment_type: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
@@ -241,11 +234,10 @@ class Equipment(EquipmentBase):
     id: int
     created_at: datetime
     updated_at: datetime
-
     class Config:
         from_attributes = True
 
-# DailyEquipmentUsage schemas
+# DailyEquipmentUsage
 class DailyEquipmentUsageBase(BaseModel):
     date: date
     equipment_id: int = Field(..., gt=0)
@@ -261,7 +253,6 @@ class DailyEquipmentUsageUpdate(BaseModel):
 class DailyEquipmentUsage(DailyEquipmentUsageBase):
     id: int
     created_at: datetime
-
     class Config:
         from_attributes = True
 
@@ -275,7 +266,7 @@ class DailyEquipmentStats(BaseModel):
     equipment_count: int
     equipment_usage: List[DailyEquipmentUsageWithEquipment]
 
-# Brigade stats (полная инфа по бригаде за день)
+# Brigade stats
 class BrigadeStats(BaseModel):
     brigade: Brigade
     executors_count: int
@@ -286,4 +277,6 @@ class BrigadeStats(BaseModel):
     equipment_count: int
     total_machine_hours: float
     equipment_usage: List[DailyEquipmentUsageWithEquipment]
-    works: List[dict]  # список работ с деталями
+    works: List[dict]           # обычные работы
+    ancillary_works: List[dict] # сопутствующие работы
+    total_ancillary_hours: float

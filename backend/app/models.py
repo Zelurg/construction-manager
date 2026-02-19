@@ -11,7 +11,6 @@ class UserRole(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
-    
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
@@ -23,7 +22,6 @@ class User(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
-    
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, unique=True, index=True)
     name = Column(String, nullable=False)
@@ -42,81 +40,69 @@ class Task(Base):
     level = Column(Integer, default=0, nullable=False)
     parent_code = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
     daily_works = relationship("DailyWork", back_populates="task")
 
 class MonthlyTask(Base):
     __tablename__ = "monthly_tasks"
-    
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(Integer, ForeignKey("tasks.id"))
     month = Column(Date, nullable=False)
     volume_plan = Column(Float, nullable=False)
-    
     task = relationship("Task", back_populates="monthly_tasks")
 
 class Brigade(Base):
     """Бригада/звено за конкретный день"""
     __tablename__ = "brigades"
-    
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, index=True)
-    name = Column(String, nullable=False, default="Бригада")  # Название бригады
-    order = Column(Integer, default=0, nullable=False)  # Порядок отображения
+    name = Column(String, nullable=False, default="Бригада")
+    order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Связи
     daily_works = relationship("DailyWork", back_populates="brigade")
     daily_executors = relationship("DailyExecutor", back_populates="brigade")
     daily_equipment_usage = relationship("DailyEquipmentUsage", back_populates="brigade")
 
 class DailyWork(Base):
     __tablename__ = "daily_works"
-    
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"))
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)  # NULL для сопутствующих
     date = Column(Date, nullable=False)
-    volume = Column(Float, nullable=False)
-    description = Column(String)
-    brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)  # nullable для совместимости
+    volume = Column(Float, nullable=False)           # для сопутствующих — человекочасы
+    description = Column(String, nullable=True)
+    brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)
+    is_ancillary = Column(Boolean, default=False, nullable=False)  # флаг сопутствующих работ
     created_at = Column(DateTime, default=datetime.utcnow)
-    
     task = relationship("Task", back_populates="daily_works")
     brigade = relationship("Brigade", back_populates="daily_works")
 
 class Employee(Base):
-    """Модель сотрудника - справочник"""
+    """Справочник сотрудников"""
     __tablename__ = "employees"
-    
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     position = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
     daily_executors = relationship("DailyExecutor", back_populates="employee")
 
 class DailyExecutor(Base):
-    """Модель исполнителя работ за конкретный день"""
+    """Исполнитель работ за конкретный день"""
     __tablename__ = "daily_executors"
-    
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     hours_worked = Column(Float, nullable=False, default=10.0)
     is_responsible = Column(Boolean, default=False, nullable=False)
-    brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)  # nullable для совместимости
+    brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
     employee = relationship("Employee", back_populates="daily_executors")
     brigade = relationship("Brigade", back_populates="daily_executors")
 
 class Equipment(Base):
-    """Модель техники - справочник"""
+    """Справочник техники"""
     __tablename__ = "equipment"
-    
     id = Column(Integer, primary_key=True, index=True)
     equipment_type = Column(String, nullable=False)
     model = Column(String, nullable=False)
@@ -124,19 +110,16 @@ class Equipment(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
     daily_equipment_usage = relationship("DailyEquipmentUsage", back_populates="equipment")
 
 class DailyEquipmentUsage(Base):
-    """Модель использования техники за конкретный день"""
+    """Использование техники за конкретный день"""
     __tablename__ = "daily_equipment_usage"
-    
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, index=True)
     equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
     machine_hours = Column(Float, nullable=False, default=8.0)
-    brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)  # nullable для совместимости
+    brigade_id = Column(Integer, ForeignKey("brigades.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
     equipment = relationship("Equipment", back_populates="daily_equipment_usage")
     brigade = relationship("Brigade", back_populates="daily_equipment_usage")

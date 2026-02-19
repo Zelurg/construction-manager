@@ -9,37 +9,80 @@ from ..websocket_manager import manager
 
 router = APIRouter()
 
+
 @router.get("/works")
 def get_daily_works(work_date: date, db: Session = Depends(get_db)):
     works = db.query(models.DailyWork).filter(models.DailyWork.date == work_date).all()
     return works
 
+
 @router.post("/works")
 async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends(get_db)):
-    # Проверяем существование задачи
+    """
+    Создать запись о выполненной работе за день.
+    Для сопутствующих работ (is_ancillary=True):
+      - task_id не нужен (None)
+      - volume = человекочасы
+      - volume_fact задачи НЕ обновляется
+    """
+    if work.is_ancillary:
+        # Сопутствующие работы — без привязки к задаче
+        db_work = models.DailyWork(
+            task_id=None,
+            date=work.date,
+            volume=work.volume,
+            description=work.description,
+            brigade_id=work.brigade_id,
+            is_ancillary=True,
+        )
+        db.add(db_work)
+        db.commit()
+        db.refresh(db_work)
+
+        await manager.broadcast({
+            "type": "daily_work_created",
+            "event": "daily_works",
+            "data": {
+                "id": db_work.id,
+                "task_id": None,
+                "date": db_work.date.isoformat(),
+                "volume": db_work.volume,
+                "description": db_work.description,
+                "is_ancillary": True,
+            }
+        }, event_type="daily_works")
+
+        return db_work
+
+    # Обычная работа — требует task_id
+    if not work.task_id:
+        raise HTTPException(status_code=400, detail="task_id обязателен для обычных работ")
+
     task = db.query(models.Task).filter(models.Task.id == work.task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
-    
-    # Создаём запись ежедневной работы
-    db_work = models.DailyWork(**work.dict())
+
+    db_work = models.DailyWork(
+        task_id=work.task_id,
+        date=work.date,
+        volume=work.volume,
+        description=work.description,
+        brigade_id=work.brigade_id,
+        is_ancillary=False,
+    )
     db.add(db_work)
     db.commit()
     db.refresh(db_work)
-    
-    # ТЕПЕРЬ пересчитываем volume_fact ПОСЛЕ commit
-    # Так мы учтём ВСЕ записи DailyWork включая только что добавленную
+
+    # Пересчитываем volume_fact только для обычных работ
     total_volume = db.query(func.sum(models.DailyWork.volume)).filter(
-        models.DailyWork.task_id == work.task_id
+        models.DailyWork.task_id == work.task_id,
+        models.DailyWork.is_ancillary == False
     ).scalar() or 0
-    
-    # Просто присваиваем общую сумму (БЕЗ + work.volume!)
     task.volume_fact = total_volume
-    
     db.commit()
     db.refresh(task)
-    
-    # Отправляем уведомление о создании работы
+
     await manager.broadcast({
         "type": "daily_work_created",
         "event": "daily_works",
@@ -48,11 +91,11 @@ async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends
             "task_id": db_work.task_id,
             "date": db_work.date.isoformat(),
             "volume": db_work.volume,
-            "description": db_work.description
+            "description": db_work.description,
+            "is_ancillary": False,
         }
     }, event_type="daily_works")
-    
-    # Отправляем уведомление об обновлении задачи для синхронизации всех вкладок
+
     await manager.broadcast({
         "type": "task_updated",
         "event": "tasks",
@@ -67,27 +110,43 @@ async def create_daily_work(work: schemas.DailyWorkCreate, db: Session = Depends
             "end_date_plan": task.end_date_plan.isoformat() if task.end_date_plan else None
         }
     }, event_type="tasks")
-    
+
     return db_work
+
 
 @router.get("/works/with-details")
 def get_daily_works_with_details(work_date: date, db: Session = Depends(get_db)):
     daily_works = db.query(models.DailyWork).filter(
         models.DailyWork.date == work_date
     ).all()
-    
+
     result = []
     for dw in daily_works:
-        task = db.query(models.Task).filter(models.Task.id == dw.task_id).first()
-        if task:
+        if dw.is_ancillary:
             result.append({
                 "id": dw.id,
-                "task_id": dw.task_id,
-                "code": task.code,
-                "name": task.name,
-                "unit": task.unit,
+                "task_id": None,
+                "is_ancillary": True,
+                "code": None,
+                "name": "Сопутствующие работы",
+                "unit": "ч/ч",
                 "volume": dw.volume,
-                "description": dw.description
+                "description": dw.description,
+                "brigade_id": dw.brigade_id,
             })
-    
+        else:
+            task = db.query(models.Task).filter(models.Task.id == dw.task_id).first()
+            if task:
+                result.append({
+                    "id": dw.id,
+                    "task_id": dw.task_id,
+                    "is_ancillary": False,
+                    "code": task.code,
+                    "name": task.name,
+                    "unit": task.unit,
+                    "volume": dw.volume,
+                    "description": dw.description,
+                    "brigade_id": dw.brigade_id,
+                })
+
     return result
