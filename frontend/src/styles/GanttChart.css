@@ -1,211 +1,132 @@
 /* ========================================
-   ИНТЕГРИРОВАННАЯ ДИАГРАММА ГАНТА
+   GANTT CHART — INTEGRATED
    ======================================== */
 
 .gantt-chart-integrated {
-  background: white;
-  border-radius: 0 8px 8px 0;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: white;
 }
 
-/* Комбинированная шапка - 70px (2 строки по 35px) */
 .gantt-combined-header {
-  display: flex;
-  flex-direction: column;
-  height: 70px;
-  background: #f5f5f5;
-  border-bottom: 2px solid #1976d2;
   flex-shrink: 0;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  z-index: 10;
 }
 
-/* Строка 1: Название + Select - 35px */
 .gantt-controls-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 35px;
-  padding: 0 16px;
-  background: #f5f5f5;
+  gap: 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid #e0e0e0;
-  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.gantt-controls-fixed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .gantt-title {
-  font-size: 13px;
   font-weight: 600;
+  font-size: 13px;
   color: #333;
-  margin: 0;
-  white-space: nowrap;
 }
 
 .gantt-scale-select {
-  padding: 4px 8px;
+  padding: 3px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  background: white;
-  font-size: 11px;
-  color: #333;
+  font-size: 12px;
   cursor: pointer;
-  outline: none;
-  transition: all 0.2s;
-  height: 24px;
+  background: white;
 }
 
-.gantt-scale-select:hover {
-  border-color: #1976d2;
-}
-
-.gantt-scale-select:focus {
-  border-color: #1976d2;
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.1);
-}
-
-/* Строка 2: Временная шкала - 35px */
+/* Временная шкала */
 .gantt-timeline-row {
-  height: 35px;
-  overflow-x: hidden; /* Изменено с auto на hidden */
-  overflow-y: hidden;
-  background: #fafafa;
+  overflow-x: hidden;
+  height: 24px;
   position: relative;
-  flex-shrink: 0;
-  /* Улучшенная поддержка прокрутки для macOS */
-  -webkit-overflow-scrolling: touch;
-  will-change: scroll-position;
-}
-
-/* Скрываем скроллбар - прокрутка управляется только основным контентом */
-.gantt-timeline-row::-webkit-scrollbar {
-  display: none;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .gantt-timeline-content {
   position: relative;
-  height: 35px;
+  height: 24px;
   min-width: 100%;
 }
 
 .gantt-time-mark {
   position: absolute;
   top: 0;
-  bottom: 0;
-  border-left: 2px solid #1976d2;
-  opacity: 0.4;
-  pointer-events: none;
+  height: 100%;
+  border-left: 1px solid #e0e0e0;
 }
 
 .gantt-time-label {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 5px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #1976d2;
+  font-size: 11px;
+  color: #666;
+  padding: 4px 4px;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 2px 6px;
-  border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.gantt-empty-timeline {
+/* Тело диаграммы */
+.gantt-body-scroll {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.gantt-body-content {
+  position: relative;
+  min-height: 100%;
+}
+
+/* Строки диаграммы — высота ДОЛЖНА совпадать с таблицей */
+.gantt-row-integrated {
+  position: relative;
+  height: 32px;
+  border-bottom: 1px solid #f0f0f0;
+  box-sizing: border-box;
+}
+
+.gantt-row-section {
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* Вертикальные линии сетки */
+.gantt-grid-line {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-left: 1px solid #f0f0f0;
+  pointer-events: none;
+}
+
+/* Скроллбар */
+.gantt-body-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.gantt-body-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
+.gantt-body-scroll::-webkit-scrollbar-thumb { background: #bbb; border-radius: 6px; }
+.gantt-body-scroll::-webkit-scrollbar-thumb:hover { background: #888; }
+
+.gantt-empty {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
   color: #999;
-  font-size: 11px;
+  font-size: 14px;
 }
 
-/* Тело диаграммы с прокруткой */
-.gantt-body-scroll {
-  flex: 1;
-  overflow: auto;
-  position: relative;
-  /* Критично для macOS */
-  -webkit-overflow-scrolling: touch;
-  will-change: scroll-position;
-  /* Предотвращаем "обрезание" контента */
-  min-height: 0;
-}
-
-.gantt-body-content {
-  position: relative;
-  min-width: 100%;
-  min-height: 100%;
-  margin: 0;
-  padding: 0;
-  /* Добавляем небольшой padding снизу для предотвращения обрезания */
-  padding-bottom: 1px;
-}
-
-.gantt-row-integrated {
-  position: relative;
-  height: 50px;
-  border-bottom: 1px solid #e0e0e0;
-  transition: background 0.2s;
-}
-
-.gantt-row-integrated:hover {
-  background: #f9f9f9;
-}
-
-.gantt-grid-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: #e8e8e8;
-  pointer-events: none;
-}
-
-.gantt-bar-integrated {
-  position: absolute;
-  top: 10px;
-  height: 30px;
-  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
-  border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(25, 118, 210, 0.3);
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 10px;
-}
-
-.gantt-bar-integrated:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(25, 118, 210, 0.5);
-  z-index: 10;
-}
-
-.gantt-empty {
-  text-align: center;
-  padding: 3rem;
+.gantt-empty-timeline {
+  padding: 4px 12px;
   color: #999;
-  font-size: 1rem;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Скроллбар для тела диаграммы */
-.gantt-body-scroll::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.gantt-body-scroll::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-.gantt-body-scroll::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 5px;
-}
-
-.gantt-body-scroll::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  font-size: 12px;
 }

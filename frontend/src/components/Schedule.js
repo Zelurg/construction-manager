@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { scheduleAPI, employeesAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
@@ -8,22 +8,22 @@ import FilterManager from './FilterManager';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * Цвета разделов по уровням — все в одном сине-голубом диапазоне,
- * но разной насыщенности: уровень 0 темнее, глубже — светлее.
- * level 0: #B8D4E8  level 1: #C8DFF0  level 2: #D8EAF5
- * level 3: #E4F1F8  level 4+: #EFF6FB
+ * Цвета разделов по уровням — единый синий диапазон,
+ * level 0 самый тёмный, глубже — светлее.
  */
 const SECTION_COLORS = [
-  '#B8D4E8',  // уровень 0 — самый тёмный
-  '#C8DFF0',  // уровень 1
-  '#D8EAF5',  // уровень 2
-  '#E4F1F8',  // уровень 3
-  '#EFF6FB',  // уровень 4 и глубже
+  '#B8D4E8',  // level 0
+  '#C8DFF0',  // level 1
+  '#D8EAF5',  // level 2
+  '#E4F1F8',  // level 3
+  '#EFF6FB',  // level 4+
 ];
 
-/**
- * Сортирует коды по числовым сегментам: "1.2" < "1.10" < "2"
- */
+function getSectionColor(level) {
+  const idx = Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1);
+  return SECTION_COLORS[idx];
+}
+
 function parseCode(code) {
   if (!code) return [];
   return String(code).split('.').map(seg => {
@@ -45,9 +45,35 @@ function compareCode(a, b) {
   return 0;
 }
 
+// Ширины колонок по умолчанию
+const DEFAULT_COL_WIDTHS = {
+  code: 90,
+  name: 280,
+  unit: 60,
+  volume_plan: 90,
+  volume_fact: 90,
+  volume_remaining: 90,
+  start_date_contract: 110,
+  end_date_contract: 110,
+  start_date_plan: 110,
+  end_date_plan: 110,
+  unit_price: 90,
+  labor_per_unit: 100,
+  machine_hours_per_unit: 110,
+  executor: 150,
+  labor_total: 100,
+  labor_fact: 100,
+  labor_remaining: 110,
+  cost_total: 100,
+  cost_fact: 100,
+  cost_remaining: 110,
+  machine_hours_total: 110,
+  machine_hours_fact: 110,
+  machine_hours_remaining: 120,
+};
+
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
-
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
   const [tasks, setTasks] = useState([]);
@@ -60,21 +86,33 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [employees, setEmployees] = useState([]);
+  const [colWidths, setColWidths] = useState(() => {
+    try {
+      const saved = localStorage.getItem('scheduleColWidths');
+      return saved ? { ...DEFAULT_COL_WIDTHS, ...JSON.parse(saved) } : { ...DEFAULT_COL_WIDTHS };
+    } catch { return { ...DEFAULT_COL_WIDTHS }; }
+  });
+
+  const containerRef = useRef(null);
+  const tableScrollRef = useRef(null);
+  const ganttBodyRef = useRef(null);
+  const syncingRef = useRef(false);
+  const colResizeRef = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
 
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
     { key: 'name', label: 'Наименование', isBase: true },
     { key: 'unit', label: 'Ед. изм.', isBase: true },
-    { key: 'volume_plan', label: 'Объем план', isBase: true },
-    { key: 'volume_fact', label: 'Объем факт', isBase: true },
-    { key: 'volume_remaining', label: 'Объем остаток', isBase: false, isCalculated: true },
+    { key: 'volume_plan', label: 'Объём план', isBase: true },
+    { key: 'volume_fact', label: 'Объём факт', isBase: true },
+    { key: 'volume_remaining', label: 'Объём остаток', isBase: false, isCalculated: true },
     { key: 'start_date_contract', label: 'Дата старта контракт', isBase: true },
     { key: 'end_date_contract', label: 'Дата финиша контракт', isBase: true },
     { key: 'start_date_plan', label: 'Дата старта план', isBase: true, editable: true },
     { key: 'end_date_plan', label: 'Дата финиша план', isBase: true, editable: true },
     { key: 'unit_price', label: 'Цена за ед.', isBase: false },
-    { key: 'labor_per_unit', label: 'Трудозатраты на ед.', isBase: false },
-    { key: 'machine_hours_per_unit', label: 'Машиночасы на ед.', isBase: false },
+    { key: 'labor_per_unit', label: 'Трудозатраты/ед.', isBase: false },
+    { key: 'machine_hours_per_unit', label: 'Машиночасы/ед.', isBase: false },
     { key: 'executor', label: 'Исполнитель', isBase: false, editable: true },
     { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
     { key: 'labor_fact', label: 'Трудозатраты факт', isBase: false, isCalculated: true },
@@ -94,9 +132,63 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return saved ? JSON.parse(saved) : defaultColumns;
   });
 
-  const containerRef = useRef(null);
-  const tableScrollRef = useRef(null);
-  const ganttScrollRef = useRef(null);
+  // ── Синхронизация вертикального скролла таблица ↔ гант ──
+  useEffect(() => {
+    const tableEl = tableScrollRef.current;
+    const ganttEl = ganttBodyRef.current;
+    if (!tableEl || !ganttEl) return;
+
+    const onTableScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      ganttEl.scrollTop = tableEl.scrollTop;
+      requestAnimationFrame(() => { syncingRef.current = false; });
+    };
+    const onGanttScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      tableEl.scrollTop = ganttEl.scrollTop;
+      requestAnimationFrame(() => { syncingRef.current = false; });
+    };
+
+    tableEl.addEventListener('scroll', onTableScroll, { passive: true });
+    ganttEl.addEventListener('scroll', onGanttScroll, { passive: true });
+    return () => {
+      tableEl.removeEventListener('scroll', onTableScroll);
+      ganttEl.removeEventListener('scroll', onGanttScroll);
+    };
+  }, [showGantt]);
+
+  // ── Resize колонок ──
+  const handleColResizeMouseDown = useCallback((e, colKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    colResizeRef.current = {
+      active: true,
+      colKey,
+      startX: e.clientX,
+      startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100,
+    };
+
+    const onMouseMove = (ev) => {
+      if (!colResizeRef.current.active) return;
+      const delta = ev.clientX - colResizeRef.current.startX;
+      const newWidth = Math.max(50, colResizeRef.current.startWidth + delta);
+      setColWidths(prev => ({ ...prev, [colResizeRef.current.colKey]: newWidth }));
+    };
+    const onMouseUp = () => {
+      colResizeRef.current.active = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      // Сохраняем в localStorage
+      setColWidths(prev => {
+        localStorage.setItem('scheduleColWidths', JSON.stringify(prev));
+        return prev;
+      });
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [colWidths]);
 
   useEffect(() => {
     if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true));
@@ -197,14 +289,9 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getDisplayValue = (task, columnKey) => {
     if (task.is_section) {
-      const sumColumns = [
-        'labor_total','labor_fact','labor_remaining',
-        'cost_total','cost_fact','cost_remaining',
-        'machine_hours_total','machine_hours_fact','machine_hours_remaining',
-      ];
+      const sumColumns = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumColumns.includes(columnKey)) return calculateSectionSum(task, columnKey).toFixed(2);
-      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price',
-           'labor_per_unit','machine_hours_per_unit','executor'].includes(columnKey)) return '-';
+      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor'].includes(columnKey)) return '-';
     }
     switch (columnKey) {
       case 'volume_remaining':         return (task.volume_plan - task.volume_fact).toFixed(2);
@@ -309,7 +396,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         return (
           <select value={editValue} onChange={e => setEditValue(e.target.value)}
             onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
-            style={{ width: '100%', padding: '4px' }}>
+            style={{ width: '100%', padding: '2px' }}>
             <option value="">Не выбран</option>
             {employees.map(emp => (
               <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>
@@ -320,7 +407,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       return (
         <input type="date" value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
-          style={{ width: '100%', padding: '4px' }} />
+          style={{ width: '100%', padding: '2px' }} />
       );
     }
     if (columnKey === 'name') {
@@ -348,12 +435,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getRowStyle = (task) => {
     if (!task.is_section) return {};
-    // Берём цвет по уровню, последний цвет — для всех глубоких уровней
-    const color = SECTION_COLORS[Math.min(task.level, SECTION_COLORS.length - 1)];
     return {
-      backgroundColor: color,
+      backgroundColor: getSectionColor(task.level),
       fontWeight: 'bold',
-      fontSize: task.level === 0 ? '1.05em' : '1em',
+      fontSize: task.level === 0 ? '1.02em' : '1em',
     };
   };
 
@@ -369,14 +454,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return {};
   };
 
+  // ── Resize разделителя таблица/гант ──
   const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
-
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isResizing || !containerRef.current) return;
       const containerRect = containerRef.current.getBoundingClientRect();
       const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
-      if (newWidth >= 30 && newWidth <= 80) setTableWidth(newWidth);
+      if (newWidth >= 20 && newWidth <= 85) setTableWidth(newWidth);
     };
     const handleMouseUp = () => setIsResizing(false);
     if (isResizing) {
@@ -403,16 +488,26 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         >
           <div className="table-wrapper">
             <table className="tasks-table-integrated">
+              <colgroup>
+                {visibleColumns.map(colKey => (
+                  <col key={colKey} style={{ width: `${colWidths[colKey] || 100}px` }} />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
                   {visibleColumns.map(columnKey => (
-                    <th key={columnKey}>
+                    <th key={columnKey} style={{ width: `${colWidths[columnKey] || 100}px` }}>
+                      <div>{getColumnLabel(columnKey)}</div>
                       <ColumnFilter
                         columnKey={columnKey}
-                        columnLabel={getColumnLabel(columnKey)}
+                        columnLabel=""
                         allValues={getColumnValues(columnKey)}
                         currentFilter={filters[columnKey] || ''}
                         onApplyFilter={handleFilterApply}
+                      />
+                      <div
+                        className="col-resize-handle"
+                        onMouseDown={(e) => handleColResizeMouseDown(e, columnKey)}
                       />
                     </th>
                   ))}
@@ -452,9 +547,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           <div
             className="schedule-gantt-section"
             style={{ width: `${100 - tableWidth}%` }}
-            ref={ganttScrollRef}
           >
-            <GanttChart tasks={filteredTasks} />
+            <GanttChart tasks={filteredTasks} externalScrollRef={ganttBodyRef} />
           </div>
         )}
       </div>
