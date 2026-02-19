@@ -14,17 +14,15 @@ function DailyOrders({ onShowColumnSettings }) {
     new Date().toISOString().split('T')[0]
   );
 
-  // Бригады со всей статистикой
   const [brigadesStats, setBrigadesStats] = useState([]);
-
-  // Общие данные
-  const [tasks, setTasks] = useState([]);
-  const [allTasks, setAllTasks] = useState([]);
+  const [tasks, setTasks] = useState([]);         // только листовые задачи
+  const [allTasks, setAllTasks] = useState([]);   // все (для breadcrumbs)
   const [employees, setEmployees] = useState([]);
 
   // Модалки
   const [showAddWorkModal, setShowAddWorkModal] = useState(false);
   const [addWorkBrigadeId, setAddWorkBrigadeId] = useState(null);
+  const [addWorkResponsible, setAddWorkResponsible] = useState(null); // имя ответственного бригады
   const [showExecutorsModal, setShowExecutorsModal] = useState(false);
   const [executorsModalBrigadeId, setExecutorsModalBrigadeId] = useState(null);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
@@ -33,6 +31,8 @@ function DailyOrders({ onShowColumnSettings }) {
 
   // Форма добавления работы
   const [formData, setFormData] = useState({ task_id: '', volume: '', description: '' });
+  // Фильтр работ по ответственному включен по умолчанию
+  const [filterByResponsible, setFilterByResponsible] = useState(true);
 
   const availableColumns = [
     { key: 'code', label: 'Шифр', isBase: true },
@@ -79,36 +79,16 @@ function DailyOrders({ onShowColumnSettings }) {
 
   useEffect(() => {
     loadAll();
-
     websocketService.connect();
-
     const reload = () => loadAll();
-
-    websocketService.on('daily_work_created', reload);
-    websocketService.on('task_updated', reload);
-    websocketService.on('executor_added', reload);
-    websocketService.on('executor_updated', reload);
-    websocketService.on('executor_deleted', reload);
-    websocketService.on('equipment_usage_added', reload);
-    websocketService.on('equipment_usage_updated', reload);
-    websocketService.on('equipment_usage_deleted', reload);
-    websocketService.on('brigade_created', reload);
-    websocketService.on('brigade_updated', reload);
-    websocketService.on('brigade_deleted', reload);
-
-    return () => {
-      websocketService.off('daily_work_created', reload);
-      websocketService.off('task_updated', reload);
-      websocketService.off('executor_added', reload);
-      websocketService.off('executor_updated', reload);
-      websocketService.off('executor_deleted', reload);
-      websocketService.off('equipment_usage_added', reload);
-      websocketService.off('equipment_usage_updated', reload);
-      websocketService.off('equipment_usage_deleted', reload);
-      websocketService.off('brigade_created', reload);
-      websocketService.off('brigade_updated', reload);
-      websocketService.off('brigade_deleted', reload);
-    };
+    const events = [
+      'daily_work_created', 'task_updated',
+      'executor_added', 'executor_updated', 'executor_deleted',
+      'equipment_usage_added', 'equipment_usage_updated', 'equipment_usage_deleted',
+      'brigade_created', 'brigade_updated', 'brigade_deleted',
+    ];
+    events.forEach(e => websocketService.on(e, reload));
+    return () => events.forEach(e => websocketService.off(e, reload));
   }, [loadAll]);
 
   // --- Добавление бригады ---
@@ -118,24 +98,22 @@ function DailyOrders({ onShowColumnSettings }) {
       await brigadesAPI.create({ date: selectedDate, name: `Бригада ${num}` });
       await loadAll();
     } catch (error) {
-      console.error('Ошибка создания бригады:', error);
+      console.error(error);
       alert('Ошибка создания бригады');
     }
   };
 
-  // --- Удаление бригады ---
   const handleDeleteBrigade = async (brigadeId, brigadeName) => {
     if (!window.confirm(`Удалить "${brigadeName}"? Работы, исполнители и техника этой бригады останутся в БД, но открепятся от неё.`)) return;
     try {
       await brigadesAPI.delete(brigadeId);
       await loadAll();
     } catch (error) {
-      console.error('Ошибка удаления бригады:', error);
+      console.error(error);
       alert('Ошибка удаления бригады');
     }
   };
 
-  // --- Переименование бригады ---
   const handleRenameBrigade = async (brigadeId, currentName) => {
     const newName = window.prompt('Новое название бригады:', currentName);
     if (!newName || newName.trim() === '') return;
@@ -143,16 +121,30 @@ function DailyOrders({ onShowColumnSettings }) {
       await brigadesAPI.update(brigadeId, { name: newName.trim() });
       await loadAll();
     } catch (error) {
-      console.error('Ошибка переименования:', error);
-      alert('Ошибка переименования бригады');
+      console.error(error);
+      alert('Ошибка переименования');
     }
   };
 
-  // --- Добавление работы ---
-  const handleOpenAddWork = (brigadeId) => {
+  // --- Открытие модалки добавления работы ---
+  const handleOpenAddWork = (brigadeId, responsible) => {
     setAddWorkBrigadeId(brigadeId);
+    setAddWorkResponsible(responsible); // объект { full_name, ... } или null
     setFormData({ task_id: '', volume: '', description: '' });
+    setFilterByResponsible(!!responsible); // включаем фильтр только если есть ответственный
     setShowAddWorkModal(true);
+  };
+
+  // Фильтрация задач для селекта в модалке
+  const getFilteredTasks = () => {
+    if (!filterByResponsible || !addWorkResponsible) return tasks;
+    const responsibleName = addWorkResponsible.full_name.trim().toLowerCase();
+    return tasks.filter(t => {
+      if (!t.executor) return false;
+      // Сравниваем через includes: работает если в task.executor есть имя (или наоборот)
+      const taskExecutor = t.executor.trim().toLowerCase();
+      return taskExecutor.includes(responsibleName) || responsibleName.includes(taskExecutor);
+    });
   };
 
   const handleSubmitWork = async (e) => {
@@ -203,16 +195,13 @@ function DailyOrders({ onShowColumnSettings }) {
       }
       case 'labor_total':
         return work.labor_per_unit != null
-          ? (work.volume * (work.labor_per_unit || 0)).toFixed(2)
-          : '-';
+          ? (work.volume * (work.labor_per_unit || 0)).toFixed(2) : '-';
       case 'cost_total':
         return work.unit_price != null
-          ? (work.volume * (work.unit_price || 0)).toFixed(2)
-          : '-';
+          ? (work.volume * (work.unit_price || 0)).toFixed(2) : '-';
       case 'machine_hours_total':
         return work.machine_hours_per_unit != null
-          ? (work.volume * (work.machine_hours_per_unit || 0)).toFixed(2)
-          : '-';
+          ? (work.volume * (work.machine_hours_per_unit || 0)).toFixed(2) : '-';
       case 'description':
         return work[columnKey] || '-';
       default:
@@ -231,16 +220,18 @@ function DailyOrders({ onShowColumnSettings }) {
   };
 
   const getEfficiencyStatus = (worked, needed) => {
-    if (needed == null) return { color: 'gray', label: '' };
+    if (needed == null || needed === 0) return null;
     const diff = needed - worked;
     if (Math.abs(diff) < 1) return { color: 'blue', text: needed.toFixed(1), label: 'норма' };
     if (diff > 0) return { color: 'green', text: needed.toFixed(1), label: 'перевыполнение' };
     return { color: 'red', text: needed.toFixed(1), label: 'отставание' };
   };
 
+  const filteredTasksForModal = getFilteredTasks();
+
   return (
     <div className="daily-orders">
-      {/* Шапка: выбор даты и кнопка добавить бригаду */}
+      {/* Шапка */}
       <div className="controls-header">
         <div className="date-selector">
           <label>Выберите дату:</label>
@@ -262,29 +253,23 @@ function DailyOrders({ onShowColumnSettings }) {
         </div>
       ) : (
         brigadesStats.map((bs) => {
+          const neededMachineHours = bs.works.reduce(
+            (s, w) => s + (w.volume * (w.machine_hours_per_unit || 0)), 0
+          );
           const efEx = getEfficiencyStatus(bs.total_hours_worked, bs.total_labor_hours);
-          const efEq = getEfficiencyStatus(bs.total_machine_hours,
-            bs.works.reduce((s, w) => s + (w.volume * (w.machine_hours_per_unit || 0)), 0));
+          const efEq = getEfficiencyStatus(bs.total_machine_hours, neededMachineHours);
 
           return (
             <div key={bs.brigade.id} className="brigade-block">
-              {/* Заголовок бригады */}
               <div className="brigade-header">
                 <div className="brigade-title-row">
                   <h3 className="brigade-name">{bs.brigade.name}</h3>
                   <div className="brigade-actions">
-                    <button
-                      onClick={() => handleRenameBrigade(bs.brigade.id, bs.brigade.name)}
-                      className="btn-icon" title="Переименовать"
-                    >✏️</button>
-                    <button
-                      onClick={() => handleDeleteBrigade(bs.brigade.id, bs.brigade.name)}
-                      className="btn-icon" title="Удалить бригаду"
-                    >🗑️</button>
+                    <button onClick={() => handleRenameBrigade(bs.brigade.id, bs.brigade.name)} className="btn-icon" title="Переименовать">✏️</button>
+                    <button onClick={() => handleDeleteBrigade(bs.brigade.id, bs.brigade.name)} className="btn-icon" title="Удалить">🗑️</button>
                   </div>
                 </div>
 
-                {/* Статистика бригады */}
                 <div className="executors-info">
                   {(bs.executors_count > 0 || bs.responsible) && (
                     <div className="stats-row">
@@ -292,9 +277,11 @@ function DailyOrders({ onShowColumnSettings }) {
                         <>
                           <span>👥 {bs.executors_count} чел.</span>
                           <span>⏱️ {bs.total_hours_worked.toFixed(1)} ч/ч</span>
-                          <span style={{ color: efEx.color }}>
-                            📊 {efEx.text} ч/ч ({efEx.label})
-                          </span>
+                          {efEx && (
+                            <span style={{ color: efEx.color }}>
+                              📊 {efEx.text} ч/ч ({efEx.label})
+                            </span>
+                          )}
                         </>
                       )}
                       {bs.responsible && (
@@ -306,14 +293,15 @@ function DailyOrders({ onShowColumnSettings }) {
                     <div className="stats-row">
                       <span>🚜 {bs.equipment_count} ед.</span>
                       <span>⏱️ {bs.total_machine_hours.toFixed(1)} м-ч</span>
-                      <span style={{ color: efEq.color }}>
-                        📊 {efEq.text} м-ч ({efEq.label})
-                      </span>
+                      {efEq && (
+                        <span style={{ color: efEq.color }}>
+                          📊 {efEq.text} м-ч ({efEq.label})
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Кнопки управления бригадой */}
                 <div className="brigade-controls">
                   <button
                     onClick={() => { setExecutorsModalBrigadeId(bs.brigade.id); setShowExecutorsModal(true); }}
@@ -324,13 +312,12 @@ function DailyOrders({ onShowColumnSettings }) {
                     className="btn-secondary"
                   >🚜 Техника</button>
                   <button
-                    onClick={() => handleOpenAddWork(bs.brigade.id)}
+                    onClick={() => handleOpenAddWork(bs.brigade.id, bs.responsible)}
                     className="btn-primary"
                   >+ Внести объём</button>
                 </div>
               </div>
 
-              {/* Таблица работ бригады */}
               <div className="table-container">
                 <table className="tasks-table">
                   <thead>
@@ -369,6 +356,26 @@ function DailyOrders({ onShowColumnSettings }) {
         <div className="modal-overlay" onClick={() => setShowAddWorkModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Внести объём работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
+
+            {/* Фильтр по ответственному */}
+            {addWorkResponsible && (
+              <div className="filter-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={filterByResponsible}
+                    onChange={(e) => {
+                      setFilterByResponsible(e.target.checked);
+                      setFormData(prev => ({ ...prev, task_id: '' })); // сбрасываем выбор при смене фильтра
+                    }}
+                  />
+                  &nbsp;Показывать только работы ответственного&nbsp;
+                  <strong>{addWorkResponsible.full_name}</strong>
+                  &nbsp;<span style={{ color: '#999', fontSize: '12px' }}>({filteredTasksForModal.length} из {tasks.length})</span>
+                </label>
+              </div>
+            )}
+
             <form onSubmit={handleSubmitWork}>
               <div className="form-group">
                 <label>Выберите работу *</label>
@@ -378,18 +385,23 @@ function DailyOrders({ onShowColumnSettings }) {
                   required
                 >
                   <option value="">Выберите...</option>
-                  {tasks.map(task => (
+                  {filteredTasksForModal.map(task => (
                     <option key={task.id} value={task.id}>
-                      {task.code} - {task.name} ({task.unit})
+                      {task.code} — {task.name} ({task.unit})
                     </option>
                   ))}
                 </select>
+                {filterByResponsible && filteredTasksForModal.length === 0 && (
+                  <p style={{ color: '#e67e22', fontSize: '12px', marginTop: '4px' }}>
+                    У ответственного нет назначенных работ. Снимите фильтр выше.
+                  </p>
+                )}
               </div>
 
               {formData.task_id && (() => {
                 const t = getTaskInfo(parseInt(formData.task_id));
                 return t ? (
-                  <div className="task-info" style={{
+                  <div style={{
                     background: '#f5f5f5', padding: '10px',
                     borderRadius: '4px', marginBottom: '15px', fontSize: '14px'
                   }}>
@@ -417,7 +429,7 @@ function DailyOrders({ onShowColumnSettings }) {
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Комментарий к выполненным работам"
+                  placeholder="Комментарий"
                   rows="3"
                   style={{ width: '100%', resize: 'vertical' }}
                 />
@@ -432,7 +444,6 @@ function DailyOrders({ onShowColumnSettings }) {
         </div>
       )}
 
-      {/* Модалка исполнителей */}
       {showExecutorsModal && (
         <ExecutorsModal
           date={selectedDate}
@@ -443,7 +454,6 @@ function DailyOrders({ onShowColumnSettings }) {
         />
       )}
 
-      {/* Модалка техники */}
       {showEquipmentModal && (
         <EquipmentUsageModal
           date={selectedDate}
@@ -453,7 +463,6 @@ function DailyOrders({ onShowColumnSettings }) {
         />
       )}
 
-      {/* Настройки колонок */}
       {showColumnSettings && (
         <ColumnSettings
           availableColumns={availableColumns}
