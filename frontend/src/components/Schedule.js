@@ -15,12 +15,35 @@ const SECTION_COLORS = [
   '#E8F0F8',
 ];
 
+/**
+ * Сортирует коды по числовым сегментам: "1.2" < "1.10" < "2"
+ * Для джуна: разбиваем "1.10.2" на [1, 10, 2] и сравниваем поэлементно
+ */
+function parseCode(code) {
+  if (!code) return [];
+  return String(code).split('.').map(seg => {
+    const n = parseInt(seg, 10);
+    return isNaN(n) ? seg : n;
+  });
+}
+
+function compareCode(a, b) {
+  const pa = parseCode(a.code);
+  const pb = parseCode(b.code);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const sa = pa[i] ?? -1;
+    const sb = pb[i] ?? -1;
+    if (sa < sb) return -1;
+    if (sa > sb) return 1;
+  }
+  return 0;
+}
+
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   
-  const isAdmin = useMemo(() => {
-    return user?.role === 'admin';
-  }, [user]);
+  const isAdmin = useMemo(() => user?.role === 'admin', [user]);
   
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
@@ -70,74 +93,43 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const ganttScrollRef = useRef(null);
 
   useEffect(() => {
-    if (onShowColumnSettings) {
-      onShowColumnSettings(() => setShowColumnSettings(true));
-    }
+    if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true));
   }, [onShowColumnSettings]);
 
   useEffect(() => {
-    if (onShowFilters) {
-      onShowFilters(() => setShowFilterManager(true));
-    }
+    if (onShowFilters) onShowFilters(() => setShowFilterManager(true));
   }, [onShowFilters]);
 
   useEffect(() => {
     loadTasks();
     loadEmployees();
-    
     websocketService.connect();
     
-    const handleTaskCreated = (message) => {
-      console.log('New task created:', message.data);
-      setTasks(prevTasks => [...prevTasks, message.data]);
-    };
+    const handleTaskCreated   = (msg) => setTasks(prev => [...prev, msg.data].sort(compareCode));
+    const handleTaskUpdated   = (msg) => setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
+    const handleTaskDeleted   = (msg) => setTasks(prev => prev.filter(t => t.id !== msg.data.id));
+    const handleScheduleCleared = () => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
     
-    const handleTaskUpdated = (message) => {
-      console.log('Task updated:', message.data);
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === message.data.id ? { ...task, ...message.data } : task
-        )
-      );
-    };
-    
-    const handleTaskDeleted = (message) => {
-      console.log('Task deleted:', message.data.id);
-      setTasks(prevTasks => 
-        prevTasks.filter(task => task.id !== message.data.id)
-      );
-    };
-    
-    const handleScheduleCleared = (message) => {
-      console.log('Schedule cleared:', message.data);
-      setTasks([]);
-      setFilteredTasks([]);
-      setTimeout(() => {
-        loadTasks();
-      }, 100);
-    };
-    
-    websocketService.on('task_created', handleTaskCreated);
-    websocketService.on('task_updated', handleTaskUpdated);
-    websocketService.on('task_deleted', handleTaskDeleted);
+    websocketService.on('task_created',     handleTaskCreated);
+    websocketService.on('task_updated',     handleTaskUpdated);
+    websocketService.on('task_deleted',     handleTaskDeleted);
     websocketService.on('schedule_cleared', handleScheduleCleared);
     
     return () => {
-      websocketService.off('task_created', handleTaskCreated);
-      websocketService.off('task_updated', handleTaskUpdated);
-      websocketService.off('task_deleted', handleTaskDeleted);
+      websocketService.off('task_created',     handleTaskCreated);
+      websocketService.off('task_updated',     handleTaskUpdated);
+      websocketService.off('task_deleted',     handleTaskDeleted);
       websocketService.off('schedule_cleared', handleScheduleCleared);
     };
   }, []);
 
-  useEffect(() => {
-    applyFilters();
-  }, [tasks, filters]);
+  useEffect(() => { applyFilters(); }, [tasks, filters]);
 
   const loadTasks = async () => {
     try {
       const response = await scheduleAPI.getTasks();
-      setTasks(response.data);
+      // Сортируем на фронтенде по числовым сегментам
+      setTasks([...response.data].sort(compareCode));
     } catch (error) {
       console.error('Ошибка загрузки задач:', error);
     }
@@ -154,130 +146,74 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   
   const getBreadcrumb = (task) => {
     if (!task.parent_code) return '';
-    
     const breadcrumbs = [];
     let currentCode = task.parent_code;
-    
     while (currentCode) {
       const parentTask = tasks.find(t => t.code === currentCode);
       if (parentTask) {
         breadcrumbs.unshift(parentTask.name);
         currentCode = parentTask.parent_code;
-      } else {
-        break;
-      }
+      } else break;
     }
-    
     return breadcrumbs.length > 0 ? breadcrumbs.join(' / ') + ' / ' : '';
   };
 
   const getChildTasks = (sectionCode, tasksArray) => {
     const children = [];
-    
     const findChildren = (parentCode) => {
       tasksArray.forEach(task => {
         if (task.parent_code === parentCode) {
-          if (task.is_section) {
-            findChildren(task.code);
-          } else {
-            children.push(task);
-          }
+          if (task.is_section) findChildren(task.code);
+          else children.push(task);
         }
       });
     };
-    
     findChildren(sectionCode);
     return children;
   };
 
   const calculateSectionSum = (section, columnKey) => {
     const childTasks = getChildTasks(section.code, filteredTasks);
-    
     let sum = 0;
-    
     childTasks.forEach(task => {
-      switch(columnKey) {
-        case 'labor_total':
-          sum += (task.labor_per_unit || 0) * task.volume_plan;
-          break;
-        case 'labor_fact':
-          sum += (task.labor_per_unit || 0) * task.volume_fact;
-          break;
-        case 'labor_remaining':
-          sum += (task.labor_per_unit || 0) * (task.volume_plan - task.volume_fact);
-          break;
-        case 'cost_total':
-          sum += (task.unit_price || 0) * task.volume_plan;
-          break;
-        case 'cost_fact':
-          sum += (task.unit_price || 0) * task.volume_fact;
-          break;
-        case 'cost_remaining':
-          sum += (task.unit_price || 0) * (task.volume_plan - task.volume_fact);
-          break;
-        case 'machine_hours_total':
-          sum += (task.machine_hours_per_unit || 0) * task.volume_plan;
-          break;
-        case 'machine_hours_fact':
-          sum += (task.machine_hours_per_unit || 0) * task.volume_fact;
-          break;
-        case 'machine_hours_remaining':
-          sum += (task.machine_hours_per_unit || 0) * (task.volume_plan - task.volume_fact);
-          break;
+      switch (columnKey) {
+        case 'labor_total':     sum += (task.labor_per_unit || 0) * task.volume_plan; break;
+        case 'labor_fact':      sum += (task.labor_per_unit || 0) * task.volume_fact; break;
+        case 'labor_remaining': sum += (task.labor_per_unit || 0) * (task.volume_plan - task.volume_fact); break;
+        case 'cost_total':      sum += (task.unit_price || 0) * task.volume_plan; break;
+        case 'cost_fact':       sum += (task.unit_price || 0) * task.volume_fact; break;
+        case 'cost_remaining':  sum += (task.unit_price || 0) * (task.volume_plan - task.volume_fact); break;
+        case 'machine_hours_total':     sum += (task.machine_hours_per_unit || 0) * task.volume_plan; break;
+        case 'machine_hours_fact':      sum += (task.machine_hours_per_unit || 0) * task.volume_fact; break;
+        case 'machine_hours_remaining': sum += (task.machine_hours_per_unit || 0) * (task.volume_plan - task.volume_fact); break;
+        default: break;
       }
     });
-    
     return sum;
   };
 
   const getDisplayValue = (task, columnKey) => {
-    // Для разделов - суммируем только расчетные колонки
     if (task.is_section) {
       const sumColumns = [
-        'labor_total', 'labor_fact', 'labor_remaining',
-        'cost_total', 'cost_fact', 'cost_remaining',
-        'machine_hours_total', 'machine_hours_fact', 'machine_hours_remaining'
+        'labor_total','labor_fact','labor_remaining',
+        'cost_total','cost_fact','cost_remaining',
+        'machine_hours_total','machine_hours_fact','machine_hours_remaining'
       ];
-      
-      if (sumColumns.includes(columnKey)) {
-        const sum = calculateSectionSum(task, columnKey);
-        return sum.toFixed(2);
-      }
-      
-      // Для остальных колонок показываем собственные значения раздела
-      // или прочерк для неприменимых полей
-      if (columnKey === 'volume_plan' || columnKey === 'volume_fact' || columnKey === 'volume_remaining' ||
-          columnKey === 'unit' || columnKey === 'unit_price' || columnKey === 'labor_per_unit' || 
-          columnKey === 'machine_hours_per_unit' || columnKey === 'executor') {
-        return '-';
-      }
+      if (sumColumns.includes(columnKey)) return calculateSectionSum(task, columnKey).toFixed(2);
+      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price',
+           'labor_per_unit','machine_hours_per_unit','executor'].includes(columnKey)) return '-';
     }
-    
-    // Для работ и для остальных полей разделов
-    switch(columnKey) {
-      case 'volume_remaining':
-        return (task.volume_plan - task.volume_fact).toFixed(2);
-      case 'labor_total':
-        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
-      case 'labor_fact':
-        return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
-      case 'labor_remaining':
-        const volRemaining = task.volume_plan - task.volume_fact;
-        return ((task.labor_per_unit || 0) * volRemaining).toFixed(2);
-      case 'cost_total':
-        return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
-      case 'cost_fact':
-        return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
-      case 'cost_remaining':
-        const costVolRemaining = task.volume_plan - task.volume_fact;
-        return ((task.unit_price || 0) * costVolRemaining).toFixed(2);
-      case 'machine_hours_total':
-        return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
-      case 'machine_hours_fact':
-        return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
-      case 'machine_hours_remaining':
-        const machineVolRemaining = task.volume_plan - task.volume_fact;
-        return ((task.machine_hours_per_unit || 0) * machineVolRemaining).toFixed(2);
+    switch (columnKey) {
+      case 'volume_remaining':   return (task.volume_plan - task.volume_fact).toFixed(2);
+      case 'labor_total':        return ((task.labor_per_unit || 0) * task.volume_plan).toFixed(2);
+      case 'labor_fact':         return ((task.labor_per_unit || 0) * task.volume_fact).toFixed(2);
+      case 'labor_remaining':    return ((task.labor_per_unit || 0) * (task.volume_plan - task.volume_fact)).toFixed(2);
+      case 'cost_total':         return ((task.unit_price || 0) * task.volume_plan).toFixed(2);
+      case 'cost_fact':          return ((task.unit_price || 0) * task.volume_fact).toFixed(2);
+      case 'cost_remaining':     return ((task.unit_price || 0) * (task.volume_plan - task.volume_fact)).toFixed(2);
+      case 'machine_hours_total':     return ((task.machine_hours_per_unit || 0) * task.volume_plan).toFixed(2);
+      case 'machine_hours_fact':      return ((task.machine_hours_per_unit || 0) * task.volume_fact).toFixed(2);
+      case 'machine_hours_remaining': return ((task.machine_hours_per_unit || 0) * (task.volume_plan - task.volume_fact)).toFixed(2);
       case 'start_date_contract':
       case 'end_date_contract':
       case 'start_date_plan':
@@ -290,7 +226,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     let filtered = tasks;
-    
     Object.entries(filters).forEach(([columnKey, filterValue]) => {
       if (filterValue && filterValue.trim() !== '') {
         filtered = filtered.filter(task => {
@@ -299,15 +234,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         });
       }
     });
-    
     setFilteredTasks(filtered);
   };
 
   const handleFilterApply = (columnKey, filterValue) => {
-    setFilters(prev => ({
-      ...prev,
-      [columnKey]: filterValue
-    }));
+    setFilters(prev => ({ ...prev, [columnKey]: filterValue }));
   };
 
   const handleClearAllFilters = () => {
@@ -317,9 +248,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   
   const getColumnValues = (columnKey) => {
     const otherFilters = Object.entries(filters).filter(([key]) => key !== columnKey);
-    
     let tasksForColumn = tasks;
-    
     otherFilters.forEach(([key, filterValue]) => {
       if (filterValue && filterValue.trim() !== '') {
         tasksForColumn = tasksForColumn.filter(task => {
@@ -328,110 +257,69 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         });
       }
     });
-    
     return tasksForColumn.map(task => getDisplayValue(task, columnKey));
   };
   
   const handleCellDoubleClick = (task, columnKey) => {
     if (!isAdmin) return;
-    if (columnKey !== 'start_date_plan' && columnKey !== 'end_date_plan' && columnKey !== 'executor') return;
+    if (!['start_date_plan','end_date_plan','executor'].includes(columnKey)) return;
     if (task.is_section) return;
-    
     setEditingCell({ taskId: task.id, field: columnKey });
-    
-    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan') {
-      const dateValue = task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '';
-      setEditValue(dateValue);
-    } else if (columnKey === 'executor') {
+    if (columnKey === 'executor') {
       setEditValue(task[columnKey] || '');
+    } else {
+      setEditValue(task[columnKey] ? new Date(task[columnKey]).toISOString().split('T')[0] : '');
     }
   };
   
   const handleCellBlur = async () => {
     if (!editingCell) return;
-    
     const task = tasks.find(t => t.id === editingCell.taskId);
     if (!task) return;
-    
     let currentValue = task[editingCell.field];
-    if (editingCell.field === 'start_date_plan' || editingCell.field === 'end_date_plan') {
+    if (['start_date_plan','end_date_plan'].includes(editingCell.field)) {
       currentValue = currentValue ? new Date(currentValue).toISOString().split('T')[0] : '';
     } else {
       currentValue = currentValue || '';
     }
-    
-    if (editValue === currentValue) {
-      setEditingCell(null);
-      return;
-    }
-    
+    if (editValue === currentValue) { setEditingCell(null); return; }
     try {
-      const updateData = {
-        [editingCell.field]: editValue || null
-      };
-      
-      await scheduleAPI.updateTask(editingCell.taskId, updateData);
-      
-      setTasks(prevTasks => 
-        prevTasks.map(t => 
-          t.id === editingCell.taskId 
-            ? { ...t, [editingCell.field]: editValue || null }
-            : t
-        )
-      );
-      
-      setEditingCell(null);
+      await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: editValue || null });
+      setTasks(prev => prev.map(t =>
+        t.id === editingCell.taskId ? { ...t, [editingCell.field]: editValue || null } : t
+      ));
     } catch (error) {
       console.error('Ошибка обновления поля:', error);
+    } finally {
       setEditingCell(null);
     }
   };
   
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleCellBlur();
-    } else if (e.key === 'Escape') {
-      setEditingCell(null);
-    }
+    if (e.key === 'Enter') handleCellBlur();
+    else if (e.key === 'Escape') setEditingCell(null);
   };
   
   const getCellValue = (task, columnKey) => {
     if (editingCell && editingCell.taskId === task.id && editingCell.field === columnKey) {
       if (columnKey === 'executor') {
         return (
-          <select
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleCellBlur}
-            onKeyDown={handleKeyDown}
-            autoFocus
-            style={{ width: '100%', padding: '4px' }}
-          >
+          <select value={editValue} onChange={e => setEditValue(e.target.value)}
+            onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
+            style={{ width: '100%', padding: '4px' }}>
             <option value="">Не выбран</option>
             {employees.map(emp => (
-              <option key={emp.id} value={emp.full_name}>
-                {emp.full_name}
-              </option>
+              <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>
             ))}
           </select>
         );
-      } else {
-        return (
-          <input
-            type="date"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleCellBlur}
-            onKeyDown={handleKeyDown}
-            autoFocus
-            style={{ width: '100%', padding: '4px' }}
-          />
-        );
       }
+      return (
+        <input type="date" value={editValue} onChange={e => setEditValue(e.target.value)}
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
+          style={{ width: '100%', padding: '4px' }} />
+      );
     }
-    
-    const displayValue = getDisplayValue(task, columnKey);
-    
     if (columnKey === 'name') {
       const hasActiveFilters = Object.values(filters).some(f => f && f.trim() !== '');
       const breadcrumb = hasActiveFilters ? getBreadcrumb(task) : '';
@@ -442,8 +330,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         </span>
       ) : task.name;
     }
-    
-    return displayValue;
+    return getDisplayValue(task, columnKey);
   };
   
   const getColumnLabel = (columnKey) => {
@@ -458,54 +345,35 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   
   const getRowStyle = (task) => {
     if (!task.is_section) return {};
-    
     const color = SECTION_COLORS[task.level] || SECTION_COLORS[SECTION_COLORS.length - 1];
-    return {
-      backgroundColor: color,
-      fontWeight: 'bold',
-      fontSize: task.level === 0 ? '1.05em' : '1em'
-    };
+    return { backgroundColor: color, fontWeight: 'bold', fontSize: task.level === 0 ? '1.05em' : '1em' };
   };
   
   const getCellStyle = (task, columnKey) => {
     if (!isAdmin || task.is_section) return {};
-    
-    if (columnKey === 'start_date_plan' || columnKey === 'end_date_plan' || columnKey === 'executor') {
+    if (['start_date_plan','end_date_plan','executor'].includes(columnKey)) {
       return {
         cursor: 'pointer',
         backgroundColor: editingCell?.taskId === task.id && editingCell?.field === columnKey ? '#ffffcc' : 'inherit'
       };
     }
-    
     return {};
   };
 
-  const handleMouseDown = (e) => {
-    setIsResizing(true);
-    e.preventDefault();
-  };
+  const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
 
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isResizing || !containerRef.current) return;
-      
       const containerRect = containerRef.current.getBoundingClientRect();
       const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
-      
-      if (newWidth >= 30 && newWidth <= 80) {
-        setTableWidth(newWidth);
-      }
+      if (newWidth >= 30 && newWidth <= 80) setTableWidth(newWidth);
     };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
+    const handleMouseUp = () => setIsResizing(false);
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }
-
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -513,14 +381,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, [isResizing]);
 
   return (
-    <div 
-      className="schedule-container-integrated" 
+    <div
+      className="schedule-container-integrated"
       ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
     >
       <div className="schedule-split-view">
-        <div 
-          className="schedule-table-section" 
+        <div
+          className="schedule-table-section"
           style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
           ref={tableScrollRef}
         >
@@ -545,11 +413,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                 {filteredTasks.map(task => (
                   <tr key={task.id} style={getRowStyle(task)}>
                     {visibleColumns.map(columnKey => (
-                      <td 
-                        key={columnKey} 
+                      <td
+                        key={columnKey}
                         style={getCellStyle(task, columnKey)}
                         onDoubleClick={() => handleCellDoubleClick(task, columnKey)}
-                        title={isAdmin && !task.is_section && (columnKey === 'start_date_plan' || columnKey === 'end_date_plan' || columnKey === 'executor') ? 'Двойной клик для редактирования' : ''}
+                        title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(columnKey) ? 'Двойной клик для редактирования' : ''}
                       >
                         {getCellValue(task, columnKey)}
                       </td>
@@ -562,16 +430,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         </div>
 
         {showGantt && (
-          <div 
-            className="resize-divider"
-            onMouseDown={handleMouseDown}
-          >
+          <div className="resize-divider" onMouseDown={handleMouseDown}>
             <div className="resize-handle"></div>
           </div>
         )}
 
         {showGantt && (
-          <div 
+          <div
             className="schedule-gantt-section"
             style={{ width: `${100 - tableWidth}%` }}
             ref={ganttScrollRef}
@@ -580,7 +445,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           </div>
         )}
       </div>
-      
+
       {showColumnSettings && (
         <ColumnSettings
           availableColumns={availableColumns}
