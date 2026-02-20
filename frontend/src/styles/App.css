@@ -121,40 +121,18 @@ body {
 }
 
 /* ========================================
-   SCHEDULE (старый, не используется)
+   SCHEDULE (старый)
    ======================================== */
 
 .schedule-container { display: flex; gap: 1rem; }
-
-.gantt-panel {
-  background: white; padding: 1rem; border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; min-width: 300px;
-}
-
-.table-container {
-  flex: 1; background: white; padding: 1rem; border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto;
-}
-
+.gantt-panel { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 400px; min-width: 300px; }
+.table-container { flex: 1; background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; }
 .tasks-table { width: 100%; border-collapse: collapse; }
-
-.tasks-table th,
-.tasks-table td {
-  padding: 0.75rem; text-align: left; border-bottom: 1px solid #e0e0e0;
-}
-
+.tasks-table th, .tasks-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e0e0e0; }
 .tasks-table th { background-color: #f5f5f5; font-weight: 600; }
-.tasks-table th input {
-  margin-top: 0.5rem; padding: 0.25rem; border: 1px solid #ddd;
-  border-radius: 4px; width: 100%;
-}
+.tasks-table th input { margin-top: 0.5rem; padding: 0.25rem; border: 1px solid #ddd; border-radius: 4px; width: 100%; }
 .tasks-table tr:hover { background-color: #f9f9f9; }
-
-.hide-gantt, .show-gantt {
-  margin-top: 1rem; padding: 0.5rem 1rem;
-  background-color: #2563eb; color: white; border: none;
-  border-radius: 4px; cursor: pointer;
-}
+.hide-gantt, .show-gantt { margin-top: 1rem; padding: 0.5rem 1rem; background-color: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; }
 .show-gantt { margin-bottom: 1rem; }
 
 /* ========================================
@@ -165,14 +143,8 @@ body {
 .gantt-timeline { overflow-y: auto; max-height: 600px; }
 .gantt-row { display: flex; align-items: center; margin-bottom: 0.5rem; }
 .gantt-label { width: 100px; font-size: 0.9rem; font-weight: 500; padding-right: 0.5rem; }
-.gantt-bar-container {
-  flex: 1; position: relative; height: 30px;
-  background-color: #f0f0f0; border-radius: 4px;
-}
-.gantt-bar {
-  position: absolute; height: 100%; background-color: #2563eb;
-  border-radius: 4px; display: flex; align-items: center; padding: 0 0.5rem;
-}
+.gantt-bar-container { flex: 1; position: relative; height: 30px; background-color: #f0f0f0; border-radius: 4px; }
+.gantt-bar { position: absolute; height: 100%; background-color: #2563eb; border-radius: 4px; display: flex; align-items: center; padding: 0 0.5rem; }
 .gantt-bar-text { color: white; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gantt-empty { text-align: center; padding: 2rem; color: #999; }
 
@@ -181,30 +153,31 @@ body {
    ======================================== */
 
 .monthly-order {
-  background: white; padding: 2rem; border-radius: 8px;
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   max-height: calc(100vh - 200px);
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .month-selector {
-  margin-bottom: 1rem; display: flex;
-  align-items: center; gap: 1rem; flex-shrink: 0;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
 }
 
-.month-selector input {
-  padding: 0.5rem; border: 1px solid #ddd;
-  border-radius: 4px; font-size: 1rem;
-}
+.month-selector input { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
 
 .table-container-scrollable {
   flex: 1; overflow: auto; border: 1px solid #e0e0e0;
   border-radius: 4px; -webkit-overflow-scrolling: touch;
   will-change: scroll-position; min-height: 0;
 }
-
 .table-container-scrollable .tasks-table { min-width: 100%; width: max-content; }
-
 .table-container-scrollable::-webkit-scrollbar { width: 12px; height: 12px; }
 .table-container-scrollable::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
 .table-container-scrollable::-webkit-scrollbar-thumb { background: #888; border-radius: 6px; border: 2px solid #f1f1f1; }
@@ -217,19 +190,15 @@ body {
 .daily-orders { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .date-selector { margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; }
 .date-selector input { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
-
 .add-work-form { background: #f9f9f9; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; }
 .add-work-form h3 { margin-bottom: 1rem; }
 .add-work-form form { display: flex; gap: 1rem; flex-wrap: wrap; }
-.add-work-form select, .add-work-form input {
-  padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;
-}
+.add-work-form select, .add-work-form input { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
 .add-work-form select { flex: 1; min-width: 200px; }
 .add-work-form input[type="number"] { width: 150px; }
 .add-work-form input[type="text"] { flex: 1; min-width: 200px; }
 .add-work-form button { padding: 0.5rem 2rem; background-color: #16a34a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
 .add-work-form button:hover { background-color: #15803d; }
-
 .works-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
 .work-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s; }
 .work-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
@@ -251,12 +220,8 @@ body {
 .widget-stats { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; }
 .widget-stats p { margin: 0.5rem 0; color: #666; }
 .widget-stats strong { color: #333; }
-
 .import-export-panel { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; }
-.btn-download-template, .btn-upload-template {
-  padding: 10px 20px; background-color: #2563eb; color: white; border: none;
-  border-radius: 5px; cursor: pointer; font-size: 14px; transition: background-color 0.3s;
-}
+.btn-download-template, .btn-upload-template { padding: 10px 20px; background-color: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; transition: background-color 0.3s; }
 .btn-download-template:hover, .btn-upload-template:hover { background-color: #1d4ed8; }
 
 /* ========================================
@@ -274,13 +239,11 @@ body {
   flex-direction: column;
 }
 
-/* Для MonthlyOrder — вложенный контейнер, высота меньше */
 .monthly-order .schedule-container-integrated {
   height: calc(100vh - 280px);
   box-shadow: none;
-  border-radius: 0;
-  border: 1px solid #e0e0e0;
   border-radius: 4px;
+  border: 1px solid #e0e0e0;
 }
 
 .schedule-split-view {
@@ -295,7 +258,6 @@ body {
   overflow: auto;
   border-right: 2px solid #e0e0e0;
   background: white;
-  transition: width 0.1s ease-out;
   display: flex;
   flex-direction: column;
   -webkit-overflow-scrolling: touch;
@@ -323,29 +285,35 @@ body {
   top: 0;
   background: #f5f5f5;
   z-index: 10;
-  -webkit-transform: translateZ(0);
   transform: translateZ(0);
 }
 
 /*
-  Высота шапки таблицы = высота шапки Ганта = 60px.
-  Ганта: controls-row(36px) + timeline-row(24px) = 60px.
-  Таблица: одна строка thead = 60px.
+  Шапка таблицы состоит из ДВУХ строк:
+    tr.thead-labels  — 36px  (названия колонок)
+    tr.thead-filters — 24px  (кнопки фильтров)
+  Итого: 60px == шапка Ганта (gantt-controls-row 36px + gantt-timeline-row 24px)
 */
-.tasks-table-integrated thead tr {
-  height: 60px;
+.tasks-table-integrated thead tr.thead-labels {
+  height: 36px;
+  border-bottom: 1px solid #ddd;
 }
 
-.tasks-table-integrated th {
-  padding: 4px 8px;
-  text-align: left;
+.tasks-table-integrated thead tr.thead-filters {
+  height: 24px;
   border-bottom: 1px solid #e0e0e0;
+}
+
+/* Ячейки строки заголовков */
+.tasks-table-integrated th {
+  padding: 0 8px;
+  text-align: left;
   border-right: 1px solid #e8e8e8;
   white-space: nowrap;
   background-color: #f5f5f5;
   font-weight: 600;
   color: #333;
-  vertical-align: top;
+  vertical-align: middle;
   box-sizing: border-box;
   font-size: 12px;
   position: relative;
@@ -353,7 +321,22 @@ body {
   user-select: none;
 }
 
-/* Ручка resize для колонок */
+/* Ячейки строки названий: полужирный шрифт */
+.tasks-table-integrated thead tr.thead-labels th {
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 8px;
+  border-bottom: none; /* граница у tr, не у th */
+}
+
+/* Ячейки строки фильтров: паддинг 0 */
+.tasks-table-integrated thead tr.thead-filters th {
+  padding: 0 4px;
+  border-bottom: none;
+  vertical-align: middle;
+}
+
+/* Ручка resize колонки — только в строке названий */
 .col-resize-handle {
   position: absolute;
   right: 0;
@@ -364,16 +347,8 @@ body {
   z-index: 1;
   background: transparent;
 }
-.col-resize-handle:hover,
-.col-resize-handle.resizing {
-  background: #2563eb;
-  opacity: 0.5;
-}
-
-.tasks-table-integrated th div { margin-bottom: 2px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
-.tasks-table-integrated th input {
-  padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px;
-  width: 100%; font-size: 11px; box-sizing: border-box;
+.col-resize-handle:hover {
+  background: rgba(37, 99, 235, 0.4);
 }
 
 /* Компактные строки tbody */
@@ -408,7 +383,6 @@ body {
 .schedule-gantt-section {
   flex: 1; overflow: hidden; background: white;
   display: flex; flex-direction: column;
-  transition: width 0.1s ease-out;
 }
 
 .schedule-table-section::-webkit-scrollbar { width: 8px; height: 8px; }
