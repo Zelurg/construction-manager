@@ -18,7 +18,6 @@ function DailyOrders({ onShowColumnSettings }) {
   const [allTasks, setAllTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
 
-  // Модалки
   const [showAddWorkModal, setShowAddWorkModal] = useState(false);
   const [addWorkBrigadeId, setAddWorkBrigadeId] = useState(null);
   const [addWorkResponsible, setAddWorkResponsible] = useState(null);
@@ -28,7 +27,6 @@ function DailyOrders({ onShowColumnSettings }) {
   const [equipmentModalBrigadeId, setEquipmentModalBrigadeId] = useState(null);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
 
-  // Форма
   const [isAncillary, setIsAncillary] = useState(false);
   const [formData, setFormData] = useState({ task_id: '', volume: '', description: '' });
   const [filterByResponsible, setFilterByResponsible] = useState(true);
@@ -117,9 +115,9 @@ function DailyOrders({ onShowColumnSettings }) {
     setShowAddWorkModal(true);
   };
 
-  const getFilteredTasks = () => {
-    if (!filterByResponsible || !addWorkResponsible) return tasks;
-    const name = addWorkResponsible.full_name.trim().toLowerCase();
+  const getFilteredTasks = (responsible, filter) => {
+    if (!filter || !responsible) return tasks;
+    const name = responsible.full_name.trim().toLowerCase();
     return tasks.filter(t => {
       if (!t.executor) return false;
       const ex = t.executor.trim().toLowerCase();
@@ -203,8 +201,6 @@ function DailyOrders({ onShowColumnSettings }) {
     return { color: '#e74c3c', text: needed.toFixed(1), label: 'отставание' };
   };
 
-  const filteredTasksForModal = getFilteredTasks();
-
   return (
     <div className="daily-orders">
       <div className="controls-header">
@@ -235,7 +231,6 @@ function DailyOrders({ onShowColumnSettings }) {
                     <button onClick={() => handleDeleteBrigade(bs.brigade.id, bs.brigade.name)} className="btn-icon" title="Удалить">🗑️</button>
                   </div>
                 </div>
-
                 <div className="executors-info">
                   {(bs.executors_count > 0 || bs.responsible) && (
                     <div className="stats-row">
@@ -267,14 +262,12 @@ function DailyOrders({ onShowColumnSettings }) {
                     </div>
                   )}
                 </div>
-
                 <div className="brigade-controls">
                   <button onClick={() => { setExecutorsModalBrigadeId(bs.brigade.id); setShowExecutorsModal(true); }} className="btn-secondary">👥 Исполнители</button>
                   <button onClick={() => { setEquipmentModalBrigadeId(bs.brigade.id); setShowEquipmentModal(true); }} className="btn-secondary">🚜 Техника</button>
                   <button onClick={() => handleOpenAddWork(bs.brigade.id, bs.responsible)} className="btn-primary">+ Внести объём</button>
                 </div>
               </div>
-
               <div className="table-container">
                 <table className="tasks-table">
                   <thead>
@@ -298,130 +291,122 @@ function DailyOrders({ onShowColumnSettings }) {
         })
       )}
 
-      {/* Модалка добавления работы */}
-      {showAddWorkModal && (
-        <div className="modal-overlay" onClick={() => setShowAddWorkModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Внести объём работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
+      {showAddWorkModal && (() => {
+        const filteredTasks = getFilteredTasks(addWorkResponsible, filterByResponsible);
+        return (
+          <div className="modal-overlay" onClick={() => setShowAddWorkModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Внести объём работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
 
-            <div className="work-type-toggle">
-              <button
-                type="button"
-                className={!isAncillary ? 'toggle-btn active' : 'toggle-btn'}
-                onClick={() => { setIsAncillary(false); setFormData(prev => ({ ...prev, task_id: '', volume: '' })); }}
-              >
-                📋 Плановая работа
-              </button>
-              <button
-                type="button"
-                className={isAncillary ? 'toggle-btn active' : 'toggle-btn'}
-                onClick={() => { setIsAncillary(true); setFormData(prev => ({ ...prev, task_id: '', volume: '' })); }}
-              >
-                🔧 Сопутствующие работы
-              </button>
-            </div>
+              <div className="work-type-toggle">
+                <button
+                  type="button"
+                  className={!isAncillary ? 'toggle-btn active' : 'toggle-btn'}
+                  onClick={() => { setIsAncillary(false); setFormData(prev => ({ ...prev, task_id: '', volume: '' })); }}
+                >
+                  📋 Плановая работа
+                </button>
+                <button
+                  type="button"
+                  className={isAncillary ? 'toggle-btn active' : 'toggle-btn'}
+                  onClick={() => { setIsAncillary(true); setFormData(prev => ({ ...prev, task_id: '', volume: '' })); }}
+                >
+                  🔧 Сопутствующие работы
+                </button>
+              </div>
 
-            <form onSubmit={handleSubmitWork}>
-              {!isAncillary ? (
-                <>
-                  {addWorkResponsible && (
-                    <div className="filter-toggle">
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        marginBottom: 0,
-                        fontWeight: 'normal',
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={filterByResponsible}
-                          onChange={(e) => {
-                            setFilterByResponsible(e.target.checked);
-                            setFormData(prev => ({ ...prev, task_id: '' }));
-                          }}
-                          style={{ width: 'auto', flexShrink: 0, margin: 0, cursor: 'pointer' }}
-                        />
-                        Только работы ответственного <strong>{addWorkResponsible.full_name}</strong>
-                        &nbsp;<span style={{ color: '#999', fontSize: '12px' }}>({filteredTasksForModal.length} из {tasks.length})</span>
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="form-group">
-                    <label>Выберите работу *</label>
-                    <select
-                      value={formData.task_id}
-                      onChange={(e) => setFormData({ ...formData, task_id: e.target.value })}
-                      required
-                    >
-                      <option value="">Выберите...</option>
-                      {filteredTasksForModal.map(t => (
-                        <option key={t.id} value={t.id}>{t.code} — {t.name} ({t.unit})</option>
-                      ))}
-                    </select>
-                    {filterByResponsible && filteredTasksForModal.length === 0 && (
-                      <p style={{ color: '#e67e22', fontSize: '12px', marginTop: '4px' }}>
-                        У ответственного нет назначенных работ. Снимите фильтр выше.
-                      </p>
-                    )}
-                  </div>
-
-                  {formData.task_id && (() => {
-                    const t = getTaskInfo(parseInt(formData.task_id));
-                    return t ? (
-                      <div style={{ background: '#f5f5f5', padding: '10px', borderRadius: '4px', marginBottom: '15px', fontSize: '14px' }}>
-                        <strong>Информация о задаче:</strong><br />
-                        План: {t.volume_plan} {t.unit} | Факт: {t.volume_fact} {t.unit} | Осталось: {(t.volume_plan - t.volume_fact).toFixed(2)} {t.unit}
+              <form onSubmit={handleSubmitWork}>
+                {!isAncillary ? (
+                  <>
+                    {addWorkResponsible && (
+                      <div className="filter-toggle">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={filterByResponsible}
+                            onChange={(e) => {
+                              setFilterByResponsible(e.target.checked);
+                              setFormData(prev => ({ ...prev, task_id: '' }));
+                            }}
+                          />
+                          Только работы ответственного <strong>{addWorkResponsible.full_name}</strong>
+                          &nbsp;<span style={{ color: '#999', fontSize: '12px' }}>({filteredTasks.length} из {tasks.length})</span>
+                        </label>
                       </div>
-                    ) : null;
-                  })()}
+                    )}
 
-                  <div className="form-group">
-                    <label>Объём выполненных работ *</label>
-                    <input type="number" step="0.01" value={formData.volume}
-                      onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
-                      placeholder="Введите объём" required />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="ancillary-info-box">
-                    ℹ️ Сопутствующие работы учитываются отдельно и не влияют на плановые показатели.
-                  </div>
+                    <div className="form-group">
+                      <label>Выберите работу *</label>
+                      <select
+                        value={formData.task_id}
+                        onChange={(e) => setFormData({ ...formData, task_id: e.target.value })}
+                        required
+                      >
+                        <option value="">Выберите...</option>
+                        {filteredTasks.map(t => (
+                          <option key={t.id} value={t.id}>{t.code} — {t.name} ({t.unit})</option>
+                        ))}
+                      </select>
+                      {filterByResponsible && filteredTasks.length === 0 && (
+                        <p style={{ color: '#e67e22', fontSize: '12px', marginTop: '4px' }}>
+                          У ответственного нет назначенных работ. Снимите фильтр выше.
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="form-group">
-                    <label>Человекочасы *</label>
-                    <input type="number" step="0.5" min="0.5"
-                      value={formData.volume}
-                      onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
-                      placeholder="Например: 4" required />
-                  </div>
-                </>
-              )}
+                    {formData.task_id && (() => {
+                      const t = getTaskInfo(parseInt(formData.task_id));
+                      return t ? (
+                        <div style={{ background: '#f5f5f5', padding: '10px', borderRadius: '4px', marginBottom: '15px', fontSize: '14px' }}>
+                          <strong>Информация о задаче:</strong><br />
+                          План: {t.volume_plan} {t.unit} | Факт: {t.volume_fact} {t.unit} | Осталось: {(t.volume_plan - t.volume_fact).toFixed(2)} {t.unit}
+                        </div>
+                      ) : null;
+                    })()}
 
-              <div className="form-group">
-                <label>Описание {isAncillary ? '*' : '(необязательно)'}</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder={isAncillary ? 'Например: Подготовка рабочего места, уборка строительного мусора' : 'Комментарий к выполненным работам'}
-                  rows="3"
-                  style={{ width: '100%', resize: 'vertical' }}
-                  required={isAncillary}
-                />
-              </div>
+                    <div className="form-group">
+                      <label>Объём выполненных работ *</label>
+                      <input type="number" step="0.01" value={formData.volume}
+                        onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
+                        placeholder="Введите объём" required />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="ancillary-info-box">
+                      ℹ️ Сопутствующие работы учитываются отдельно и не влияют на плановые показатели.
+                    </div>
+                    <div className="form-group">
+                      <label>Человекочасы *</label>
+                      <input type="number" step="0.5" min="0.5"
+                        value={formData.volume}
+                        onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
+                        placeholder="Например: 4" required />
+                    </div>
+                  </>
+                )}
 
-              <div className="modal-actions">
-                <button type="button" onClick={() => setShowAddWorkModal(false)} className="btn-cancel">Отмена</button>
-                <button type="submit" className="btn-submit">Сохранить</button>
-              </div>
-            </form>
+                <div className="form-group">
+                  <label>Описание {isAncillary ? '*' : '(необязательно)'}</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder={isAncillary ? 'Например: Подготовка рабочего места, уборка строительного мусора' : 'Комментарий к выполненным работам'}
+                    rows="3"
+                    style={{ width: '100%', resize: 'vertical' }}
+                    required={isAncillary}
+                  />
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" onClick={() => setShowAddWorkModal(false)} className="btn-cancel">Отмена</button>
+                  <button type="submit" className="btn-submit">Сохранить</button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {showExecutorsModal && (
         <ExecutorsModal date={selectedDate} employees={employees}
