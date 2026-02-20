@@ -20,22 +20,14 @@ function parseCode(code) {
 }
 
 /**
- * Сортируем все задачи для отображения:
- * - Обычные (sort_order = 0): сортируются по code.
- * - Ручные (sort_order > 0): вставляем их в позицию по sort_order
- *   относительно всех строк с sort_order = 0 (т.е. после обычных).
+ * Строим визуальный порядок строк:
+ * 1. Обычные задачи (is_custom=false) сортируются по code.
+ * 2. Ручные строки (is_custom=true) вставляются после последней строки
+ *    своего раздела (parent_code), в порядке sort_order.
+ * 3. Ручные без parent_code — в конец.
  *
- * Алгоритм:
- * 1. Собираем обычные задачи, сортируем по code.
- * 2. Собираем ручные, сортируем по sort_order.
- * 3. Мержим: проходим по обычным, находим последнюю обычную строку
- *    в разделе (parent_code) ручной строки, вставляем ручную строку
- *    сразу после неё (в соответствии с sort_order).
- * 4. Ручные без parent_code — в конец.
- *
- * parent_code используется ТОЛЬКО для поиска места вставки,
- * но НЕ для сортировки внутри раздела. Сортировка ручных строк
- * внутри раздела — через sort_order.
+ * parent_code — только для нахождения места вставки.
+ * Порядок ручных внутри раздела — через sort_order.
  */
 function buildDisplayOrder(tasks) {
   const normal = tasks
@@ -57,21 +49,14 @@ function buildDisplayOrder(tasks) {
 
   if (custom.length === 0) return normal;
 
-  // Для каждой ручной строки ищем за последней строкой её раздела.
-  // Если parent_code не задан — вставляем в конец normal[].
-  // Если несколько ручных строк в одном разделе — вставляем
-  // в порядке sort_order (уже отсортированы выше).
   const result = [...normal];
-  // Собираем вставки в обратном порядке, чтобы сплайсы не сбивали индексы.
-  // custom уже отсортирован по sort_order ASC, значит реверс даст правильный порядок.
+  // Вставляем с конца чтобы splice не сбивал индексы предыдущих вставок
   const reversedCustom = [...custom].reverse();
 
   for (const ct of reversedCustom) {
-    let insertIdx = result.length; // по умолчанию — в конец
+    let insertIdx = result.length;
     if (ct.parent_code) {
       const prefix = ct.parent_code + '.';
-      // Находим последний индекс в result[], код которого
-      // начинается с parent_code или === parent_code
       let lastIdx = -1;
       for (let i = 0; i < result.length; i++) {
         const t = result[i];
@@ -156,6 +141,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const ganttBodyRef   = useRef(null);
   const syncingRef     = useRef(false);
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
+
+  // Флаг: идёт ли сейчас drag-and-drop сохранение.
+  // Пока true — игнорируем входящий task_updated из WebSocket,
+  // чтобы он не сбросил позицию обратно.
+  const isDraggingRef = useRef(false);
 
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
@@ -246,9 +236,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   // ─── Загрузка данных ─────────────────────────────────────────────────
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
-    const onUpdated = (msg) => setTasks(prev =>
-      buildDisplayOrder(prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t))
-    );
+
+    const onUpdated = (msg) => {
+      // Если сейчас идёт drag-and-drop — игнорируем WS-событие от нашего же updateTask.
+      // Иначе buildDisplayOrder сбросит позицию обратно.
+      if (isDraggingRef.current) return;
+      // Просто патчим поля задачи на месте, не меняя порядок.
+      setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
+    };
+
     const onCleared = () => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
     websocketService.on('task_updated', onUpdated);
     websocketService.on('schedule_cleared', onCleared);
@@ -296,7 +292,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
-      // Добавляем без пересортировки: бэкенд уже выставил правильный sort_order
       setTasks(prev => buildDisplayOrder([...prev, newTask]));
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
@@ -366,19 +361,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const insertBefore = e.clientY < rect.top + rect.height / 2;
 
-    // Новый parent_code — берём у цели
     const newParentCode = targetTask.is_section
       ? targetTask.code
       : (targetTask.parent_code || null);
 
-    // Строим новый порядок: убираем dragged, вставляем рядом с target
     const withoutDragged = currentTasks.filter(t => t.id !== draggedId);
     const targetIdx = withoutDragged.findIndex(t => t.id === targetTask.id);
     const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
     const updatedDragged = { ...dragged, parent_code: newParentCode };
     withoutDragged.splice(insertIdx, 0, updatedDragged);
 
-    // Перенумерация sort_order только для ручных по позиции в новом списке
     let customOrder = 1;
     const sortUpdates = {};
     withoutDragged.forEach(t => {
@@ -390,11 +382,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       sort_order: t.is_custom ? (sortUpdates[t.id] ?? t.sort_order) : t.sort_order,
     }));
 
-    // Оптимистично обновляем UI — не прогоняем через buildDisplayOrder,
-    // т.к. позиция уже точная — пользователь сам перетащил.
+    // Оптимистичное обновление UI — позиция точная, не пересортировываем
     setTasks(withNewOrders);
 
-    // Сохраняем в бэкенд
+    // Блокируем обработку WS-события task_updated на время сохранения
+    isDraggingRef.current = true;
     try {
       await scheduleAPI.updateTask(draggedId, {
         sort_order: sortUpdates[draggedId],
@@ -403,6 +395,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch (err) {
       console.error('Ошибка перемещения:', err);
       loadTasks();
+    } finally {
+      // Небольшая задержка: WS-событие может прийти чуть позже ответа HTTP
+      setTimeout(() => { isDraggingRef.current = false; }, 500);
     }
   }, [isAdmin]);
 
