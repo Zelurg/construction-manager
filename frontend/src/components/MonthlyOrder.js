@@ -176,9 +176,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     loadTasks(); loadEmployees(); websocketService.connect();
 
     const onUpdated = (msg) => {
-      // Игнорируем WS-событие во время drag-and-drop сохранения
       if (isDraggingRef.current) return;
-      // Патчим поля задачи на месте, не меняя порядок
       setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
     };
     const onCleared = () => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
@@ -199,19 +197,26 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       const [year, month] = selectedMonth.split('-').map(Number);
       const mStart = new Date(year, month - 1, 1);
       const mEnd   = new Date(year, month, 0, 23, 59, 59);
+
       const filtered = all.filter(task => {
         if (task.is_section) return true;
-        if (task.is_custom) return true;
+
         const s = task.start_date_plan ? new Date(task.start_date_plan) : null;
         const e = task.end_date_plan   ? new Date(task.end_date_plan)   : null;
+
+        // Ручная строка без дат — показываем во всех месяцах
+        // (только что создана, пользователь ещё не заполнил даты)
+        if (task.is_custom && !s && !e) return true;
+
+        // Все остальные (включая ручные с датами) — фильтруем по месяцу
         if (!s || !e) return false;
         return s <= mEnd && e >= mStart;
       });
+
       const hasWork = (sectionCode) =>
         filtered.some(t => !t.is_section && String(t.code).startsWith(sectionCode + '.')) ||
         filtered.some(t => t.is_section && String(t.code).startsWith(sectionCode + '.') && hasWork(t.code));
       const visible = filtered.filter(t => !t.is_section || hasWork(t.code));
-      // Порядок с сервера уже правильный (ORDER BY sort_order) — не сортируем
       setTasks(visible);
     } catch (e) { console.error('Ошибка загрузки:', e); }
   };
@@ -229,7 +234,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
-      // Вставляем в нужную позицию локально, не перезагружая всё
       setTasks(prev => {
         if (!selectedTaskId) return [...prev, newTask];
         const idx = prev.findIndex(t => t.id === selectedTaskId);
@@ -306,7 +310,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const insertBefore = e.clientY < rect.top + rect.height / 2;
 
-    // Вычисляем новый sort_order на основе соседей в текущем списке
     const withoutDragged = currentTasks.filter(t => t.id !== draggedId);
     const targetIdx = withoutDragged.findIndex(t => t.id === targetTask.id);
     const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
@@ -320,7 +323,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const updatedDragged = { ...dragged, sort_order: newSortOrder };
     withoutDragged.splice(insertIdx, 0, updatedDragged);
 
-    // Оптимистичное обновление — сервер вернёт то же самое
     setTasks(withoutDragged);
 
     isDraggingRef.current = true;
