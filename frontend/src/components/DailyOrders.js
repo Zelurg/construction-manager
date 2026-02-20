@@ -256,7 +256,6 @@ function DailyOrders({ onShowColumnSettings }) {
                       {efEq && <span style={{ color: efEq.color }}>📊 {efEq.text} м-ч ({efEq.label})</span>}
                     </div>
                   )}
-                  {/* Сопутствующие работы в саммари */}
                   {bs.total_ancillary_hours > 0 && (
                     <div className="stats-row ancillary-summary">
                       <span>🔧 Сопутствующие работы: <strong>{bs.total_ancillary_hours.toFixed(1)} ч/ч</strong></span>
@@ -276,7 +275,6 @@ function DailyOrders({ onShowColumnSettings }) {
                 </div>
               </div>
 
-              {/* Таблица обычных работ */}
               <div className="table-container">
                 <table className="tasks-table">
                   <thead>
@@ -306,7 +304,6 @@ function DailyOrders({ onShowColumnSettings }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Внести объём работ за {new Date(selectedDate).toLocaleDateString('ru-RU')}</h3>
 
-            {/* Переключатель тип работы */}
             <div className="work-type-toggle">
               <button
                 type="button"
@@ -327,10 +324,17 @@ function DailyOrders({ onShowColumnSettings }) {
             <form onSubmit={handleSubmitWork}>
               {!isAncillary ? (
                 <>
-                  {/* Фильтр по ответственному */}
                   {addWorkResponsible && (
                     <div className="filter-toggle">
-                      <label>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        marginBottom: 0,
+                        fontWeight: 'normal',
+                      }}>
                         <input
                           type="checkbox"
                           checked={filterByResponsible}
@@ -338,8 +342,9 @@ function DailyOrders({ onShowColumnSettings }) {
                             setFilterByResponsible(e.target.checked);
                             setFormData(prev => ({ ...prev, task_id: '' }));
                           }}
+                          style={{ width: 'auto', flexShrink: 0, margin: 0, cursor: 'pointer' }}
                         />
-                        &nbsp;Только работы ответственного <strong>{addWorkResponsible.full_name}</strong>
+                        Только работы ответственного <strong>{addWorkResponsible.full_name}</strong>
                         &nbsp;<span style={{ color: '#999', fontSize: '12px' }}>({filteredTasksForModal.length} из {tasks.length})</span>
                       </label>
                     </div>
@@ -383,7 +388,6 @@ function DailyOrders({ onShowColumnSettings }) {
                 </>
               ) : (
                 <>
-                  {/* Форма сопутствующих работ */}
                   <div className="ancillary-info-box">
                     ℹ️ Сопутствующие работы учитываются отдельно и не влияют на плановые показатели.
                   </div>
