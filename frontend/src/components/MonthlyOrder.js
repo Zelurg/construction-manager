@@ -57,6 +57,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch { return { ...DEFAULT_COL_WIDTHS }; }
   });
 
+  const tasksRef = useRef([]);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+
   const containerRef   = useRef(null);
   const tableScrollRef = useRef(null);
   const ganttBodyRef   = useRef(null);
@@ -191,9 +194,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getBreadcrumb = (task) => {
     if (!task.parent_code) return '';
+    const allTasks = tasksRef.current;
     const crumbs = [];
     let cur = task.parent_code;
-    while (cur) { const p = tasks.find(t => t.code === cur); if (p) { crumbs.unshift(p.name); cur = p.parent_code; } else break; }
+    while (cur) { const p = allTasks.find(t => t.code === cur); if (p) { crumbs.unshift(p.name); cur = p.parent_code; } else break; }
     return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
   };
 
@@ -249,11 +253,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
-
-    if (activeFilters.length === 0) {
-      setFilteredTasks(tasks);
-      return;
-    }
+    if (activeFilters.length === 0) { setFilteredTasks(tasks); return; }
 
     const matchingWorks = tasks.filter(t => {
       if (t.is_section) return false;
@@ -275,7 +275,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const result = tasks.filter(t =>
       t.is_section ? neededSectionCodes.has(t.code) : matchingWorks.includes(t)
     );
-
     setFilteredTasks(result);
   };
 
@@ -330,7 +329,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       const hasFilters = Object.values(filters).some(f => f && f.trim());
       const crumb = (hasFilters && !task.is_section) ? getBreadcrumb(task) : '';
       return crumb
-        ? <span><span style={{ color:'#999', fontSize:'0.85em' }}>{crumb}</span>{task.name}</span>
+        ? <span><span style={{ color:'#888', fontSize:'0.82em', fontStyle:'italic' }}>{crumb}</span>{task.name}</span>
         : task.name;
     }
     return getDisplayValue(task, key);
@@ -376,7 +375,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
         <span style={{ fontSize:13, color:'#666' }}>Показаны работы с плановыми датами, попадающими в выбранный месяц</span>
       </div>
-
       <div className="schedule-container-integrated" ref={containerRef}
         style={{ userSelect: isResizing ? 'none' : 'auto' }}>
         <div className="schedule-split-view">

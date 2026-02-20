@@ -5,50 +5,35 @@ import './ColumnFilter.css';
 function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onApplyFilter }) {
   const [isOpen, setIsOpen] = useState(false);
   const [filterValue, setFilterValue] = useState(currentFilter || '');
-  // Позиция дропдауна в координатах viewport (для портала)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 250 });
 
   const buttonRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  // Пересчитываем позицию дропдауна относительно кнопки
   const recalcPosition = () => {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
     setDropdownPos({
-      top: rect.bottom + window.scrollY,
-      left: rect.left + window.scrollX,
-      // Минимальная ширина дропдауна — 250px, но не меньше ширины колонки
+      top: rect.bottom,
+      left: rect.left,
       width: Math.max(rect.width, 250),
     });
   };
 
-  // При открытии пересчитываем позицию и вешаем слушатели
   useEffect(() => {
     if (!isOpen) return;
-
     recalcPosition();
-
-    // Закрываем при клике вне дропдауна
     const handleClickOutside = (event) => {
       const btn = buttonRef.current;
       const drop = dropdownRef.current;
-      if (
-        drop && !drop.contains(event.target) &&
-        btn && !btn.contains(event.target)
-      ) {
+      if (drop && !drop.contains(event.target) && btn && !btn.contains(event.target)) {
         setIsOpen(false);
       }
     };
-
-    // Пересчитываем при скролле/ресайзе — дропдаун должен
-    // следовать за кнопкой при горизонтальном скролле таблицы
     const handleScrollResize = () => recalcPosition();
-
     document.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('scroll', handleScrollResize, true);
     window.addEventListener('resize', handleScrollResize);
-
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('scroll', handleScrollResize, true);
@@ -56,13 +41,13 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
     };
   }, [isOpen]);
 
-  // Синхронизируем filterValue с currentFilter снаружи
   useEffect(() => {
     setFilterValue(currentFilter || '');
   }, [currentFilter]);
 
-  const handleApply = () => {
-    onApplyFilter(columnKey, filterValue);
+  const handleApply = (value) => {
+    const val = value !== undefined ? value : filterValue;
+    onApplyFilter(columnKey, val);
     setIsOpen(false);
   };
 
@@ -72,18 +57,12 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
     setIsOpen(false);
   };
 
-  const handleToggle = () => {
-    setIsOpen(prev => !prev);
-  };
-
-  // Уникальные значения колонки
   const uniqueValues = useMemo(() => {
     return [...new Set(allValues.filter(v => v !== null && v !== undefined && v !== '' && v !== '-'))]
       .sort()
       .slice(0, 100);
   }, [allValues]);
 
-  // Значения, отфильтрованные по введённому тексту
   const filteredValues = useMemo(() => {
     if (!filterValue || filterValue.trim() === '') return uniqueValues;
     return uniqueValues.filter(value =>
@@ -93,8 +72,6 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
 
   const hasActiveFilter = currentFilter && currentFilter !== '';
 
-  // Дропдаун рендерим через портал в document.body, чтобы
-  // он не обрезался overflow:hidden/auto родительских контейнеров
   const dropdown = isOpen ? ReactDOM.createPortal(
     <div
       ref={dropdownRef}
@@ -124,12 +101,13 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
           {filteredValues.map((value, index) => (
             <div
               key={index}
-              className="filter-value-item"
+              className={`filter-value-item${String(value) === currentFilter ? ' selected' : ''}`}
               onMouseDown={(e) => {
-                // onMouseDown вместо onClick — иначе blur на input
-                // срабатывает раньше и закрывает дропдаун
                 e.preventDefault();
+                e.stopPropagation();
+                // Сразу применяем фильтр при клике на пункт списка
                 setFilterValue(String(value));
+                handleApply(String(value));
               }}
             >
               {value}
@@ -159,7 +137,7 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
       <button
         ref={buttonRef}
         className={`filter-toggle ${hasActiveFilter ? 'active' : ''}`}
-        onClick={handleToggle}
+        onClick={() => setIsOpen(prev => !prev)}
         title="Фильтр"
       >
         ▼
