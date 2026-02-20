@@ -59,11 +59,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch { return { ...DEFAULT_COL_WIDTHS }; }
   });
 
-  const containerRef  = useRef(null);
+  const containerRef   = useRef(null);
   const tableScrollRef = useRef(null);
-  const ganttBodyRef  = useRef(null);
-  const syncingRef    = useRef(false);
-  const colResizeRef  = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
+  const ganttBodyRef   = useRef(null);
+  const syncingRef     = useRef(false);
+  const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
 
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
@@ -359,20 +359,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                 {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
               </colgroup>
               <thead>
-                {/* Строка 1: названия колонок — 36px */}
+                {/* Одна строка 60px — название + кнопка фильтра в правом углу */}
                 <tr className="thead-labels">
                   {visibleColumns.map(key => (
                     <th key={key}>
-                      {getColLabel(key)}
-                      <div className="col-resize-handle"
-                        onMouseDown={(e) => handleColResizeMouseDown(e, key)} />
-                    </th>
-                  ))}
-                </tr>
-                {/* Строка 2: кнопки фильтров — 24px */}
-                <tr className="thead-filters">
-                  {visibleColumns.map(key => (
-                    <th key={key}>
+                      <span className="th-label-text">{getColLabel(key)}</span>
                       <ColumnFilter
                         columnKey={key}
                         columnLabel=""
@@ -380,6 +371,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         currentFilter={filters[key] || ''}
                         onApplyFilter={handleFilterApply}
                       />
+                      <div className="col-resize-handle"
+                        onMouseDown={(e) => handleColResizeMouseDown(e, key)} />
                     </th>
                   ))}
                 </tr>

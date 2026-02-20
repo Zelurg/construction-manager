@@ -366,20 +366,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                   {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k]||100}px` }} />)}
                 </colgroup>
                 <thead>
-                  {/* Строка 1: названия — 36px */}
+                  {/* Одна строка 60px */}
                   <tr className="thead-labels">
                     {visibleColumns.map(key => (
                       <th key={key}>
-                        {getColLabel(key)}
-                        <div className="col-resize-handle"
-                          onMouseDown={e => handleColResizeMouseDown(e, key)} />
-                      </th>
-                    ))}
-                  </tr>
-                  {/* Строка 2: фильтры — 24px */}
-                  <tr className="thead-filters">
-                    {visibleColumns.map(key => (
-                      <th key={key}>
+                        <span className="th-label-text">{getColLabel(key)}</span>
                         <ColumnFilter
                           columnKey={key}
                           columnLabel=""
@@ -387,6 +378,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                           currentFilter={filters[key] || ''}
                           onApplyFilter={handleFilterApply}
                         />
+                        <div className="col-resize-handle"
+                          onMouseDown={e => handleColResizeMouseDown(e, key)} />
                       </th>
                     ))}
                   </tr>

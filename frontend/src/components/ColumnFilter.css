@@ -1,32 +1,33 @@
 .column-filter {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 100%;
+  /* Кнопка фильтра — абсолютно позиционирована внутри th */
+  position: absolute;
+  right: 18px; /* отступ от правого края, чтобы не перекрывать resize-handle */
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
 }
 
-/* Кнопка-стрелка — занимает всю ширину ячейки */
+/* Кнопка-стрелка */
 .filter-toggle {
-  width: 100%;
+  width: 20px;
   height: 20px;
-  background: transparent;
+  background: rgba(245,245,245,0.92);
   border: 1px solid #ccc;
   border-radius: 3px;
-  padding: 0 4px;
+  padding: 0;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 9px;
   color: #666;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s;
-  white-space: nowrap;
-  overflow: hidden;
+  flex-shrink: 0;
+  backdrop-filter: blur(2px);
 }
 
 .filter-toggle:hover {
-  background: #f0f0f0;
+  background: #e8e8e8;
   border-color: #999;
 }
 
@@ -38,7 +39,7 @@
 
 /*
   Дропдаун рендерится через ReactDOM.createPortal в document.body,
-  поэтому position:fixed задаётся инлайново из JS.
+  поэтому position и координаты задаются инлайново из JS.
   Здесь только внешний вид.
 */
 .filter-dropdown {
@@ -47,7 +48,6 @@
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
   max-width: 400px;
-  /* position и координаты задаются инлайново через портал */
 }
 
 .filter-input-wrapper {
