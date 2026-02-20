@@ -102,8 +102,6 @@ async def import_tasks(
             if end_plan is None:
                 end_plan = end_contract
 
-            # sort_order = номер строки * 10, чтобы между любыми двумя строками
-            # оставалось место для вставки ручных строк без сдвига всех остальных
             tasks_to_create.append({
                 "code": code, "name": name.strip(),
                 "unit": str(unit).strip() if unit and str(unit).strip() else None,
@@ -127,7 +125,6 @@ async def import_tasks(
         except Exception as e:
             errors.append(f"Строка {row_num}: {str(e)}")
 
-    # Определяем parent_code через стек уровней
     stack = []
     for t in tasks_to_create:
         while stack and stack[-1]['level'] >= t['level']:
@@ -136,7 +133,21 @@ async def import_tasks(
         if t['is_section']:
             stack.append(t)
 
-    db.query(models.Task).filter(models.Task.project_id == project_id).delete()
+    # Перед удалением задач обнуляем FK в daily_works и удаляем monthly_tasks
+    existing_ids = [
+        t.id for t in db.query(models.Task.id).filter(
+            models.Task.project_id == project_id
+        ).all()
+    ]
+    if existing_ids:
+        db.query(models.DailyWork).filter(
+            models.DailyWork.task_id.in_(existing_ids)
+        ).update({"task_id": None}, synchronize_session=False)
+        db.query(models.MonthlyTask).filter(
+            models.MonthlyTask.task_id.in_(existing_ids)
+        ).delete(synchronize_session=False)
+
+    db.query(models.Task).filter(models.Task.project_id == project_id).delete(synchronize_session=False)
     db.bulk_insert_mappings(models.Task, tasks_to_create)
     db.commit()
     touch_project(project_id, db)

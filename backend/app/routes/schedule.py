@@ -19,14 +19,10 @@ def get_tasks(
     query = db.query(models.Task)
     if project_id is not None:
         query = query.filter(models.Task.project_id == project_id)
-    # Единственный источник порядка — sort_order.
-    # Обычные задачи получают sort_order при импорте (row*10),
-    # ручные — при создании/перетаскивании.
     return query.order_by(models.Task.sort_order).all()
 
 
 # ВАЖНО: /tasks/custom и /tasks/custom/all стоят ДО /tasks/{task_id}
-# иначе FastAPI пытается привести строку "custom" к int и возвращает 422.
 
 @router.post("/tasks/custom", response_model=schemas.Task)
 async def create_custom_task(
@@ -35,15 +31,7 @@ async def create_custom_task(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Создаёт ручную строку.
-
-    Если передан insert_before_task_id — вставляет перед якорем,
-    используя sort_order = anchor.sort_order - 1.
-    Если между якорем и предыдущей строкой нет места (разница <= 1) —
-    делаем renumber всего проекта с шагом 10 и повторяем.
-    Иначе — вставляет в конец.
-    """
-    # 1. Генерируем шифр
+    """Создаёт ручную строку."""
     existing_custom = db.query(models.Task).filter(
         models.Task.project_id == project_id,
         models.Task.is_custom == True
@@ -57,7 +45,6 @@ async def create_custom_task(
         new_number += 1
         new_code = f"С-{new_number}"
 
-    # 2. Определяем sort_order
     if body.insert_before_task_id:
         anchor = db.query(models.Task).filter(
             models.Task.id == body.insert_before_task_id
@@ -77,7 +64,6 @@ async def create_custom_task(
     else:
         new_sort_order = _next_sort_order(db, project_id)
 
-    # 3. Создаём
     db_task = models.Task(
         project_id=project_id,
         code=new_code,
@@ -119,7 +105,13 @@ async def delete_all_custom_tasks(
     query = db.query(models.Task).filter(models.Task.is_custom == True)
     if project_id is not None:
         query = query.filter(models.Task.project_id == project_id)
-    ids = [t.id for t in query.all()]
+    tasks = query.all()
+    ids = [t.id for t in tasks]
+    if ids:
+        # Обнуляем task_id в daily_works перед удалением
+        db.query(models.DailyWork).filter(
+            models.DailyWork.task_id.in_(ids)
+        ).update({"task_id": None}, synchronize_session=False)
     query.delete(synchronize_session=False)
     db.commit()
     touch_project(project_id, db)
@@ -197,6 +189,10 @@ async def delete_task(
     if not db_task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
     project_id = db_task.project_id
+    # Обнуляем ссылку перед удалением
+    db.query(models.DailyWork).filter(
+        models.DailyWork.task_id == task_id
+    ).update({"task_id": None}, synchronize_session=False)
     db.delete(db_task)
     db.commit()
     touch_project(project_id, db)
@@ -216,8 +212,18 @@ async def delete_all_tasks(
     query = db.query(models.Task)
     if project_id is not None:
         query = query.filter(models.Task.project_id == project_id)
-    count = query.count()
-    query.delete()
+    # Получаем id всех задач перед удалением
+    task_ids = [t.id for t in query.all()]
+    if task_ids:
+        # Обнуляем task_id в daily_works — FK nullable, дневные записи сохраняются
+        db.query(models.DailyWork).filter(
+            models.DailyWork.task_id.in_(task_ids)
+        ).update({"task_id": None}, synchronize_session=False)
+        # Обнуляем task_id в monthly_tasks
+        db.query(models.MonthlyTask).filter(
+            models.MonthlyTask.task_id.in_(task_ids)
+        ).delete(synchronize_session=False)
+    count = query.delete(synchronize_session=False)
     db.commit()
     touch_project(project_id, db)
     await manager.broadcast(
@@ -228,7 +234,6 @@ async def delete_all_tasks(
 
 
 def _next_sort_order(db: Session, project_id: Optional[int]) -> int:
-    """Возвращает sort_order на 10 больше текущего максимума."""
     max_order = db.query(func.max(models.Task.sort_order)).filter(
         models.Task.project_id == project_id
     ).scalar()
@@ -236,7 +241,6 @@ def _next_sort_order(db: Session, project_id: Optional[int]) -> int:
 
 
 def _renumber(db: Session, project_id: Optional[int]):
-    """Перенумеровываем все задачи проекта с шагом 10, сохраняя текущий порядок."""
     tasks = db.query(models.Task).filter(
         models.Task.project_id == project_id
     ).order_by(models.Task.sort_order).all()
@@ -246,10 +250,6 @@ def _renumber(db: Session, project_id: Optional[int]):
 
 
 def _insert_before(db: Session, project_id: Optional[int], anchor_sort_order: int) -> int:
-    """Возвращает sort_order для вставки перед якорем.
-    Если места нет — делает renumber и пересчитывает.
-    """
-    # Ищем предыдущую строку
     prev = db.query(models.Task).filter(
         models.Task.project_id == project_id,
         models.Task.sort_order < anchor_sort_order
@@ -259,12 +259,9 @@ def _insert_before(db: Session, project_id: Optional[int], anchor_sort_order: in
     gap = anchor_sort_order - prev_order
 
     if gap > 1:
-        # Есть место — берём середину
         return prev_order + gap // 2
     else:
-        # Места нет — перенумеруем и пересчитываем
         _renumber(db, project_id)
-        # После renumber ищем новый sort_order якоря
         anchor_new = db.query(models.Task).filter(
             models.Task.project_id == project_id,
             models.Task.sort_order >= anchor_sort_order
@@ -275,7 +272,6 @@ def _insert_before(db: Session, project_id: Optional[int], anchor_sort_order: in
 
 
 def _insert_after(db: Session, project_id: Optional[int], anchor_sort_order: int) -> int:
-    """Возвращает sort_order для вставки после якоря."""
     next_task = db.query(models.Task).filter(
         models.Task.project_id == project_id,
         models.Task.sort_order > anchor_sort_order
@@ -288,14 +284,10 @@ def _insert_after(db: Session, project_id: Optional[int], anchor_sort_order: int
         return anchor_sort_order + gap // 2
     else:
         _renumber(db, project_id)
-        anchor_new = db.query(models.Task).filter(
-            models.Task.project_id == project_id,
-            models.Task.sort_order > anchor_sort_order
-        ).order_by(models.Task.sort_order).first()
         prev_new = db.query(models.Task).filter(
             models.Task.project_id == project_id,
             models.Task.sort_order <= anchor_sort_order
         ).order_by(models.Task.sort_order.desc()).first()
-        if prev_new and anchor_new:
+        if prev_new:
             return _insert_after(db, project_id, prev_new.sort_order)
         return _next_sort_order(db, project_id)
