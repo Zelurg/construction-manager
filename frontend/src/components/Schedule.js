@@ -7,16 +7,12 @@ import ColumnFilter from './ColumnFilter';
 import FilterManager from './FilterManager';
 import { useAuth } from '../contexts/AuthContext';
 
-/**
- * Цвета разделов по уровням — единый синий диапазон,
- * level 0 самый тёмный, глубже — светлее.
- */
 const SECTION_COLORS = [
-  '#B8D4E8',  // level 0
-  '#C8DFF0',  // level 1
-  '#D8EAF5',  // level 2
-  '#E4F1F8',  // level 3
-  '#EFF6FB',  // level 4+
+  '#B8D4E8',
+  '#C8DFF0',
+  '#D8EAF5',
+  '#E4F1F8',
+  '#EFF6FB',
 ];
 
 function getSectionColor(level) {
@@ -45,31 +41,14 @@ function compareCode(a, b) {
   return 0;
 }
 
-// Ширины колонок по умолчанию
 const DEFAULT_COL_WIDTHS = {
-  code: 90,
-  name: 280,
-  unit: 60,
-  volume_plan: 90,
-  volume_fact: 90,
-  volume_remaining: 90,
-  start_date_contract: 110,
-  end_date_contract: 110,
-  start_date_plan: 110,
-  end_date_plan: 110,
-  unit_price: 90,
-  labor_per_unit: 100,
-  machine_hours_per_unit: 110,
-  executor: 150,
-  labor_total: 100,
-  labor_fact: 100,
-  labor_remaining: 110,
-  cost_total: 100,
-  cost_fact: 100,
-  cost_remaining: 110,
-  machine_hours_total: 110,
-  machine_hours_fact: 110,
-  machine_hours_remaining: 120,
+  code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
+  volume_remaining: 90, start_date_contract: 110, end_date_contract: 110,
+  start_date_plan: 110, end_date_plan: 110, unit_price: 90,
+  labor_per_unit: 100, machine_hours_per_unit: 110, executor: 150,
+  labor_total: 100, labor_fact: 100, labor_remaining: 110,
+  cost_total: 100, cost_fact: 100, cost_remaining: 110,
+  machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
@@ -93,83 +72,104 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch { return { ...DEFAULT_COL_WIDTHS }; }
   });
 
-  const containerRef = useRef(null);
+  const containerRef  = useRef(null);
   const tableScrollRef = useRef(null);
-  const ganttBodyRef = useRef(null);
-  const syncingRef = useRef(false);
-  const colResizeRef = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
+  // ganttBodyRef передаётся в GanttChart как externalScrollRef —
+  // GanttChart сам назначает его на div.gantt-body-scroll через ref={bodyScrollRef}
+  const ganttBodyRef  = useRef(null);
+  const syncingRef    = useRef(false);
+  const colResizeRef  = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
 
   const availableColumns = [
-    { key: 'code', label: 'Шифр', isBase: true },
-    { key: 'name', label: 'Наименование', isBase: true },
-    { key: 'unit', label: 'Ед. изм.', isBase: true },
-    { key: 'volume_plan', label: 'Объём план', isBase: true },
-    { key: 'volume_fact', label: 'Объём факт', isBase: true },
-    { key: 'volume_remaining', label: 'Объём остаток', isBase: false, isCalculated: true },
-    { key: 'start_date_contract', label: 'Дата старта контракт', isBase: true },
-    { key: 'end_date_contract', label: 'Дата финиша контракт', isBase: true },
-    { key: 'start_date_plan', label: 'Дата старта план', isBase: true, editable: true },
-    { key: 'end_date_plan', label: 'Дата финиша план', isBase: true, editable: true },
-    { key: 'unit_price', label: 'Цена за ед.', isBase: false },
-    { key: 'labor_per_unit', label: 'Трудозатраты/ед.', isBase: false },
-    { key: 'machine_hours_per_unit', label: 'Машиночасы/ед.', isBase: false },
-    { key: 'executor', label: 'Исполнитель', isBase: false, editable: true },
-    { key: 'labor_total', label: 'Всего трудозатрат', isBase: false, isCalculated: true },
-    { key: 'labor_fact', label: 'Трудозатраты факт', isBase: false, isCalculated: true },
-    { key: 'labor_remaining', label: 'Остаток трудозатрат', isBase: false, isCalculated: true },
-    { key: 'cost_total', label: 'Стоимость всего', isBase: false, isCalculated: true },
-    { key: 'cost_fact', label: 'Стоимость факт', isBase: false, isCalculated: true },
-    { key: 'cost_remaining', label: 'Остаток стоимости', isBase: false, isCalculated: true },
-    { key: 'machine_hours_total', label: 'Всего машиночасов', isBase: false, isCalculated: true },
-    { key: 'machine_hours_fact', label: 'Машиночасы факт', isBase: false, isCalculated: true },
-    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isBase: false, isCalculated: true },
+    { key: 'code',                    label: 'Шифр',                   isBase: true },
+    { key: 'name',                    label: 'Наименование',            isBase: true },
+    { key: 'unit',                    label: 'Ед. изм.',                isBase: true },
+    { key: 'volume_plan',             label: 'Объём план',              isBase: true },
+    { key: 'volume_fact',             label: 'Объём факт',              isBase: true },
+    { key: 'volume_remaining',        label: 'Объём остаток',           isBase: false, isCalculated: true },
+    { key: 'start_date_contract',     label: 'Дата старта контракт',    isBase: true },
+    { key: 'end_date_contract',       label: 'Дата финиша контракт',    isBase: true },
+    { key: 'start_date_plan',         label: 'Дата старта план',        isBase: true, editable: true },
+    { key: 'end_date_plan',           label: 'Дата финиша план',        isBase: true, editable: true },
+    { key: 'unit_price',              label: 'Цена за ед.',             isBase: false },
+    { key: 'labor_per_unit',          label: 'Трудозатраты/ед.',        isBase: false },
+    { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.',          isBase: false },
+    { key: 'executor',                label: 'Исполнитель',             isBase: false, editable: true },
+    { key: 'labor_total',             label: 'Всего трудозатрат',       isBase: false, isCalculated: true },
+    { key: 'labor_fact',              label: 'Трудозатраты факт',       isBase: false, isCalculated: true },
+    { key: 'labor_remaining',         label: 'Остаток трудозатрат',     isBase: false, isCalculated: true },
+    { key: 'cost_total',              label: 'Стоимость всего',         isBase: false, isCalculated: true },
+    { key: 'cost_fact',               label: 'Стоимость факт',          isBase: false, isCalculated: true },
+    { key: 'cost_remaining',          label: 'Остаток стоимости',       isBase: false, isCalculated: true },
+    { key: 'machine_hours_total',     label: 'Всего машиночасов',       isBase: false, isCalculated: true },
+    { key: 'machine_hours_fact',      label: 'Машиночасы факт',         isBase: false, isCalculated: true },
+    { key: 'machine_hours_remaining', label: 'Остаток машиночасов',     isBase: false, isCalculated: true },
   ];
 
-  const defaultColumns = ['code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
-    'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan'];
+  const defaultColumns = [
+    'code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
+    'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan',
+  ];
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const saved = localStorage.getItem('scheduleVisibleColumns');
     return saved ? JSON.parse(saved) : defaultColumns;
   });
 
-  // ── Синхронизация вертикального скролла таблица ↔ гант ──
+  // ─────────────────────────────────────────────────────────────────
+  // Синхронизация вертикального скролла: таблица ↔ Гант
+  //
+  // Почему через useEffect с зависимостью [showGantt, filteredTasks]:
+  //   - При первом рендере ganttBodyRef.current может быть null,
+  //     поэтому подписываемся заново когда Гант появляется (showGantt)
+  //     или данные загрузились (filteredTasks).
+  //   - syncingRef — флаг «я уже скроллю», предотвращает бесконечную
+  //     рекурсию (table→gantt→table→...).
+  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const tableEl = tableScrollRef.current;
-    const ganttEl = ganttBodyRef.current;
-    if (!tableEl || !ganttEl) return;
+    if (!showGantt) return;
 
-    const onTableScroll = () => {
-      if (syncingRef.current) return;
-      syncingRef.current = true;
-      ganttEl.scrollTop = tableEl.scrollTop;
-      requestAnimationFrame(() => { syncingRef.current = false; });
-    };
-    const onGanttScroll = () => {
-      if (syncingRef.current) return;
-      syncingRef.current = true;
-      tableEl.scrollTop = ganttEl.scrollTop;
-      requestAnimationFrame(() => { syncingRef.current = false; });
-    };
+    // Небольшая задержка: GanttChart рендерится после этого эффекта,
+    // поэтому ждём один тик чтобы ref точно был назначен.
+    const timer = setTimeout(() => {
+      const tableEl = tableScrollRef.current;
+      const ganttEl = ganttBodyRef.current;
+      if (!tableEl || !ganttEl) return;
 
-    tableEl.addEventListener('scroll', onTableScroll, { passive: true });
-    ganttEl.addEventListener('scroll', onGanttScroll, { passive: true });
-    return () => {
-      tableEl.removeEventListener('scroll', onTableScroll);
-      ganttEl.removeEventListener('scroll', onGanttScroll);
-    };
-  }, [showGantt]);
+      const onTableScroll = () => {
+        if (syncingRef.current) return;
+        syncingRef.current = true;
+        ganttEl.scrollTop = tableEl.scrollTop;
+        requestAnimationFrame(() => { syncingRef.current = false; });
+      };
+      const onGanttScroll = () => {
+        if (syncingRef.current) return;
+        syncingRef.current = true;
+        tableEl.scrollTop = ganttEl.scrollTop;
+        requestAnimationFrame(() => { syncingRef.current = false; });
+      };
+
+      tableEl.addEventListener('scroll', onTableScroll, { passive: true });
+      ganttEl.addEventListener('scroll', onGanttScroll, { passive: true });
+
+      // cleanup хранится в замыкании
+      return () => {
+        tableEl.removeEventListener('scroll', onTableScroll);
+        ganttEl.removeEventListener('scroll', onGanttScroll);
+      };
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [showGantt, filteredTasks]);
 
   // ── Resize колонок ──
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault();
     e.stopPropagation();
     colResizeRef.current = {
-      active: true,
-      colKey,
+      active: true, colKey,
       startX: e.clientX,
       startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100,
     };
-
     const onMouseMove = (ev) => {
       if (!colResizeRef.current.active) return;
       const delta = ev.clientX - colResizeRef.current.startX;
@@ -180,7 +180,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       colResizeRef.current.active = false;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      // Сохраняем в localStorage
       setColWidths(prev => {
         localStorage.setItem('scheduleColWidths', JSON.stringify(prev));
         return prev;
@@ -203,15 +202,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     loadEmployees();
     websocketService.connect();
 
-    const handleTaskCreated    = (msg) => setTasks(prev => [...prev, msg.data].sort(compareCode));
-    const handleTaskUpdated    = (msg) => setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
-    const handleTaskDeleted    = (msg) => setTasks(prev => prev.filter(t => t.id !== msg.data.id));
-    const handleScheduleCleared = ()  => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
+    const handleTaskCreated     = (msg) => setTasks(prev => [...prev, msg.data].sort(compareCode));
+    const handleTaskUpdated     = (msg) => setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
+    const handleTaskDeleted     = (msg) => setTasks(prev => prev.filter(t => t.id !== msg.data.id));
+    const handleScheduleCleared = ()   => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
 
-    websocketService.on('task_created',      handleTaskCreated);
-    websocketService.on('task_updated',      handleTaskUpdated);
-    websocketService.on('task_deleted',      handleTaskDeleted);
-    websocketService.on('schedule_cleared',  handleScheduleCleared);
+    websocketService.on('task_created',     handleTaskCreated);
+    websocketService.on('task_updated',     handleTaskUpdated);
+    websocketService.on('task_deleted',     handleTaskDeleted);
+    websocketService.on('schedule_cleared', handleScheduleCleared);
 
     return () => {
       websocketService.off('task_created',     handleTaskCreated);
@@ -289,8 +288,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getDisplayValue = (task, columnKey) => {
     if (task.is_section) {
-      const sumColumns = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
-      if (sumColumns.includes(columnKey)) return calculateSectionSum(task, columnKey).toFixed(2);
+      const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
+      if (sumCols.includes(columnKey)) return calculateSectionSum(task, columnKey).toFixed(2);
       if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor'].includes(columnKey)) return '-';
     }
     switch (columnKey) {
@@ -319,22 +318,16 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     Object.entries(filters).forEach(([columnKey, filterValue]) => {
       if (filterValue && filterValue.trim() !== '') {
         filtered = filtered.filter(task => {
-          const displayValue = getDisplayValue(task, columnKey);
-          return displayValue.toLowerCase().includes(filterValue.toLowerCase());
+          const dv = getDisplayValue(task, columnKey);
+          return dv.toLowerCase().includes(filterValue.toLowerCase());
         });
       }
     });
     setFilteredTasks(filtered);
   };
 
-  const handleFilterApply = (columnKey, filterValue) => {
-    setFilters(prev => ({ ...prev, [columnKey]: filterValue }));
-  };
-
-  const handleClearAllFilters = () => {
-    setFilters({});
-    setShowFilterManager(false);
-  };
+  const handleFilterApply    = (columnKey, filterValue) => setFilters(prev => ({ ...prev, [columnKey]: filterValue }));
+  const handleClearAllFilters = () => { setFilters({}); setShowFilterManager(false); };
 
   const getColumnValues = (columnKey) => {
     const otherFilters = Object.entries(filters).filter(([key]) => key !== columnKey);
@@ -424,8 +417,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getColumnLabel = (columnKey) => {
-    const column = availableColumns.find(col => col.key === columnKey);
-    return column ? column.label : columnKey;
+    const col = availableColumns.find(c => c.key === columnKey);
+    return col ? col.label : columnKey;
   };
 
   const handleSaveColumnSettings = (newVisibleColumns) => {
@@ -459,8 +452,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isResizing || !containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+      const r = containerRef.current.getBoundingClientRect();
+      const newWidth = ((e.clientX - r.left) / r.width) * 100;
       if (newWidth >= 20 && newWidth <= 85) setTableWidth(newWidth);
     };
     const handleMouseUp = () => setIsResizing(false);
@@ -481,6 +474,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
     >
       <div className="schedule-split-view">
+        {/* ── Таблица ── */}
         <div
           className="schedule-table-section"
           style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
@@ -537,12 +531,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           </div>
         </div>
 
+        {/* ── Разделитель ── */}
         {showGantt && (
           <div className="resize-divider" onMouseDown={handleMouseDown}>
             <div className="resize-handle"></div>
           </div>
         )}
 
+        {/* ── Гант ── */}
         {showGantt && (
           <div
             className="schedule-gantt-section"

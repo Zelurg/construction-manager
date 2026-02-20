@@ -2,6 +2,15 @@
    GANTT CHART — INTEGRATED
    ======================================== */
 
+/*
+  Высоты шапки Ганта должны ТОЧНО совпадать с высотой thead таблицы.
+  thead = 60px (задано в App.css: tasks-table-integrated thead tr { height: 60px })
+  Разбивка шапки Ганта:
+    .gantt-controls-row  = 36px
+    .gantt-timeline-row  = 24px
+    Итого: 60px
+*/
+
 .gantt-chart-integrated {
   display: flex;
   flex-direction: column;
@@ -15,29 +24,36 @@
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
   z-index: 10;
+  /* Итоговая высота шапки = 36 + 24 = 60px, совпадает с thead */
 }
 
 .gantt-controls-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 12px;
+  padding: 0 12px;
   border-bottom: 1px solid #e0e0e0;
-  min-height: 36px;
+  height: 36px;        /* фиксированная, не min-height */
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
+/* используется в empty-state */
 .gantt-controls-fixed {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 12px;
+  padding: 0 12px;
   border-bottom: 1px solid #e0e0e0;
+  height: 36px;
+  box-sizing: border-box;
 }
 
 .gantt-title {
   font-weight: 600;
   font-size: 13px;
   color: #333;
+  white-space: nowrap;
 }
 
 .gantt-scale-select {
@@ -49,12 +65,14 @@
   background: white;
 }
 
-/* Временная шкала */
+/* Временная шкала — ровно 24px */
 .gantt-timeline-row {
   overflow-x: hidden;
   height: 24px;
+  flex-shrink: 0;
   position: relative;
   border-bottom: 1px solid #e0e0e0;
+  box-sizing: border-box;
 }
 
 .gantt-timeline-content {
@@ -75,6 +93,7 @@
   color: #666;
   padding: 4px 4px;
   white-space: nowrap;
+  line-height: 16px;
 }
 
 /* Тело диаграммы */
@@ -89,7 +108,7 @@
   min-height: 100%;
 }
 
-/* Строки диаграммы — высота ДОЛЖНА совпадать с таблицей */
+/* Строки диаграммы — высота совпадает с tbody tr таблицы (32px) */
 .gantt-row-integrated {
   position: relative;
   height: 32px;
@@ -129,4 +148,5 @@
   padding: 4px 12px;
   color: #999;
   font-size: 12px;
+  line-height: 16px;
 }
