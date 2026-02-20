@@ -150,7 +150,7 @@ export const brigadesAPI = {
     api.get('/brigades/', { params: projectParams({ work_date: date }) }),
   getStats: (date) =>
     api.get('/brigades/stats', { params: projectParams({ work_date: date }) }),
-  create: (brigade) => api.post('/brigades/', brigade),
+  create: (brigade) => api.post('/brigades/', { ...projectParams(), ...brigade }),
   update: (id, brigade) => api.put(`/brigades/${id}`, brigade),
   delete: (id) => api.delete(`/brigades/${id}`),
 };
