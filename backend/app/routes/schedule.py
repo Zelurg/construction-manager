@@ -19,38 +19,12 @@ def get_tasks(
     query = db.query(models.Task)
     if project_id is not None:
         query = query.filter(models.Task.project_id == project_id)
-    # Сначала сортируем по sort_order, затем по code — обычные задачи идут по шифру,
-    # ручные (is_custom) встают по sort_order, выставленному при создании.
     return query.order_by(models.Task.sort_order, models.Task.code).all()
 
 
-@router.post("/tasks", response_model=schemas.Task)
-async def create_task(
-    task: schemas.TaskCreate,
-    project_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    existing = db.query(models.Task).filter(
-        models.Task.code == task.code,
-        models.Task.project_id == project_id
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"Задача с кодом '{task.code}' уже существует")
-
-    db_task = models.Task(**task.dict(), project_id=project_id)
-    db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
-    touch_project(project_id, db)
-
-    await manager.broadcast(
-        {"type": "task_created", "event": "tasks", "data": {"id": db_task.id, "project_id": project_id}},
-        event_type="tasks"
-    )
-    return db_task
-
-
+# ─── Ручные строки: POST /tasks/custom ────────────────────────────────────
+# ВАЖНО: этот роут должен стоять ДО роута POST /tasks,
+# чтобы FastAPI не путал пути.
 @router.post("/tasks/custom", response_model=schemas.Task)
 async def create_custom_task(
     body: schemas.CustomTaskCreate,
@@ -58,20 +32,14 @@ async def create_custom_task(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    Создаёт ручную строку в наряде на месяц.
-    Шифр: С-N, где N — следующий номер среди ручных задач этого проекта.
-    sort_order: если передан insert_before_task_id, новая задача встаёт
-    перед ней (sort_order = sort_order цели - 0.5, затем всё пересчитывается).
-    """
-    # 1. Генерируем шифр С-N
+    """Создаёт ручную строку с авто-шифром С-N."""
+    # 1. Генерируем шифр
     existing_custom = db.query(models.Task).filter(
         models.Task.project_id == project_id,
         models.Task.is_custom == True
     ).count()
     new_number = existing_custom + 1
     new_code = f"С-{new_number}"
-    # Защита от коллизий (если удалили предыдущую с таким кодом)
     while db.query(models.Task).filter(
         models.Task.project_id == project_id,
         models.Task.code == new_code
@@ -85,7 +53,6 @@ async def create_custom_task(
             models.Task.id == body.insert_before_task_id
         ).first()
         if anchor:
-            # Сдвигаем все задачи с sort_order >= sort_order якоря на +1
             db.query(models.Task).filter(
                 models.Task.project_id == project_id,
                 models.Task.sort_order >= anchor.sort_order
@@ -96,7 +63,7 @@ async def create_custom_task(
     else:
         new_sort_order = _next_sort_order(db, project_id)
 
-    # 3. Создаём задачу
+    # 3. Создаём
     db_task = models.Task(
         project_id=project_id,
         code=new_code,
@@ -121,18 +88,75 @@ async def create_custom_task(
     touch_project(project_id, db)
 
     await manager.broadcast(
-        {"type": "task_created", "event": "tasks", "data": {"id": db_task.id, "project_id": project_id, "is_custom": True}},
+        {"type": "task_created", "event": "tasks",
+         "data": {"id": db_task.id, "project_id": project_id, "is_custom": True}},
         event_type="tasks"
     )
     return db_task
 
 
-def _next_sort_order(db: Session, project_id: Optional[int]) -> int:
-    """Возвращает sort_order = max(sort_order) + 1 по проекту."""
-    max_order = db.query(func.max(models.Task.sort_order)).filter(
+# ─── DELETE /tasks/custom/all ─────────────────────────────────────────────────
+# ВАЖНО: стоит ДО DELETE /tasks/{task_id}, иначе FastAPI подставляет
+# строку "custom" как task_id, получает 422 Unprocessable Entity.
+@router.delete("/tasks/custom/all")
+async def delete_all_custom_tasks(
+    project_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Удалить все ручные строки проекта."""
+    query = db.query(models.Task).filter(models.Task.is_custom == True)
+    if project_id is not None:
+        query = query.filter(models.Task.project_id == project_id)
+    ids = [t.id for t in query.all()]
+    query.delete(synchronize_session=False)
+    db.commit()
+    touch_project(project_id, db)
+    await manager.broadcast(
+        {"type": "tasks_cleared", "event": "tasks",
+         "data": {"project_id": project_id, "custom_only": True}},
+        event_type="tasks"
+    )
+    return {"message": f"Удалено {len(ids)} ручных строк", "ids": ids}
+
+
+# ─── Стандартные роуты с {task_id} — идут ПОСЛЕ конкретных строк ─────────────
+
+@router.post("/tasks", response_model=schemas.Task)
+async def create_task(
+    task: schemas.TaskCreate,
+    project_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    existing = db.query(models.Task).filter(
+        models.Task.code == task.code,
         models.Task.project_id == project_id
-    ).scalar()
-    return (max_order or 0) + 1
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Задача с кодом '{task.code}' уже существует")
+
+    # Новым задачам из импорта присваиваем sort_order по порядку кода,
+    # чтобы они не смешивались с ручными строками (sort_order=0 по умолчанию).
+    # Импорт идёт пакетами, поэтому sort_order=0 для всех обычных — норма.
+    # GET /tasks сортирует (sort_order, code), так что обычные задачи
+    # с sort_order=0 всегда встают перед ручными (sort_order >= 1).
+    task_data = task.dict()
+    if not task_data.get('sort_order'):
+        task_data['sort_order'] = 0
+
+    db_task = models.Task(**task_data, project_id=project_id)
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    touch_project(project_id, db)
+
+    await manager.broadcast(
+        {"type": "task_created", "event": "tasks",
+         "data": {"id": db_task.id, "project_id": project_id}},
+        event_type="tasks"
+    )
+    return db_task
 
 
 @router.put("/tasks/{task_id}", response_model=schemas.Task)
@@ -157,27 +181,6 @@ async def update_task(
         event_type="tasks"
     )
     return db_task
-
-
-@router.delete("/tasks/custom/all")
-async def delete_all_custom_tasks(
-    project_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    """Удалить все ручные строки проекта."""
-    query = db.query(models.Task).filter(models.Task.is_custom == True)
-    if project_id is not None:
-        query = query.filter(models.Task.project_id == project_id)
-    ids = [t.id for t in query.all()]
-    query.delete(synchronize_session=False)
-    db.commit()
-    touch_project(project_id, db)
-    await manager.broadcast(
-        {"type": "tasks_cleared", "event": "tasks", "data": {"project_id": project_id, "custom_only": True}},
-        event_type="tasks"
-    )
-    return {"message": f"Удалено {len(ids)} ручных строк", "ids": ids}
 
 
 @router.delete("/tasks/{task_id}")
@@ -218,3 +221,11 @@ async def delete_all_tasks(
         event_type="tasks"
     )
     return {"message": f"Удалено {count} задач"}
+
+
+def _next_sort_order(db: Session, project_id: Optional[int]) -> int:
+    """Возвращает sort_order = max(sort_order) + 1 по проекту."""
+    max_order = db.query(func.max(models.Task.sort_order)).filter(
+        models.Task.project_id == project_id
+    ).scalar()
+    return (max_order or 0) + 1
