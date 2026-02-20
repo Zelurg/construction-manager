@@ -98,7 +98,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return s ? JSON.parse(s) : defaultColumns;
   });
 
-  // ── Синхронизация вертикального скролла ──
   useEffect(() => {
     if (!showGantt) return;
     const timer = setTimeout(() => {
@@ -127,7 +126,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => clearTimeout(timer);
   }, [showGantt, filteredTasks]);
 
-  // ── Resize колонок ──
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault(); e.stopPropagation();
     colResizeRef.current = { active: true, colKey, startX: e.clientX, startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100 };
@@ -250,20 +248,45 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const applyFilters = () => {
-    let f = tasks;
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v && v.trim()) f = f.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
+    const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
+
+    if (activeFilters.length === 0) {
+      setFilteredTasks(tasks);
+      return;
+    }
+
+    const matchingWorks = tasks.filter(t => {
+      if (t.is_section) return false;
+      return activeFilters.every(([k, v]) =>
+        getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
+      );
     });
-    setFilteredTasks(f);
+
+    const neededSectionCodes = new Set();
+    matchingWorks.forEach(work => {
+      let cur = work.parent_code;
+      while (cur) {
+        neededSectionCodes.add(cur);
+        const parent = tasks.find(t => t.code === cur);
+        cur = parent?.parent_code || null;
+      }
+    });
+
+    const result = tasks.filter(t =>
+      t.is_section ? neededSectionCodes.has(t.code) : matchingWorks.includes(t)
+    );
+
+    setFilteredTasks(result);
   };
 
   const handleFilterApply = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
   const handleClearAllFilters = () => { setFilters({}); setShowFilterManager(false); };
 
   const getColumnValues = (key) => {
-    let arr = tasks;
-    Object.entries(filters).filter(([k]) => k !== key).forEach(([k, v]) => {
-      if (v && v.trim()) arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
+    const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
+    let arr = tasks.filter(t => !t.is_section);
+    active.forEach(([k, v]) => {
+      arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
     });
     return arr.map(t => getDisplayValue(t, key));
   };
@@ -305,8 +328,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     }
     if (key === 'name') {
       const hasFilters = Object.values(filters).some(f => f && f.trim());
-      const crumb = hasFilters ? getBreadcrumb(task) : '';
-      return crumb ? <span><span style={{ color:'#999', fontSize:'0.85em' }}>{crumb}</span>{task.name}</span> : task.name;
+      const crumb = (hasFilters && !task.is_section) ? getBreadcrumb(task) : '';
+      return crumb
+        ? <span><span style={{ color:'#999', fontSize:'0.85em' }}>{crumb}</span>{task.name}</span>
+        : task.name;
     }
     return getDisplayValue(task, key);
   };
@@ -355,8 +380,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       <div className="schedule-container-integrated" ref={containerRef}
         style={{ userSelect: isResizing ? 'none' : 'auto' }}>
         <div className="schedule-split-view">
-
-          {/* ── Таблица ── */}
           <div className="schedule-table-section"
             style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
             ref={tableScrollRef}>
@@ -366,7 +389,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                   {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k]||100}px` }} />)}
                 </colgroup>
                 <thead>
-                  {/* Одна строка 60px */}
                   <tr className="thead-labels">
                     {visibleColumns.map(key => (
                       <th key={key}>

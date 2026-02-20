@@ -100,7 +100,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return s ? JSON.parse(s) : defaultColumns;
   });
 
-  // ── Синхронизация вертикального скролла ──
   useEffect(() => {
     if (!showGantt) return;
     const timer = setTimeout(() => {
@@ -129,7 +128,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => clearTimeout(timer);
   }, [showGantt, filteredTasks]);
 
-  // ── Resize колонок ──
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault(); e.stopPropagation();
     colResizeRef.current = { active: true, colKey, startX: e.clientX, startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100 };
@@ -180,6 +178,9 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error('Ошибка загрузки сотрудников:', e); }
   };
 
+  // Строит хлебные крошки для работы, склеивая имена всех родительских разделов.
+  // Ищет в полном массиве tasks (не в filteredTasks),
+  // поэтому работает даже если родительские секции не прошли фильтрацию.
   const getBreadcrumb = (task) => {
     if (!task.parent_code) return '';
     const crumbs = [];
@@ -244,21 +245,55 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     }
   };
 
+  // Фильтрация:
+  // 1) Прогоняем все задачи (не секции) через фильтры.
+  // 2) Секцию включаем в результат только если в ней есть хотя бы одна подошедшая работа.
+  //    Это позволяет сохранить структуру иерархии в таблице И строить хлебные крошки.
+  //    Дополнительно: если фильтры нет — поведение не меняется (все задачи и секции).
   const applyFilters = () => {
-    let f = tasks;
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v && v.trim()) f = f.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
+    const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
+
+    // Без фильтров — показываем всё
+    if (activeFilters.length === 0) {
+      setFilteredTasks(tasks);
+      return;
+    }
+
+    // Определяем какие работы (не секции) прошли фильтры
+    const matchingWorks = tasks.filter(t => {
+      if (t.is_section) return false;
+      return activeFilters.every(([k, v]) =>
+        getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
+      );
     });
-    setFilteredTasks(f);
+
+    // Собираем коды всех родительских секций для подошедших работ
+    const neededSectionCodes = new Set();
+    matchingWorks.forEach(work => {
+      let cur = work.parent_code;
+      while (cur) {
+        neededSectionCodes.add(cur);
+        const parent = tasks.find(t => t.code === cur);
+        cur = parent?.parent_code || null;
+      }
+    });
+
+    // Итог: нужные секции + подошедшие работы, порядок сохраняем
+    const result = tasks.filter(t =>
+      t.is_section ? neededSectionCodes.has(t.code) : matchingWorks.includes(t)
+    );
+
+    setFilteredTasks(result);
   };
 
   const handleFilterApply = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
   const handleClearAllFilters = () => { setFilters({}); setShowFilterManager(false); };
 
   const getColumnValues = (key) => {
-    let arr = tasks;
-    Object.entries(filters).filter(([k]) => k !== key).forEach(([k, v]) => {
-      if (v && v.trim()) arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
+    const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
+    let arr = tasks.filter(t => !t.is_section);
+    active.forEach(([k, v]) => {
+      arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
     });
     return arr.map(t => getDisplayValue(t, key));
   };
@@ -305,8 +340,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     }
     if (key === 'name') {
       const hasFilters = Object.values(filters).some(f => f && f.trim());
-      const crumb = hasFilters ? getBreadcrumb(task) : '';
-      return crumb ? <span><span style={{ color:'#999', fontSize:'0.85em' }}>{crumb}</span>{task.name}</span> : task.name;
+      // Хлебные крошки показываем только для работ (не секций)
+      const crumb = (hasFilters && !task.is_section) ? getBreadcrumb(task) : '';
+      return crumb
+        ? <span><span style={{ color:'#999', fontSize:'0.85em' }}>{crumb}</span>{task.name}</span>
+        : task.name;
     }
     return getDisplayValue(task, key);
   };
@@ -348,8 +386,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     <div className="schedule-container-integrated" ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}>
       <div className="schedule-split-view">
-
-        {/* ── Таблица ── */}
         <div className="schedule-table-section"
           style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
           ref={tableScrollRef}>
@@ -359,7 +395,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                 {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
               </colgroup>
               <thead>
-                {/* Одна строка 60px — название + кнопка фильтра в правом углу */}
                 <tr className="thead-labels">
                   {visibleColumns.map(key => (
                     <th key={key}>
