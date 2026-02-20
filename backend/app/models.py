@@ -63,6 +63,9 @@ class Task(Base):
     is_section = Column(Boolean, default=False, nullable=False)
     level = Column(Integer, default=0, nullable=False)
     parent_code = Column(String, nullable=True)
+    # --- новые поля ---
+    is_custom = Column(Boolean, default=False, nullable=False)  # ручная строка
+    sort_order = Column(Integer, default=0, nullable=False)      # порядок в таблице
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="tasks")

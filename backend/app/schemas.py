@@ -47,6 +47,8 @@ class TaskBase(BaseModel):
     is_section: Optional[bool] = False
     level: Optional[int] = 0
     parent_code: Optional[str] = None
+    is_custom: Optional[bool] = False
+    sort_order: Optional[int] = 0
 
 class TaskCreate(TaskBase):
     pass
@@ -68,12 +70,32 @@ class TaskUpdate(BaseModel):
     is_section: Optional[bool] = None
     level: Optional[int] = None
     parent_code: Optional[str] = None
+    is_custom: Optional[bool] = None
+    sort_order: Optional[int] = None
 
 class Task(TaskBase):
     id: int
     project_id: Optional[int] = None
     class Config:
         from_attributes = True
+
+
+# ─── CustomTaskCreate — создание ручной строки ──────────────────────────────
+# Фронт передаёт только нужные поля; шифр и sort_order генерирует бекенд.
+
+class CustomTaskCreate(BaseModel):
+    name: str = Field(default="Новая работа", min_length=1)
+    unit: Optional[str] = None
+    volume_plan: Optional[float] = 0
+    start_date_plan: Optional[date] = None
+    end_date_plan: Optional[date] = None
+    unit_price: Optional[float] = 0
+    labor_per_unit: Optional[float] = 0
+    machine_hours_per_unit: Optional[float] = 0
+    executor: Optional[str] = None
+    parent_code: Optional[str] = None
+    # insert_before_task_id: если задан — новая строка встаёт перед этой задачей
+    insert_before_task_id: Optional[int] = None
 
 
 # ─── MonthlyTask ────────────────────────────────────────────────────────────
