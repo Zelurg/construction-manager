@@ -3,12 +3,20 @@
    ======================================== */
 
 /*
-  Высоты шапки Ганта должны ТОЧНО совпадать с высотой thead таблицы.
-  thead = 60px (задано в App.css: tasks-table-integrated thead tr { height: 60px })
-  Разбивка шапки Ганта:
-    .gantt-controls-row  = 36px
-    .gantt-timeline-row  = 24px
+  Высота шапки Ганта должна ТОЧНО совпадать с высотой thead таблицы.
+
+  thead таблицы:
+    tr.thead-labels  = 36px (height + line-height)
+    tr.thead-filters = 24px (height + line-height)
     Итого: 60px
+
+  Шапка Ганта:
+    .gantt-controls-row  = 36px (height: 36px, box-sizing: border-box)
+    .gantt-timeline-row  = 24px (height: 24px, box-sizing: border-box)
+    Итого: 60px
+
+  Бордеры внутри блоков учитываются через box-sizing:border-box,
+  поэтому высота не «распухает».
 */
 
 .gantt-chart-integrated {
@@ -24,7 +32,7 @@
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
   z-index: 10;
-  /* Итоговая высота шапки = 36 + 24 = 60px, совпадает с thead */
+  /* Суммарная высота = 36 + 24 = 60px */
 }
 
 .gantt-controls-row {
@@ -32,10 +40,11 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  border-bottom: 1px solid #e0e0e0;
-  height: 36px;        /* фиксированная, не min-height */
+  height: 36px;            /* строго 36px, включая border */
   box-sizing: border-box;
+  border-bottom: 1px solid #e0e0e0;
   flex-shrink: 0;
+  overflow: hidden;        /* предотвращаем случайное увеличение */
 }
 
 /* используется в empty-state */
@@ -44,9 +53,10 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  border-bottom: 1px solid #e0e0e0;
   height: 36px;
   box-sizing: border-box;
+  border-bottom: 1px solid #e0e0e0;
+  overflow: hidden;
 }
 
 .gantt-title {
@@ -65,14 +75,15 @@
   background: white;
 }
 
-/* Временная шкала — ровно 24px */
+/* Временная шкала — ровно 24px, border включён в высоту */
 .gantt-timeline-row {
   overflow-x: hidden;
-  height: 24px;
+  height: 24px;            /* строго 24px */
+  box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
   border-bottom: 1px solid #e0e0e0;
-  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .gantt-timeline-content {

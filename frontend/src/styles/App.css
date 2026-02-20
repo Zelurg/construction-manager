@@ -289,22 +289,37 @@ body {
 }
 
 /*
-  Шапка таблицы состоит из ДВУХ строк:
-    tr.thead-labels  — 36px  (названия колонок)
-    tr.thead-filters — 24px  (кнопки фильтров)
-  Итого: 60px == шапка Ганта (gantt-controls-row 36px + gantt-timeline-row 24px)
+  Шапка таблицы = две строки:
+    tr.thead-labels  — 36px (названия колонок)
+    tr.thead-filters — 24px (кнопки фильтров)
+  Итого: 60px
+
+  ВАЖНО: border-bottom ставим на th, а НЕ на tr.
+  Если ставить border на tr при border-collapse:collapse,
+  браузер может добавить 1px к высоте строки сверх height,
+  что ломает выравнивание с шапкой Ганта.
+  При border на th высота строки остаётся ровно такой,
+  какой задана через line-height.
 */
 .tasks-table-integrated thead tr.thead-labels {
   height: 36px;
-  border-bottom: 1px solid #ddd;
+  line-height: 36px;
 }
 
 .tasks-table-integrated thead tr.thead-filters {
   height: 24px;
+  line-height: 24px;
+}
+
+/* Разделительные линии — через th, не tr */
+.tasks-table-integrated thead tr.thead-labels th {
+  border-bottom: 1px solid #ddd;
+}
+.tasks-table-integrated thead tr.thead-filters th {
   border-bottom: 1px solid #e0e0e0;
 }
 
-/* Ячейки строки заголовков */
+/* Ячейки заголовков */
 .tasks-table-integrated th {
   padding: 0 8px;
   text-align: left;
@@ -317,26 +332,25 @@ body {
   box-sizing: border-box;
   font-size: 12px;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* было hidden — теперь visible, дропдаун рендерится через портал */
   user-select: none;
 }
 
-/* Ячейки строки названий: полужирный шрифт */
+/* Ячейки строки названий */
 .tasks-table-integrated thead tr.thead-labels th {
   font-weight: 600;
   font-size: 12px;
   padding: 0 8px;
-  border-bottom: none; /* граница у tr, не у th */
 }
 
-/* Ячейки строки фильтров: паддинг 0 */
+/* Ячейки строки фильтров */
 .tasks-table-integrated thead tr.thead-filters th {
-  padding: 0 4px;
-  border-bottom: none;
+  padding: 2px 4px;
   vertical-align: middle;
+  overflow: visible;
 }
 
-/* Ручка resize колонки — только в строке названий */
+/* Ручка resize колонки */
 .col-resize-handle {
   position: absolute;
   right: 0;
