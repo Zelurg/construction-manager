@@ -20,11 +20,22 @@ function parseCode(code) {
 }
 
 /**
- * Строим визуальный порядок строк:
- * 1. Обычные задачи (sort_order=0) сортируем по code.
- * 2. Ручные строки вставляем сразу после последней строки
- *    своего раздела (parent_code). Если parent_code не задан — в конец.
- * 3. Среди ручных строк одного раздела — сортировка по sort_order.
+ * Сортируем все задачи для отображения:
+ * - Обычные (sort_order = 0): сортируются по code.
+ * - Ручные (sort_order > 0): вставляем их в позицию по sort_order
+ *   относительно всех строк с sort_order = 0 (т.е. после обычных).
+ *
+ * Алгоритм:
+ * 1. Собираем обычные задачи, сортируем по code.
+ * 2. Собираем ручные, сортируем по sort_order.
+ * 3. Мержим: проходим по обычным, находим последнюю обычную строку
+ *    в разделе (parent_code) ручной строки, вставляем ручную строку
+ *    сразу после неё (в соответствии с sort_order).
+ * 4. Ручные без parent_code — в конец.
+ *
+ * parent_code используется ТОЛЬКО для поиска места вставки,
+ * но НЕ для сортировки внутри раздела. Сортировка ручных строк
+ * внутри раздела — через sort_order.
  */
 function buildDisplayOrder(tasks) {
   const normal = tasks
@@ -46,13 +57,21 @@ function buildDisplayOrder(tasks) {
 
   if (custom.length === 0) return normal;
 
+  // Для каждой ручной строки ищем за последней строкой её раздела.
+  // Если parent_code не задан — вставляем в конец normal[].
+  // Если несколько ручных строк в одном разделе — вставляем
+  // в порядке sort_order (уже отсортированы выше).
   const result = [...normal];
+  // Собираем вставки в обратном порядке, чтобы сплайсы не сбивали индексы.
+  // custom уже отсортирован по sort_order ASC, значит реверс даст правильный порядок.
+  const reversedCustom = [...custom].reverse();
 
-  // Собираем вставки: для каждой ручной строки ищем afterIndex
-  const insertions = [];
-  for (const ct of custom) {
+  for (const ct of reversedCustom) {
+    let insertIdx = result.length; // по умолчанию — в конец
     if (ct.parent_code) {
       const prefix = ct.parent_code + '.';
+      // Находим последний индекс в result[], код которого
+      // начинается с parent_code или === parent_code
       let lastIdx = -1;
       for (let i = 0; i < result.length; i++) {
         const t = result[i];
@@ -60,25 +79,9 @@ function buildDisplayOrder(tasks) {
           lastIdx = i;
         }
       }
-      if (lastIdx !== -1) {
-        insertions.push({ afterIndex: lastIdx, task: ct });
-        continue;
-      }
+      if (lastIdx !== -1) insertIdx = lastIdx + 1;
     }
-    insertions.push({ afterIndex: result.length - 1, task: ct });
-  }
-
-  // Вставляем с конца, чтобы не сбивать индексы предыдущих вставок.
-  // При равном afterIndex — вставляем в порядке sort_order (меньший sort_order
-  // идёт позже в DESC-сортировке, значит окажется выше после вставок с конца).
-  insertions.sort((a, b) =>
-    b.afterIndex !== a.afterIndex
-      ? b.afterIndex - a.afterIndex
-      : b.task.sort_order - a.task.sort_order
-  );
-
-  for (const { afterIndex, task } of insertions) {
-    result.splice(afterIndex + 1, 0, task);
+    result.splice(insertIdx, 0, ct);
   }
 
   return result;
@@ -189,7 +192,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return s ? JSON.parse(s) : defaultColumns;
   });
 
-  // ─── Синхронизация скролла ─────────────────────────────────────────────
+  // ─── Синхронизация скролла ───────────────────────────────────────────
   useEffect(() => {
     if (!showGantt) return;
     const timer = setTimeout(() => {
@@ -218,7 +221,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => clearTimeout(timer);
   }, [showGantt, filteredTasks]);
 
-  // ─── Ресайз колонок ────────────────────────────────────────────────────
+  // ─── Ресайз колонок ───────────────────────────────────────────────────
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault(); e.stopPropagation();
     colResizeRef.current = { active: true, colKey, startX: e.clientX, startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100 };
@@ -240,7 +243,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
 
-  // ─── Загрузка данных ───────────────────────────────────────────────────
+  // ─── Загрузка данных ─────────────────────────────────────────────────
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
     const onUpdated = (msg) => setTasks(prev =>
@@ -285,21 +288,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error(e); }
   };
 
-  // ─── Добавление ручной строки ──────────────────────────────────────────
-  // Кнопка «+ Добавить строку»:
-  //   - Если выделена строка → вставляем ПЕРЕД ней (insert_before_task_id)
-  //     Логика: пользователь выделил место, куда хочет вставить, ожидает
-  //     что новая строка появится выше выделенной.
-  //   - Без выделения → в конец.
+  // ─── Добавление ручной строки ─────────────────────────────────────────
   const handleAddCustomRow = async () => {
     if (!isAdmin) return;
     try {
       const payload = { name: 'Новая работа' };
-      if (selectedTaskId) {
-        payload.insert_before_task_id = selectedTaskId;
-      }
+      if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
+      // Добавляем без пересортировки: бэкенд уже выставил правильный sort_order
       setTasks(prev => buildDisplayOrder([...prev, newTask]));
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
@@ -307,7 +304,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch (e) { console.error(e); alert('Не удалось создать строку'); }
   };
 
-  // ─── Удаление ручных строк ─────────────────────────────────────────────
   const handleDeleteCustomRow = async (taskId) => {
     if (!isAdmin) return;
     if (!window.confirm('Удалить эту строку?')) return;
@@ -328,13 +324,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch (e) { console.error(e); alert('Не удалось удалить строки'); }
   };
 
-  // ─── Drag-and-drop ─────────────────────────────────────────────────────
-  //
-  // Ключевое изменение: при drop мы НЕ перекладываем элементы вручную,
-  // а обновляем parent_code у перетащенной строки и пересчитываем
-  // sort_order только среди ручных строк, затем прогоняем через
-  // buildDisplayOrder — который сам расставит всё по parent_code.
-
+  // ─── Drag-and-drop ──────────────────────────────────────────────────
   const handleDragStart = useCallback((e, task) => {
     if (!task.is_custom || !isAdmin) { e.preventDefault(); return; }
     dragTaskIdRef.current = task.id;
@@ -376,33 +366,33 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const insertBefore = e.clientY < rect.top + rect.height / 2;
 
-    // Новый parent_code берём у цели
+    // Новый parent_code — берём у цели
     const newParentCode = targetTask.is_section
       ? targetTask.code
       : (targetTask.parent_code || null);
 
-    // Строим новый порядок ПЛОСКОГО списка: убираем dragged, вставляем рядом с target
+    // Строим новый порядок: убираем dragged, вставляем рядом с target
     const withoutDragged = currentTasks.filter(t => t.id !== draggedId);
     const targetIdx = withoutDragged.findIndex(t => t.id === targetTask.id);
     const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
     const updatedDragged = { ...dragged, parent_code: newParentCode };
     withoutDragged.splice(insertIdx, 0, updatedDragged);
 
-    // Пересчитываем sort_order только для ручных строк по их позиции в новом списке
+    // Перенумерация sort_order только для ручных по позиции в новом списке
     let customOrder = 1;
     const sortUpdates = {};
     withoutDragged.forEach(t => {
       if (t.is_custom) sortUpdates[t.id] = customOrder++;
     });
 
-    // Применяем новые sort_order в массиве
     const withNewOrders = withoutDragged.map(t => ({
       ...t,
       sort_order: t.is_custom ? (sortUpdates[t.id] ?? t.sort_order) : t.sort_order,
     }));
 
-    // buildDisplayOrder переставит строки по parent_code с учётом нового sort_order
-    setTasks(buildDisplayOrder(withNewOrders));
+    // Оптимистично обновляем UI — не прогоняем через buildDisplayOrder,
+    // т.к. позиция уже точная — пользователь сам перетащил.
+    setTasks(withNewOrders);
 
     // Сохраняем в бэкенд
     try {
@@ -416,7 +406,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     }
   }, [isAdmin]);
 
-  // ─── Расчётные поля секций ─────────────────────────────────────────────
+  // ─── Расчётные поля секций ───────────────────────────────────────────
   const getChildTasks = (sectionCode, arr) => {
     const children = [];
     const prefix = sectionCode + '.';
@@ -496,7 +486,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return arr.map(t => getDisplayValue(t, key));
   };
 
-  // ─── Редактирование ячеек ──────────────────────────────────────────────
+  // ─── Редактирование ячеек ─────────────────────────────────────────────
   const isFieldEditable = (task, key) => {
     if (!isAdmin || task.is_section) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
@@ -532,9 +522,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
     try {
       await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: updateVal });
-      setTasks(prev => buildDisplayOrder(prev.map(t =>
+      setTasks(prev => prev.map(t =>
         t.id === editingCell.taskId ? { ...t, [editingCell.field]: updateVal } : t
-      )));
+      ));
     } catch (e) { console.error(e); } finally { setEditingCell(null); }
   };
 
@@ -624,7 +614,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     setSelectedTaskId(prev => prev === task.id ? null : task.id);
   };
 
-  // ─── Ресайз разделителя ────────────────────────────────────────────────
   const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
   useEffect(() => {
     const onMove = (e) => {
@@ -638,7 +627,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
-  // ─── Рендер ────────────────────────────────────────────────────────────
   return (
     <div className="monthly-order">
       <div className="month-selector">
