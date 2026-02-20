@@ -23,7 +23,7 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       localStorage.removeItem('currentProject');
       window.location.href = '/login';
-      alert('Сессия истекла. Пожалуйста, войдите заново.');
+      alert('\u0421\u0435\u0441\u0441\u0438\u044f \u0438\u0441\u0442\u0435\u043a\u043b\u0430. \u041f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430, \u0432\u043e\u0439\u0434\u0438\u0442\u0435 \u0437\u0430\u043d\u043e\u0432\u043e.');
     }
     return Promise.reject(error);
   }
@@ -86,9 +86,9 @@ export const monthlyAPI = {
 // ─── Daily ───────────────────────────────────────────────────────────────────
 export const dailyAPI = {
   getWorks: (date) =>
-    api.get('/daily/', { params: projectParams({ work_date: date }) }),
-  createWork: (work) => api.post('/daily/', work),
-  deleteWork: (id) => api.delete(`/daily/${id}`),
+    api.get('/daily/works', { params: projectParams({ work_date: date }) }),
+  createWork: (work) => api.post('/daily/works', work),
+  deleteWork: (id) => api.delete(`/daily/works/${id}`),
 };
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
