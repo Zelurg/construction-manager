@@ -80,8 +80,7 @@ class Task(TaskBase):
         from_attributes = True
 
 
-# ─── CustomTaskCreate — создание ручной строки ──────────────────────────────
-# Фронт передаёт только нужные поля; шифр и sort_order генерирует бекенд.
+# ─── CustomTaskCreate ───────────────────────────────────────────────────────
 
 class CustomTaskCreate(BaseModel):
     name: str = Field(default="Новая работа", min_length=1)
@@ -94,8 +93,10 @@ class CustomTaskCreate(BaseModel):
     machine_hours_per_unit: Optional[float] = 0
     executor: Optional[str] = None
     parent_code: Optional[str] = None
-    # insert_before_task_id: если задан — новая строка встаёт перед этой задачей
+    # Вставить ПЕРЕД этой задачей
     insert_before_task_id: Optional[int] = None
+    # Вставить ПОСЛЕ этой задачи
+    insert_after_task_id: Optional[int] = None
 
 
 # ─── MonthlyTask ────────────────────────────────────────────────────────────

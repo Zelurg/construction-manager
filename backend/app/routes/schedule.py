@@ -22,9 +22,9 @@ def get_tasks(
     return query.order_by(models.Task.sort_order, models.Task.code).all()
 
 
-# ─── Ручные строки: POST /tasks/custom ────────────────────────────────────
-# ВАЖНО: этот роут должен стоять ДО роута POST /tasks,
-# чтобы FastAPI не путал пути.
+# ВАЖНО: /tasks/custom и /tasks/custom/all стоят ДО /tasks/{task_id}
+# иначе FastAPI пытается привести строку "custom" к int и возвращает 422.
+
 @router.post("/tasks/custom", response_model=schemas.Task)
 async def create_custom_task(
     body: schemas.CustomTaskCreate,
@@ -48,16 +48,31 @@ async def create_custom_task(
         new_code = f"С-{new_number}"
 
     # 2. Определяем sort_order
+    # Приоритет: insert_before > insert_after > в конец
     if body.insert_before_task_id:
         anchor = db.query(models.Task).filter(
             models.Task.id == body.insert_before_task_id
         ).first()
         if anchor:
+            # Сдвигаем все задачи с sort_order >= sort_order якоря на +1
             db.query(models.Task).filter(
                 models.Task.project_id == project_id,
                 models.Task.sort_order >= anchor.sort_order
             ).update({"sort_order": models.Task.sort_order + 1}, synchronize_session=False)
             new_sort_order = anchor.sort_order
+        else:
+            new_sort_order = _next_sort_order(db, project_id)
+    elif body.insert_after_task_id:
+        anchor = db.query(models.Task).filter(
+            models.Task.id == body.insert_after_task_id
+        ).first()
+        if anchor:
+            # Сдвигаем все задачи с sort_order > sort_order якоря на +1
+            db.query(models.Task).filter(
+                models.Task.project_id == project_id,
+                models.Task.sort_order > anchor.sort_order
+            ).update({"sort_order": models.Task.sort_order + 1}, synchronize_session=False)
+            new_sort_order = anchor.sort_order + 1
         else:
             new_sort_order = _next_sort_order(db, project_id)
     else:
@@ -95,9 +110,6 @@ async def create_custom_task(
     return db_task
 
 
-# ─── DELETE /tasks/custom/all ─────────────────────────────────────────────────
-# ВАЖНО: стоит ДО DELETE /tasks/{task_id}, иначе FastAPI подставляет
-# строку "custom" как task_id, получает 422 Unprocessable Entity.
 @router.delete("/tasks/custom/all")
 async def delete_all_custom_tasks(
     project_id: Optional[int] = Query(None),
@@ -120,8 +132,6 @@ async def delete_all_custom_tasks(
     return {"message": f"Удалено {len(ids)} ручных строк", "ids": ids}
 
 
-# ─── Стандартные роуты с {task_id} — идут ПОСЛЕ конкретных строк ─────────────
-
 @router.post("/tasks", response_model=schemas.Task)
 async def create_task(
     task: schemas.TaskCreate,
@@ -136,11 +146,6 @@ async def create_task(
     if existing:
         raise HTTPException(status_code=400, detail=f"Задача с кодом '{task.code}' уже существует")
 
-    # Новым задачам из импорта присваиваем sort_order по порядку кода,
-    # чтобы они не смешивались с ручными строками (sort_order=0 по умолчанию).
-    # Импорт идёт пакетами, поэтому sort_order=0 для всех обычных — норма.
-    # GET /tasks сортирует (sort_order, code), так что обычные задачи
-    # с sort_order=0 всегда встают перед ручными (sort_order >= 1).
     task_data = task.dict()
     if not task_data.get('sort_order'):
         task_data['sort_order'] = 0
@@ -224,7 +229,6 @@ async def delete_all_tasks(
 
 
 def _next_sort_order(db: Session, project_id: Optional[int]) -> int:
-    """Возвращает sort_order = max(sort_order) + 1 по проекту."""
     max_order = db.query(func.max(models.Task.sort_order)).filter(
         models.Task.project_id == project_id
     ).scalar()
