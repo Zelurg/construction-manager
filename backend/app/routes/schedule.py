@@ -19,7 +19,10 @@ def get_tasks(
     query = db.query(models.Task)
     if project_id is not None:
         query = query.filter(models.Task.project_id == project_id)
-    return query.order_by(models.Task.sort_order, models.Task.code).all()
+    # Единственный источник порядка — sort_order.
+    # Обычные задачи получают sort_order при импорте (row*10),
+    # ручные — при создании/перетаскивании.
+    return query.order_by(models.Task.sort_order).all()
 
 
 # ВАЖНО: /tasks/custom и /tasks/custom/all стоят ДО /tasks/{task_id}
@@ -32,7 +35,14 @@ async def create_custom_task(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Создаёт ручную строку с авто-шифром С-N."""
+    """Создаёт ручную строку.
+
+    Если передан insert_before_task_id — вставляет перед якорем,
+    используя sort_order = anchor.sort_order - 1.
+    Если между якорем и предыдущей строкой нет места (разница <= 1) —
+    делаем renumber всего проекта с шагом 10 и повторяем.
+    Иначе — вставляет в конец.
+    """
     # 1. Генерируем шифр
     existing_custom = db.query(models.Task).filter(
         models.Task.project_id == project_id,
@@ -48,18 +58,12 @@ async def create_custom_task(
         new_code = f"С-{new_number}"
 
     # 2. Определяем sort_order
-    # Приоритет: insert_before > insert_after > в конец
     if body.insert_before_task_id:
         anchor = db.query(models.Task).filter(
             models.Task.id == body.insert_before_task_id
         ).first()
         if anchor:
-            # Сдвигаем все задачи с sort_order >= sort_order якоря на +1
-            db.query(models.Task).filter(
-                models.Task.project_id == project_id,
-                models.Task.sort_order >= anchor.sort_order
-            ).update({"sort_order": models.Task.sort_order + 1}, synchronize_session=False)
-            new_sort_order = anchor.sort_order
+            new_sort_order = _insert_before(db, project_id, anchor.sort_order)
         else:
             new_sort_order = _next_sort_order(db, project_id)
     elif body.insert_after_task_id:
@@ -67,12 +71,7 @@ async def create_custom_task(
             models.Task.id == body.insert_after_task_id
         ).first()
         if anchor:
-            # Сдвигаем все задачи с sort_order > sort_order якоря на +1
-            db.query(models.Task).filter(
-                models.Task.project_id == project_id,
-                models.Task.sort_order > anchor.sort_order
-            ).update({"sort_order": models.Task.sort_order + 1}, synchronize_session=False)
-            new_sort_order = anchor.sort_order + 1
+            new_sort_order = _insert_after(db, project_id, anchor.sort_order)
         else:
             new_sort_order = _next_sort_order(db, project_id)
     else:
@@ -148,7 +147,7 @@ async def create_task(
 
     task_data = task.dict()
     if not task_data.get('sort_order'):
-        task_data['sort_order'] = 0
+        task_data['sort_order'] = _next_sort_order(db, project_id)
 
     db_task = models.Task(**task_data, project_id=project_id)
     db.add(db_task)
@@ -229,7 +228,74 @@ async def delete_all_tasks(
 
 
 def _next_sort_order(db: Session, project_id: Optional[int]) -> int:
+    """Возвращает sort_order на 10 больше текущего максимума."""
     max_order = db.query(func.max(models.Task.sort_order)).filter(
         models.Task.project_id == project_id
     ).scalar()
-    return (max_order or 0) + 1
+    return (max_order or 0) + 10
+
+
+def _renumber(db: Session, project_id: Optional[int]):
+    """Перенумеровываем все задачи проекта с шагом 10, сохраняя текущий порядок."""
+    tasks = db.query(models.Task).filter(
+        models.Task.project_id == project_id
+    ).order_by(models.Task.sort_order).all()
+    for i, t in enumerate(tasks):
+        t.sort_order = (i + 1) * 10
+    db.flush()
+
+
+def _insert_before(db: Session, project_id: Optional[int], anchor_sort_order: int) -> int:
+    """Возвращает sort_order для вставки перед якорем.
+    Если места нет — делает renumber и пересчитывает.
+    """
+    # Ищем предыдущую строку
+    prev = db.query(models.Task).filter(
+        models.Task.project_id == project_id,
+        models.Task.sort_order < anchor_sort_order
+    ).order_by(models.Task.sort_order.desc()).first()
+
+    prev_order = prev.sort_order if prev else 0
+    gap = anchor_sort_order - prev_order
+
+    if gap > 1:
+        # Есть место — берём середину
+        return prev_order + gap // 2
+    else:
+        # Места нет — перенумеруем и пересчитываем
+        _renumber(db, project_id)
+        # После renumber ищем новый sort_order якоря
+        anchor_new = db.query(models.Task).filter(
+            models.Task.project_id == project_id,
+            models.Task.sort_order >= anchor_sort_order
+        ).order_by(models.Task.sort_order).first()
+        if anchor_new:
+            return _insert_before(db, project_id, anchor_new.sort_order)
+        return _next_sort_order(db, project_id)
+
+
+def _insert_after(db: Session, project_id: Optional[int], anchor_sort_order: int) -> int:
+    """Возвращает sort_order для вставки после якоря."""
+    next_task = db.query(models.Task).filter(
+        models.Task.project_id == project_id,
+        models.Task.sort_order > anchor_sort_order
+    ).order_by(models.Task.sort_order).first()
+
+    next_order = next_task.sort_order if next_task else anchor_sort_order + 20
+    gap = next_order - anchor_sort_order
+
+    if gap > 1:
+        return anchor_sort_order + gap // 2
+    else:
+        _renumber(db, project_id)
+        anchor_new = db.query(models.Task).filter(
+            models.Task.project_id == project_id,
+            models.Task.sort_order > anchor_sort_order
+        ).order_by(models.Task.sort_order).first()
+        prev_new = db.query(models.Task).filter(
+            models.Task.project_id == project_id,
+            models.Task.sort_order <= anchor_sort_order
+        ).order_by(models.Task.sort_order.desc()).first()
+        if prev_new and anchor_new:
+            return _insert_after(db, project_id, prev_new.sort_order)
+        return _next_sort_order(db, project_id)

@@ -61,7 +61,6 @@ async def import_tasks(
                 continue
             codes_seen.add(code)
 
-            # Определяем уровень по отступам в наименовании
             raw_name = task_data.get('name', '')
             if isinstance(raw_name, str):
                 spaces = len(raw_name) - len(raw_name.lstrip())
@@ -69,7 +68,6 @@ async def import_tasks(
             else:
                 level = 0
 
-            # Определяем is_section (нет единицы измерения)
             unit = task_data.get('unit')
             is_section = not unit or str(unit).strip() == ''
 
@@ -99,12 +97,13 @@ async def import_tasks(
             start_plan     = parse_date(task_data.get('start_date_plan'))
             end_plan       = parse_date(task_data.get('end_date_plan'))
 
-            # Если плановые даты не заполнены — копируем из контрактных
             if start_plan is None:
                 start_plan = start_contract
             if end_plan is None:
                 end_plan = end_contract
 
+            # sort_order = номер строки * 10, чтобы между любыми двумя строками
+            # оставалось место для вставки ручных строк без сдвига всех остальных
             tasks_to_create.append({
                 "code": code, "name": name.strip(),
                 "unit": str(unit).strip() if unit and str(unit).strip() else None,
@@ -122,6 +121,7 @@ async def import_tasks(
                 "level": level,
                 "parent_code": None,
                 "project_id": project_id,
+                "sort_order": (row_num - 1) * 10,
             })
             tasks_processed += 1
         except Exception as e:
@@ -136,7 +136,6 @@ async def import_tasks(
         if t['is_section']:
             stack.append(t)
 
-    # Очищаем старые задачи проекта и вставляем новые
     db.query(models.Task).filter(models.Task.project_id == project_id).delete()
     db.bulk_insert_mappings(models.Task, tasks_to_create)
     db.commit()
@@ -153,7 +152,7 @@ def export_tasks(
     query = db.query(models.Task)
     if project_id is not None:
         query = query.filter(models.Task.project_id == project_id)
-    tasks = query.order_by(models.Task.code).all()
+    tasks = query.order_by(models.Task.sort_order, models.Task.code).all()
 
     wb = openpyxl.Workbook()
     ws = wb.active

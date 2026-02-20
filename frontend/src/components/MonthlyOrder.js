@@ -14,64 +14,6 @@ function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
 
-function parseCode(code) {
-  if (!code) return [];
-  return String(code).split('.').map(s => { const n = parseInt(s, 10); return isNaN(n) ? s : n; });
-}
-
-/**
- * Строим визуальный порядок строк:
- * 1. Обычные задачи (is_custom=false) сортируются по code.
- * 2. Ручные строки (is_custom=true) вставляются после последней строки
- *    своего раздела (parent_code), в порядке sort_order.
- * 3. Ручные без parent_code — в конец.
- *
- * parent_code — только для нахождения места вставки.
- * Порядок ручных внутри раздела — через sort_order.
- */
-function buildDisplayOrder(tasks) {
-  const normal = tasks
-    .filter(t => !t.is_custom)
-    .sort((a, b) => {
-      const pa = parseCode(a.code), pb = parseCode(b.code);
-      const len = Math.max(pa.length, pb.length);
-      for (let i = 0; i < len; i++) {
-        const sa = pa[i] ?? -1, sb = pb[i] ?? -1;
-        if (sa < sb) return -1;
-        if (sa > sb) return 1;
-      }
-      return 0;
-    });
-
-  const custom = tasks
-    .filter(t => t.is_custom)
-    .sort((a, b) => a.sort_order - b.sort_order);
-
-  if (custom.length === 0) return normal;
-
-  const result = [...normal];
-  // Вставляем с конца чтобы splice не сбивал индексы предыдущих вставок
-  const reversedCustom = [...custom].reverse();
-
-  for (const ct of reversedCustom) {
-    let insertIdx = result.length;
-    if (ct.parent_code) {
-      const prefix = ct.parent_code + '.';
-      let lastIdx = -1;
-      for (let i = 0; i < result.length; i++) {
-        const t = result[i];
-        if (t.code === ct.parent_code || String(t.code).startsWith(prefix)) {
-          lastIdx = i;
-        }
-      }
-      if (lastIdx !== -1) insertIdx = lastIdx + 1;
-    }
-    result.splice(insertIdx, 0, ct);
-  }
-
-  return result;
-}
-
 const DEFAULT_COL_WIDTHS = {
   code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
   volume_remaining: 90, start_date_contract: 110, end_date_contract: 110,
@@ -141,11 +83,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const ganttBodyRef   = useRef(null);
   const syncingRef     = useRef(false);
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
-
-  // Флаг: идёт ли сейчас drag-and-drop сохранение.
-  // Пока true — игнорируем входящий task_updated из WebSocket,
-  // чтобы он не сбросил позицию обратно.
-  const isDraggingRef = useRef(false);
+  const isDraggingRef  = useRef(false);
 
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
@@ -238,13 +176,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     loadTasks(); loadEmployees(); websocketService.connect();
 
     const onUpdated = (msg) => {
-      // Если сейчас идёт drag-and-drop — игнорируем WS-событие от нашего же updateTask.
-      // Иначе buildDisplayOrder сбросит позицию обратно.
+      // Игнорируем WS-событие во время drag-and-drop сохранения
       if (isDraggingRef.current) return;
-      // Просто патчим поля задачи на месте, не меняя порядок.
+      // Патчим поля задачи на месте, не меняя порядок
       setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
     };
-
     const onCleared = () => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
     websocketService.on('task_updated', onUpdated);
     websocketService.on('schedule_cleared', onCleared);
@@ -275,7 +211,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         filtered.some(t => !t.is_section && String(t.code).startsWith(sectionCode + '.')) ||
         filtered.some(t => t.is_section && String(t.code).startsWith(sectionCode + '.') && hasWork(t.code));
       const visible = filtered.filter(t => !t.is_section || hasWork(t.code));
-      setTasks(buildDisplayOrder(visible));
+      // Порядок с сервера уже правильный (ORDER BY sort_order) — не сортируем
+      setTasks(visible);
     } catch (e) { console.error('Ошибка загрузки:', e); }
   };
 
@@ -292,7 +229,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
-      setTasks(prev => buildDisplayOrder([...prev, newTask]));
+      // Вставляем в нужную позицию локально, не перезагружая всё
+      setTasks(prev => {
+        if (!selectedTaskId) return [...prev, newTask];
+        const idx = prev.findIndex(t => t.id === selectedTaskId);
+        if (idx === -1) return [...prev, newTask];
+        const next = [...prev];
+        next.splice(idx, 0, newTask);
+        return next;
+      });
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
       setEditValue(newTask.name);
@@ -304,7 +249,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (!window.confirm('Удалить эту строку?')) return;
     try {
       await scheduleAPI.deleteTask(taskId);
-      setTasks(prev => buildDisplayOrder(prev.filter(t => t.id !== taskId)));
+      setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
     } catch (e) { console.error(e); alert('Не удалось удалить строку'); }
   };
@@ -314,7 +259,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (!window.confirm('Удалить все ручные строки проекта?')) return;
     try {
       await scheduleAPI.deleteAllCustomTasks();
-      setTasks(prev => buildDisplayOrder(prev.filter(t => !t.is_custom)));
+      setTasks(prev => prev.filter(t => !t.is_custom));
       setSelectedTaskId(null);
     } catch (e) { console.error(e); alert('Не удалось удалить строки'); }
   };
@@ -361,42 +306,30 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const insertBefore = e.clientY < rect.top + rect.height / 2;
 
-    const newParentCode = targetTask.is_section
-      ? targetTask.code
-      : (targetTask.parent_code || null);
-
+    // Вычисляем новый sort_order на основе соседей в текущем списке
     const withoutDragged = currentTasks.filter(t => t.id !== draggedId);
     const targetIdx = withoutDragged.findIndex(t => t.id === targetTask.id);
     const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
-    const updatedDragged = { ...dragged, parent_code: newParentCode };
+
+    const prev = withoutDragged[insertIdx - 1];
+    const next = withoutDragged[insertIdx];
+    const prevOrder = prev ? prev.sort_order : 0;
+    const nextOrder = next ? next.sort_order : (prevOrder + 20);
+    const newSortOrder = Math.floor((prevOrder + nextOrder) / 2);
+
+    const updatedDragged = { ...dragged, sort_order: newSortOrder };
     withoutDragged.splice(insertIdx, 0, updatedDragged);
 
-    let customOrder = 1;
-    const sortUpdates = {};
-    withoutDragged.forEach(t => {
-      if (t.is_custom) sortUpdates[t.id] = customOrder++;
-    });
+    // Оптимистичное обновление — сервер вернёт то же самое
+    setTasks(withoutDragged);
 
-    const withNewOrders = withoutDragged.map(t => ({
-      ...t,
-      sort_order: t.is_custom ? (sortUpdates[t.id] ?? t.sort_order) : t.sort_order,
-    }));
-
-    // Оптимистичное обновление UI — позиция точная, не пересортировываем
-    setTasks(withNewOrders);
-
-    // Блокируем обработку WS-события task_updated на время сохранения
     isDraggingRef.current = true;
     try {
-      await scheduleAPI.updateTask(draggedId, {
-        sort_order: sortUpdates[draggedId],
-        parent_code: newParentCode,
-      });
+      await scheduleAPI.updateTask(draggedId, { sort_order: newSortOrder });
     } catch (err) {
       console.error('Ошибка перемещения:', err);
       loadTasks();
     } finally {
-      // Небольшая задержка: WS-событие может прийти чуть позже ответа HTTP
       setTimeout(() => { isDraggingRef.current = false; }, 500);
     }
   }, [isAdmin]);
