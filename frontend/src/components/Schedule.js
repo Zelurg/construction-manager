@@ -38,12 +38,29 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
+// Строит строку хлебных крошек для работы, используя полный массив allTasks.
+// Передаём allTasks явно — никакого stale closure.
+function buildBreadcrumb(task, allTasks) {
+  if (!task.parent_code) return '';
+  const crumbs = [];
+  let cur = task.parent_code;
+  while (cur) {
+    const p = allTasks.find(t => t.code === cur);
+    if (!p) break;
+    crumbs.unshift(p.name);
+    cur = p.parent_code;
+  }
+  return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
+}
+
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
+  // hasActiveFilters — флаг: нужно ли показывать крошки
+  const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
@@ -59,16 +76,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch { return { ...DEFAULT_COL_WIDTHS }; }
   });
 
-  // Ref для доступа к актуальному tasks внутри getBreadcrumb
-  // без проблем со stale closure
-  const tasksRef = useRef([]);
-  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
-
   const containerRef   = useRef(null);
   const tableScrollRef = useRef(null);
   const ganttBodyRef   = useRef(null);
   const syncingRef     = useRef(false);
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
+  // Храним полный tasks в ref чтобы getCellValue всегда имел доступ
+  // к актуальному списку для построения крошек
+  const allTasksRef = useRef([]);
+  useEffect(() => { allTasksRef.current = tasks; }, [tasks]);
 
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
@@ -183,19 +199,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error('Ошибка загрузки сотрудников:', e); }
   };
 
-  // Ищем родителей через tasksRef чтобы избежать stale closure
-  const getBreadcrumb = (task) => {
-    if (!task.parent_code) return '';
-    const allTasks = tasksRef.current;
-    const crumbs = [];
-    let cur = task.parent_code;
-    while (cur) {
-      const p = allTasks.find(t => t.code === cur);
-      if (p) { crumbs.unshift(p.name); cur = p.parent_code; } else break;
-    }
-    return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
-  };
-
   const getChildTasks = (sectionCode, arr) => {
     const children = [];
     const find = (pc) => arr.forEach(t => {
@@ -251,28 +254,23 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
-    if (activeFilters.length === 0) { setFilteredTasks(tasks); return; }
 
-    const matchingWorks = tasks.filter(t => {
+    if (activeFilters.length === 0) {
+      // Без фильтров — показываем всё (секции + работы), крошки не нужны
+      setHasActiveFilters(false);
+      setFilteredTasks(tasks);
+      return;
+    }
+
+    // С фильтрами — показываем только подошедшие РАБОТЫ (без секций),
+    // а крошки покажут из какого раздела каждая работа
+    setHasActiveFilters(true);
+    const result = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) =>
         getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
       );
     });
-
-    const neededSectionCodes = new Set();
-    matchingWorks.forEach(work => {
-      let cur = work.parent_code;
-      while (cur) {
-        neededSectionCodes.add(cur);
-        const parent = tasks.find(t => t.code === cur);
-        cur = parent?.parent_code || null;
-      }
-    });
-
-    const result = tasks.filter(t =>
-      t.is_section ? neededSectionCodes.has(t.code) : matchingWorks.includes(t)
-    );
     setFilteredTasks(result);
   };
 
@@ -329,8 +327,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />;
     }
     if (key === 'name') {
-      const hasFilters = Object.values(filters).some(f => f && f.trim());
-      const crumb = (hasFilters && !task.is_section) ? getBreadcrumb(task) : '';
+      // Крошки строим из allTasksRef.current — это всегда актуальный
+      // полный список, не зависит от filteredTasks
+      const crumb = (hasActiveFilters && !task.is_section)
+        ? buildBreadcrumb(task, allTasksRef.current)
+        : '';
       return crumb
         ? <span><span style={{ color:'#888', fontSize:'0.82em', fontStyle:'italic' }}>{crumb}</span>{task.name}</span>
         : task.name;

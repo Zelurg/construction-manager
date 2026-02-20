@@ -35,12 +35,26 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
+function buildBreadcrumb(task, allTasks) {
+  if (!task.parent_code) return '';
+  const crumbs = [];
+  let cur = task.parent_code;
+  while (cur) {
+    const p = allTasks.find(t => t.code === cur);
+    if (!p) break;
+    crumbs.unshift(p.name);
+    cur = p.parent_code;
+  }
+  return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
+}
+
 function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
+  const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
   const [tableWidth, setTableWidth] = useState(60);
@@ -57,8 +71,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch { return { ...DEFAULT_COL_WIDTHS }; }
   });
 
-  const tasksRef = useRef([]);
-  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  const allTasksRef = useRef([]);
+  useEffect(() => { allTasksRef.current = tasks; }, [tasks]);
 
   const containerRef   = useRef(null);
   const tableScrollRef = useRef(null);
@@ -192,15 +206,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error(e); }
   };
 
-  const getBreadcrumb = (task) => {
-    if (!task.parent_code) return '';
-    const allTasks = tasksRef.current;
-    const crumbs = [];
-    let cur = task.parent_code;
-    while (cur) { const p = allTasks.find(t => t.code === cur); if (p) { crumbs.unshift(p.name); cur = p.parent_code; } else break; }
-    return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
-  };
-
   const getChildTasks = (code, arr) => {
     const children = [];
     const find = (pc) => arr.forEach(t => { if (t.parent_code === pc) { if (t.is_section) find(t.code); else children.push(t); } });
@@ -253,28 +258,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
-    if (activeFilters.length === 0) { setFilteredTasks(tasks); return; }
-
-    const matchingWorks = tasks.filter(t => {
+    if (activeFilters.length === 0) {
+      setHasActiveFilters(false);
+      setFilteredTasks(tasks);
+      return;
+    }
+    setHasActiveFilters(true);
+    const result = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) =>
         getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
       );
     });
-
-    const neededSectionCodes = new Set();
-    matchingWorks.forEach(work => {
-      let cur = work.parent_code;
-      while (cur) {
-        neededSectionCodes.add(cur);
-        const parent = tasks.find(t => t.code === cur);
-        cur = parent?.parent_code || null;
-      }
-    });
-
-    const result = tasks.filter(t =>
-      t.is_section ? neededSectionCodes.has(t.code) : matchingWorks.includes(t)
-    );
     setFilteredTasks(result);
   };
 
@@ -326,8 +321,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />;
     }
     if (key === 'name') {
-      const hasFilters = Object.values(filters).some(f => f && f.trim());
-      const crumb = (hasFilters && !task.is_section) ? getBreadcrumb(task) : '';
+      const crumb = (hasActiveFilters && !task.is_section)
+        ? buildBreadcrumb(task, allTasksRef.current)
+        : '';
       return crumb
         ? <span><span style={{ color:'#888', fontSize:'0.82em', fontStyle:'italic' }}>{crumb}</span>{task.name}</span>
         : task.name;
