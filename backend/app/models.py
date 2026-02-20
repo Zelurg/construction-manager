@@ -40,14 +40,13 @@ class User(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
-    # Код уникален только в рамках одного проекта
     __table_args__ = (
         UniqueConstraint('project_id', 'code', name='uq_tasks_project_code'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
-    code = Column(String, index=True)  # не unique глобально!
+    code = Column(String, index=True)
     name = Column(String, nullable=False)
     unit = Column(String, nullable=True)
     volume_plan = Column(Float, nullable=True, default=0)
@@ -63,9 +62,10 @@ class Task(Base):
     is_section = Column(Boolean, default=False, nullable=False)
     level = Column(Integer, default=0, nullable=False)
     parent_code = Column(String, nullable=True)
-    # --- новые поля ---
-    is_custom = Column(Boolean, default=False, nullable=False)  # ручная строка
-    sort_order = Column(Integer, default=0, nullable=False)      # порядок в таблице
+    is_custom = Column(Boolean, default=False, nullable=False)
+    # server_default гарантирует DEFAULT 0 на уровне Postgres,
+    # чтобы существующие строки без этого поля не давали NULL и 500.
+    sort_order = Column(Integer, default=0, server_default='0', nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="tasks")
