@@ -23,7 +23,7 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       localStorage.removeItem('currentProject');
       window.location.href = '/login';
-      alert('\u0421\u0435\u0441\u0441\u0438\u044f \u0438\u0441\u0442\u0435\u043a\u043b\u0430. \u041f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430, \u0432\u043e\u0439\u0434\u0438\u0442\u0435 \u0437\u0430\u043d\u043e\u0432\u043e.');
+      alert('Сессия истекла. Пожалуйста, войдите заново.');
     }
     return Promise.reject(error);
   }
@@ -68,8 +68,12 @@ export const scheduleAPI = {
   getTasks: () => api.get('/schedule/tasks', { params: projectParams() }),
   createTask: (task) =>
     api.post('/schedule/tasks', task, { params: projectParams() }),
+  createCustomTask: (data) =>
+    api.post('/schedule/tasks/custom', data, { params: projectParams() }),
   updateTask: (id, task) => api.put(`/schedule/tasks/${id}`, task),
   deleteTask: (id) => api.delete(`/schedule/tasks/${id}`),
+  deleteAllCustomTasks: () =>
+    api.delete('/schedule/tasks/custom/all', { params: projectParams() }),
   clearAll: () =>
     api.delete('/schedule/tasks', { params: projectParams() }),
 };
