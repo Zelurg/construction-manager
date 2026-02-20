@@ -38,17 +38,19 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
-// Строит строку хлебных крошек для работы, используя полный массив allTasks.
-// Передаём allTasks явно — никакого stale closure.
+/**
+ * Хлебные крошки через префикс кода.
+ * parent_code в БД не заполнен, поэтому ищем родителя отрезаем последний сегмент кода.
+ * 1.10.1.1 -> родитель 1.10.1 -> 1.10 -> 1
+ */
 function buildBreadcrumb(task, allTasks) {
-  if (!task.parent_code) return '';
+  const parts = String(task.code).split('.');
+  if (parts.length <= 1) return '';
   const crumbs = [];
-  let cur = task.parent_code;
-  while (cur) {
-    const p = allTasks.find(t => t.code === cur);
-    if (!p) break;
-    crumbs.unshift(p.name);
-    cur = p.parent_code;
+  for (let len = parts.length - 1; len >= 1; len--) {
+    const parentCode = parts.slice(0, len).join('.');
+    const parent = allTasks.find(t => t.is_section && t.code === parentCode);
+    if (parent) crumbs.unshift(parent.name);
   }
   return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
 }
@@ -59,7 +61,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const [tasks, setTasks] = useState([]);
   const [filteredTasks, setFilteredTasks] = useState([]);
-  // hasActiveFilters — флаг: нужно ли показывать крошки
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
   const [tableWidth, setTableWidth] = useState(60);
@@ -76,15 +77,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch { return { ...DEFAULT_COL_WIDTHS }; }
   });
 
+  const allTasksRef = useRef([]);
+  useEffect(() => { allTasksRef.current = tasks; }, [tasks]);
+
   const containerRef   = useRef(null);
   const tableScrollRef = useRef(null);
   const ganttBodyRef   = useRef(null);
   const syncingRef     = useRef(false);
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
-  // Храним полный tasks в ref чтобы getCellValue всегда имел доступ
-  // к актуальному списку для построения крошек
-  const allTasksRef = useRef([]);
-  useEffect(() => { allTasksRef.current = tasks; }, [tasks]);
 
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
@@ -201,10 +201,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getChildTasks = (sectionCode, arr) => {
     const children = [];
-    const find = (pc) => arr.forEach(t => {
-      if (t.parent_code === pc) { if (t.is_section) find(t.code); else children.push(t); }
+    const prefix = sectionCode + '.';
+    arr.forEach(t => {
+      if (!t.is_section && String(t.code).startsWith(prefix)) children.push(t);
     });
-    find(sectionCode);
     return children;
   };
 
@@ -254,16 +254,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
-
     if (activeFilters.length === 0) {
-      // Без фильтров — показываем всё (секции + работы), крошки не нужны
       setHasActiveFilters(false);
       setFilteredTasks(tasks);
       return;
     }
-
-    // С фильтрами — показываем только подошедшие РАБОТЫ (без секций),
-    // а крошки покажут из какого раздела каждая работа
     setHasActiveFilters(true);
     const result = tasks.filter(t => {
       if (t.is_section) return false;
@@ -327,8 +322,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
         onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />;
     }
     if (key === 'name') {
-      // Крошки строим из allTasksRef.current — это всегда актуальный
-      // полный список, не зависит от filteredTasks
       const crumb = (hasActiveFilters && !task.is_section)
         ? buildBreadcrumb(task, allTasksRef.current)
         : '';

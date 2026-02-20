@@ -36,14 +36,13 @@ const DEFAULT_COL_WIDTHS = {
 };
 
 function buildBreadcrumb(task, allTasks) {
-  if (!task.parent_code) return '';
+  const parts = String(task.code).split('.');
+  if (parts.length <= 1) return '';
   const crumbs = [];
-  let cur = task.parent_code;
-  while (cur) {
-    const p = allTasks.find(t => t.code === cur);
-    if (!p) break;
-    crumbs.unshift(p.name);
-    cur = p.parent_code;
+  for (let len = parts.length - 1; len >= 1; len--) {
+    const parentCode = parts.slice(0, len).join('.');
+    const parent = allTasks.find(t => t.is_section && t.code === parentCode);
+    if (parent) crumbs.unshift(parent.name);
   }
   return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
 }
@@ -192,11 +191,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         if (!s || !e) return false;
         return s <= mEnd && e >= mStart;
       });
-      const workCodes = new Set(filtered.filter(t => !t.is_section).map(t => t.parent_code));
-      const hasWork = (code) => {
-        if (workCodes.has(code)) return true;
-        return filtered.some(t => t.is_section && t.parent_code === code && hasWork(t.code));
-      };
+      const workCodes = new Set(filtered.filter(t => !t.is_section).map(t => t.code));
+      const hasWork = (sectionCode) =>
+        filtered.some(t => !t.is_section && String(t.code).startsWith(sectionCode + '.')) ||
+        filtered.some(t => t.is_section && String(t.code).startsWith(sectionCode + '.') && hasWork(t.code));
       setTasks(filtered.filter(t => !t.is_section || hasWork(t.code)));
     } catch (e) { console.error('Ошибка загрузки:', e); }
   };
@@ -206,10 +204,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error(e); }
   };
 
-  const getChildTasks = (code, arr) => {
+  const getChildTasks = (sectionCode, arr) => {
     const children = [];
-    const find = (pc) => arr.forEach(t => { if (t.parent_code === pc) { if (t.is_section) find(t.code); else children.push(t); } });
-    find(code);
+    const prefix = sectionCode + '.';
+    arr.forEach(t => { if (!t.is_section && String(t.code).startsWith(prefix)) children.push(t); });
     return children;
   };
 
