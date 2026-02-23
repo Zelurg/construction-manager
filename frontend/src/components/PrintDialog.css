@@ -1,0 +1,213 @@
+.print-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.print-dialog-modal {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.25);
+  width: 540px;
+  max-width: 96vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.print-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.print-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #222;
+}
+
+.pd-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+  padding: 0;
+}
+.pd-close:hover { color: #333; }
+
+.print-dialog-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.pd-section {
+  margin-bottom: 20px;
+}
+
+.pd-section-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.pd-col-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.pd-link {
+  background: none;
+  border: none;
+  color: #4a90e2;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
+.pd-link:hover { color: #1a5fa8; }
+
+.pd-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+
+.pd-col-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  padding: 3px 0;
+}
+.pd-col-item:hover { color: #1a5fa8; }
+.pd-col-item input { cursor: pointer; }
+
+.pd-scales {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pd-scale-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.pd-scale-item:hover { background: #f0f4ff; }
+.pd-scale-item input { cursor: pointer; }
+
+.print-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.pd-btn-cancel {
+  padding: 8px 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pd-btn-cancel:hover { background: #e8e8e8; }
+
+.pd-btn-print {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 5px;
+  background: #4a90e2;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pd-btn-print:hover { background: #1a5fa8; }
+
+/* ─── @media print: прячем всё кроме .print-area ─────────────────────────── */
+@media print {
+  body > * { display: none !important; }
+  .print-area {
+    display: block !important;
+    position: fixed !important;
+    inset: 0;
+    z-index: 99999;
+    background: #fff;
+    padding: 12px;
+  }
+
+  /* Заголовок */
+  .print-area .print-header { margin-bottom: 8px; }
+  .print-area .print-header h2 { font-size: 15px; margin: 0 0 2px; }
+  .print-area .print-header p  { font-size: 11px; color: #555; margin: 0; }
+
+  /* Таблица */
+  .print-area table {
+    border-collapse: collapse;
+    font-size: 9px;
+    width: 100%;
+    table-layout: fixed;
+  }
+  .print-area th, .print-area td {
+    border: 1px solid #bbb;
+    padding: 2px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .print-area th {
+    background: #e0e8f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-size: 8px;
+    font-weight: 700;
+  }
+
+  /* Ганта */
+  .print-area .print-gantt {
+    margin-top: 10px;
+    page-break-before: always;
+    overflow: visible !important;
+  }
+  .print-area .print-gantt-title {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .print-area .gantt-chart-integrated { overflow: visible !important; }
+  .print-area .gantt-body-scroll      { overflow: visible !important; height: auto !important; }
+  .print-area .gantt-body-content     { overflow: visible !important; }
+  .print-area .gantt-row-integrated   { page-break-inside: avoid; }
+
+  /* Скрываем интерактив */
+  .print-area .gantt-controls-row,
+  .print-area .gantt-scale-select,
+  .print-dialog-overlay { display: none !important; }
+}

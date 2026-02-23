@@ -5,6 +5,7 @@ import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
 import FilterManager from './FilterManager';
+import PrintDialog from './PrintDialog';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
@@ -44,9 +45,6 @@ const CUSTOM_EDITABLE = [
 const DATE_FIELDS = ['start_date_plan', 'end_date_plan', 'start_date_contract', 'end_date_contract'];
 const NUMBER_FIELDS = ['volume_plan', 'unit_price', 'labor_per_unit', 'machine_hours_per_unit'];
 
-// ─── Вынесено в отдельный мемоизированный компонент ───────────────────────────
-// Это ключевая оптимизация: при клике/выделении/редактировании другой строки
-// React не будет перерисовывать строки, данные которых не изменились.
 const TaskRow = React.memo(function TaskRow({
   task, visibleColumns, isAdmin, isEditing, isSelected, isDragOver, dragOverPos,
   getRowStyle, getCellStyle, getCellValue, isFieldEditable,
@@ -87,20 +85,17 @@ const TaskRow = React.memo(function TaskRow({
       ))}
     </tr>
   );
-}, (prev, next) => {
-  // Перерисовываем строку только если изменились её данные или состояние
-  return (
-    prev.task === next.task &&
-    prev.isEditing === next.isEditing &&
-    prev.isSelected === next.isSelected &&
-    prev.isDragOver === next.isDragOver &&
-    prev.dragOverPos === next.dragOverPos &&
-    prev.visibleColumns === next.visibleColumns &&
-    prev.isAdmin === next.isAdmin
-  );
-});
+}, (prev, next) => (
+  prev.task === next.task &&
+  prev.isEditing === next.isEditing &&
+  prev.isSelected === next.isSelected &&
+  prev.isDragOver === next.isDragOver &&
+  prev.dragOverPos === next.dragOverPos &&
+  prev.visibleColumns === next.visibleColumns &&
+  prev.isAdmin === next.isAdmin
+));
 
-function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
+function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPrint }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
@@ -113,6 +108,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [showFilterManager, setShowFilterManager] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [employees, setEmployees] = useState([]);
@@ -122,6 +118,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [headcountData, setHeadcountData] = useState({});
   const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
   const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
+
+  // ref для области печати
+  const printAreaRef = useRef(null);
 
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
@@ -245,7 +244,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => clearTimeout(timer);
   }, [showGantt, filteredTasks]);
 
-  // RAF-throttle на resize колонок: обновляем DOM не чаще 1 раза за кадр (60fps)
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault(); e.stopPropagation();
     colResizeRef.current = {
@@ -256,7 +254,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     };
     const onMove = (ev) => {
       if (!colResizeRef.current.active) return;
-      // Пропускаем событие если предыдущий кадр ещё не отрисован
       if (colResizeRef.current.rafId) return;
       colResizeRef.current.rafId = requestAnimationFrame(() => {
         const w = Math.max(50, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
@@ -280,6 +277,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
+  useEffect(() => { if (onShowPrint) onShowPrint(() => setShowPrintDialog(true)); }, [onShowPrint]);
 
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
@@ -339,9 +337,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         if (!selectedTaskId) return [...prev, newTask];
         const idx = prev.findIndex(t => t.id === selectedTaskId);
         if (idx === -1) return [...prev, newTask];
-        const next = [...prev];
-        next.splice(idx, 0, newTask);
-        return next;
+        const next = [...prev]; next.splice(idx, 0, newTask); return next;
       });
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
@@ -391,10 +387,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, []);
 
   const handleDragLeave = useCallback(() => { setDragOverTaskId(null); }, []);
-  const handleDragEnd = useCallback(() => {
-    dragTaskIdRef.current = null;
-    setDragOverTaskId(null);
-  }, []);
+  const handleDragEnd   = useCallback(() => { dragTaskIdRef.current = null; setDragOverTaskId(null); }, []);
 
   const handleDrop = useCallback(async (e, targetTask) => {
     e.preventDefault();
@@ -409,17 +402,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const insertBefore = e.clientY < rect.top + rect.height / 2;
-
     const withoutDragged = currentTasks.filter(t => t.id !== draggedId);
     const targetIdx = withoutDragged.findIndex(t => t.id === targetTask.id);
     const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
-
     const prev = withoutDragged[insertIdx - 1];
     const next = withoutDragged[insertIdx];
     const prevOrder = prev ? prev.sort_order : 0;
     const nextOrder = next ? next.sort_order : (prevOrder + 20);
     const newSortOrder = Math.floor((prevOrder + nextOrder) / 2);
-
     const updatedDragged = { ...dragged, sort_order: newSortOrder };
     withoutDragged.splice(insertIdx, 0, updatedDragged);
     setTasks(withoutDragged);
@@ -436,10 +426,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, [isAdmin]);
 
   const getChildTasks = useCallback((sectionCode, arr) => {
-    const children = [];
     const prefix = sectionCode + '.';
-    arr.forEach(t => { if (!t.is_section && String(t.code).startsWith(prefix)) children.push(t); });
-    return children;
+    return arr.filter(t => !t.is_section && String(t.code).startsWith(prefix));
   }, []);
 
   const calculateSectionSum = useCallback((section, key) => {
@@ -463,9 +451,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getDisplayValue = useCallback((task, key) => {
     if (task.is_section) {
-      const sumCols = ['labor_total', 'labor_fact', 'labor_remaining', 'cost_total', 'cost_fact', 'cost_remaining', 'machine_hours_total', 'machine_hours_fact', 'machine_hours_remaining'];
+      const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
-      if (['volume_plan', 'volume_fact', 'volume_remaining', 'unit', 'unit_price', 'labor_per_unit', 'machine_hours_per_unit', 'executor'].includes(key)) return '-';
+      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor'].includes(key)) return '-';
     }
     switch (key) {
       case 'volume_remaining':         return (task.volume_plan - task.volume_fact).toFixed(2);
@@ -495,19 +483,12 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     setHasActiveFilters(true);
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      return activeFilters.every(([k, v]) =>
-        getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
-      );
+      return activeFilters.every(([k, v]) => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
     });
     const parentIds = new Set();
-    matchedWorks.forEach(t => {
-      getParentIds(t, tasks).forEach(id => parentIds.add(id));
-    });
+    matchedWorks.forEach(t => getParentIds(t, tasks).forEach(id => parentIds.add(id)));
     const matchedWorkIds = new Set(matchedWorks.map(t => t.id));
-    const result = tasks.filter(t =>
-      matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))
-    );
-    setFilteredTasks(result);
+    setFilteredTasks(tasks.filter(t => matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))));
   };
 
   const handleFilterApply = useCallback((k, v) => setFilters(prev => ({ ...prev, [k]: v })), []);
@@ -524,10 +505,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
-    setFilterTriggers(prev => ({
-      ...prev,
-      [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() },
-    }));
+    setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
   const isFieldEditable = useCallback((task, key) => {
@@ -552,22 +530,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (!editingCell) return;
     const task = tasks.find(t => t.id === editingCell.taskId);
     if (!task) return;
-
     let cur = task[editingCell.field];
     if (DATE_FIELDS.includes(editingCell.field)) cur = cur ? new Date(cur).toISOString().split('T')[0] : '';
     else cur = cur !== null && cur !== undefined ? String(cur) : '';
-
     if (editValue === cur) { setEditingCell(null); return; }
-
     const updateVal = NUMBER_FIELDS.includes(editingCell.field)
       ? (editValue === '' ? 0 : parseFloat(editValue))
       : (editValue || null);
-
     try {
       await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: updateVal });
-      setTasks(prev => prev.map(t =>
-        t.id === editingCell.taskId ? { ...t, [editingCell.field]: updateVal } : t
-      ));
+      setTasks(prev => prev.map(t => t.id === editingCell.taskId ? { ...t, [editingCell.field]: updateVal } : t));
     } catch (e) { console.error(e); } finally { setEditingCell(null); }
   }, [editingCell, editValue, tasks]);
 
@@ -580,27 +552,22 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
-          style={{ width: '100%', padding: '2px' }}>
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }}>
           <option value="">Не выбран</option>
           {employees.map(emp => <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>)}
         </select>
       );
       if (NUMBER_FIELDS.includes(key)) return (
-        <input type="number" step="any" value={editValue}
-          onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
-          style={{ width: '100%', padding: '2px' }} />
+        <input type="number" step="any" value={editValue} onChange={e => setEditValue(e.target.value)}
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />
       );
       if (DATE_FIELDS.includes(key)) return (
         <input type="date" value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
-          style={{ width: '100%', padding: '2px' }} />
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />
       );
       return (
         <input type="text" value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
-          style={{ width: '100%', padding: '2px' }} />
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />
       );
     }
     return getDisplayValue(task, key);
@@ -636,11 +603,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const getCellStyle = useCallback((task, key) => {
     if (!isAdmin || task.is_section) return {};
     if (isFieldEditable(task, key))
-      return {
-        cursor: 'pointer',
-        backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key
-          ? '#ffffcc' : 'inherit',
-      };
+      return { cursor: 'pointer', backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit' };
     return {};
   }, [isAdmin, isFieldEditable, editingCell]);
 
@@ -662,6 +625,91 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
+  // ─── ПЕЧАТЬ ──────────────────────────────────────────────────────────────────
+  /**
+   * Шаги:
+   * 1. PrintDialog собирает: selectedCols (массив ключей) + ganttScale
+   * 2. handlePrint:
+   *    а) сохраняет масштаб в localStorage (GanttChart его читает при маунте)
+   *    б) создаёт невидимый .print-area div в body
+   *    в) рендерит туда таблицу через ReactDOM.render (портал)
+   *    г) вызывает window.print()
+   *    д) после print — удаляет div
+   * Так мы не ломаем текущий DOM — GanttChart на странице не трогаем.
+   */
+  const handlePrint = useCallback((selectedCols, ganttScale) => {
+    setShowPrintDialog(false);
+
+    // Обновляем масштаб Ганта перед печатью
+    localStorage.setItem('ganttScale', ganttScale);
+
+    const project = JSON.parse(localStorage.getItem('currentProject') || 'null');
+    const projectName = project?.name || 'Проект';
+    const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+
+    // Строим HTML таблицы вручную (не React — чтобы не зависеть от DOM)
+    const colLabels = selectedCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
+
+    const headerRow = colLabels.map(l => `<th>${l}</th>`).join('');
+    const bodyRows = filteredTasks.map(task => {
+      const bgColor = task.is_section ? getSectionColor(task.level) : (task.is_custom ? '#fff9e6' : '#fff');
+      const fw = task.is_section ? 'bold' : 'normal';
+      const cells = selectedCols.map(key => {
+        const val = getDisplayValue(task, key);
+        return `<td style="font-weight:${fw}">${val}</td>`;
+      }).join('');
+      return `<tr style="background:${bgColor}">${cells}</tr>`;
+    }).join('');
+
+    const tableHtml = `
+      <table>
+        <thead><tr>${headerRow}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    `;
+
+    // Iframe-подход: гарантирует изоляцию стилей и корректный print
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>МСГ — ${projectName} — ${monthLabel}</title>
+        <style>
+          @page { size: A3 landscape; margin: 10mm; }
+          body { font-family: Arial, sans-serif; font-size: 9px; margin: 0; }
+          h2 { font-size: 13px; margin: 0 0 2px; }
+          p.sub { font-size: 10px; color: #555; margin: 0 0 8px; }
+          table { border-collapse: collapse; width: 100%; table-layout: auto; }
+          th, td { border: 1px solid #bbb; padding: 2px 5px; white-space: nowrap; font-size: 9px; }
+          th { background: #d0dff0; font-weight: 700; }
+          tr { page-break-inside: avoid; }
+        </style>
+      </head>
+      <body>
+        <h2>МСГ — ${projectName}</h2>
+        <p class="sub">Период: ${monthLabel} &nbsp;|&nbsp; Сформировано: ${new Date().toLocaleDateString('ru-RU')}</p>
+        ${tableHtml}
+      </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+
+    // Удаляем iframe после диалога печати
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 2000);
+  }, [filteredTasks, selectedMonth, availableColumns, getDisplayValue]);
+
   return (
     <div className="monthly-order">
       <div className="month-selector">
@@ -673,19 +721,19 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         <button
           onClick={handleDeleteHeadcount}
           title="Удалить все назначения людей за выбранный месяц"
-          style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 12 }}>
+          style={{ padding:'4px 12px', background:'#e07b00', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', fontSize:13, marginLeft:12 }}>
           Удалить назначения
         </button>
         {isAdmin && (
-          <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
+          <div style={{ display:'inline-flex', gap:8, marginLeft:8 }}>
             <button onClick={handleAddCustomRow}
               title={selectedTaskId ? 'Добавить строку выше выделенной' : 'Добавить строку в конец'}
-              style={{ padding: '4px 12px', background: '#4a90e2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+              style={{ padding:'4px 12px', background:'#4a90e2', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', fontSize:13 }}>
               + Добавить строку
             </button>
             <button onClick={handleDeleteAllCustomRows}
               title="Удалить все ручные строки"
-              style={{ padding: '4px 12px', background: '#e55', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+              style={{ padding:'4px 12px', background:'#e55', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', fontSize:13 }}>
               Удалить все ручные
             </button>
           </div>
@@ -701,19 +749,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
             <div className="table-wrapper">
               <table className="tasks-table-integrated">
                 <colgroup>
-                  {isAdmin && <col style={{ width: '32px' }} />}
-                  {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
+                  {isAdmin && <col style={{ width:'32px' }} />}
+                  {visibleColumns.map(k => <col key={k} style={{ width:`${colWidths[k] || 100}px` }} />)}
                 </colgroup>
-                <thead style={{ height: `${tableHeaderHeight}px` }}>
-                  <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
-                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
+                <thead style={{ height:`${tableHeaderHeight}px` }}>
+                  <tr className="thead-labels" style={{ height:`${tableHeaderHeight}px`, verticalAlign:'middle' }}>
+                    {isAdmin && <th style={{ width:32, padding:0 }} title="Действия" />}
                     {visibleColumns.map(key => (
-                      <th
-                        key={key}
+                      <th key={key}
                         className={filters[key] ? 'has-filter' : ''}
-                        onContextMenu={(e) => handleThContextMenu(e, key)}
+                        onContextMenu={e => handleThContextMenu(e, key)}
                         title="Правый клик — фильтр"
-                        style={{ verticalAlign: 'middle' }}
+                        style={{ verticalAlign:'middle' }}
                       >
                         <span className="th-label-text">{getColLabel(key)}</span>
                         <ColumnFilter
@@ -723,8 +770,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                           onApplyFilter={handleFilterApply}
                           triggerEvent={filterTriggers[key]}
                         />
-                        <div className="col-resize-handle"
-                          onMouseDown={e => handleColResizeMouseDown(e, key)} />
+                        <div className="col-resize-handle" onMouseDown={e => handleColResizeMouseDown(e, key)} />
                       </th>
                     ))}
                   </tr>
@@ -766,7 +812,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
           )}
 
           {showGantt && (
-            <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
+            <div className="schedule-gantt-section" style={{ width:`${100 - tableWidth}%` }}>
               <GanttChart
                 tasks={filteredTasks}
                 externalScrollRef={ganttBodyRef}
@@ -786,6 +832,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         {showFilterManager && (
           <FilterManager activeFilters={filters} onClearAll={handleClearAllFilters}
             onClose={() => setShowFilterManager(false)} />
+        )}
+        {showPrintDialog && (
+          <PrintDialog
+            availableColumns={availableColumns}
+            defaultVisible={visibleColumns}
+            includeGantt={showGantt}
+            onPrint={handlePrint}
+            onClose={() => setShowPrintDialog(false)}
+          />
         )}
       </div>
     </div>
