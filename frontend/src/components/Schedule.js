@@ -49,6 +49,19 @@ function getParentIds(task, allTasks) {
   return ids;
 }
 
+// Проверяет, попадает ли хотя бы один день работы в заданный месяц
+function taskInMonth(task, yearMonth) {
+  if (!yearMonth) return true;
+  const [year, month] = yearMonth.split('-').map(Number);
+  const mStart = new Date(year, month - 1, 1);
+  const mEnd   = new Date(year, month, 0, 23, 59, 59, 999);
+  const s = task.start_date_plan ? new Date(task.start_date_plan) : null;
+  const e = task.end_date_plan   ? new Date(task.end_date_plan)   : null;
+  if (!s || !e) return false;
+  // Пересечение: начало задачи <= конец месяца AND конец задачи >= начало месяца
+  return s <= mEnd && e >= mStart;
+}
+
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
@@ -57,6 +70,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
+  // Пресет: выбранный месяц в формате 'YYYY-MM', null = пресет не активен
+  const [monthPreset, setMonthPreset] = useState(null);
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -168,7 +183,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
-    // Ручные строки (is_custom) не показываем в Графике — фильтруем при ws-событиях тоже
     const onCreated  = (msg) => { if (!msg.data.is_custom) setTasks(prev => [...prev, msg.data].sort(compareCode)); };
     const onUpdated  = (msg) => setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
     const onDeleted  = (msg) => setTasks(prev => prev.filter(t => t.id !== msg.data.id));
@@ -185,12 +199,12 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     };
   }, []);
 
-  useEffect(() => { applyFilters(); }, [tasks, filters]);
+  // Пересчитываем filteredTasks при изменении tasks, фильтров ИЛИ пресета месяца
+  useEffect(() => { applyFilters(); }, [tasks, filters, monthPreset]);
 
   const loadTasks = async () => {
     try {
       const r = await scheduleAPI.getTasks();
-      // Исключаем ручные строки МСГ — они не относятся к основному графику
       const withoutCustom = r.data.filter(t => !t.is_custom);
       setTasks([...withoutCustom].sort(compareCode));
     }
@@ -256,22 +270,33 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
-    if (activeFilters.length === 0) {
+    const hasPreset = Boolean(monthPreset);
+
+    if (activeFilters.length === 0 && !hasPreset) {
       setHasActiveFilters(false);
       setFilteredTasks(tasks);
       return;
     }
     setHasActiveFilters(true);
+
+    // Шаг 1: отбираем работы (не разделы), которые проходят оба фильтра
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      return activeFilters.every(([k, v]) =>
+      // Текстовые фильтры по колонкам
+      const passesColumnFilters = activeFilters.every(([k, v]) =>
         getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
       );
+      // Пресет месяца: хотя бы один плановый день попадает в месяц
+      const passesMonthPreset = hasPreset ? taskInMonth(t, monthPreset) : true;
+      return passesColumnFilters && passesMonthPreset;
     });
+
+    // Шаг 2: собираем id всех родительских разделов найденных работ
     const parentIds = new Set();
     matchedWorks.forEach(t => {
       getParentIds(t, tasks).forEach(id => parentIds.add(id));
     });
+
     const matchedWorkIds = new Set(matchedWorks.map(t => t.id));
     const result = tasks.filter(t =>
       matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))
@@ -280,7 +305,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const handleFilterApply = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
-  const handleClearAllFilters = () => { setFilters({}); setShowFilterManager(false); };
+  const handleClearAllFilters = () => {
+    setFilters({});
+    setMonthPreset(null);
+    setShowFilterManager(false);
+  };
 
   const getColumnValues = (key) => {
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
@@ -375,9 +404,29 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
+  // Значок активного пресета на кнопке фильтров тулбара (через заголовок)
+  const presetActive = Boolean(monthPreset);
+
   return (
     <div className="schedule-container-integrated" ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}>
+
+      {/* Индикатор активного пресета под тулбаром */}
+      {presetActive && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 12px', background: '#e8f0fe',
+          borderBottom: '1px solid #c5d4f0', fontSize: 13, color: '#1a5fa8',
+        }}>
+          <span>📅 Активен пресет: работы за <strong>{monthPreset}</strong></span>
+          <button
+            onClick={() => setMonthPreset(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 15, lineHeight: 1 }}
+            title="Сбросить пресет"
+          >×</button>
+        </div>
+      )}
+
       <div className="schedule-split-view">
         <div className="schedule-table-section"
           style={{ width: showGantt ? `${tableWidth}%` : '100%' }}
@@ -445,8 +494,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           onSave={handleSaveColumnSettings} onClose={() => setShowColumnSettings(false)} />
       )}
       {showFilterManager && (
-        <FilterManager activeFilters={filters} onClearAll={handleClearAllFilters}
-          onClose={() => setShowFilterManager(false)} />
+        <FilterManager
+          activeFilters={filters}
+          onClearAll={handleClearAllFilters}
+          onClose={() => setShowFilterManager(false)}
+          monthPreset={monthPreset}
+          onMonthPresetChange={setMonthPreset}
+        />
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import React from 'react';
 import './FilterManager.css';
 
-function FilterManager({ activeFilters, onClearAll, onClose }) {
+function FilterManager({ activeFilters, onClearAll, onClose, monthPreset, onMonthPresetChange }) {
   const activeFilterCount = Object.values(activeFilters).filter(v => v && v.trim() !== '').length;
 
   return (
@@ -11,7 +11,7 @@ function FilterManager({ activeFilters, onClearAll, onClose }) {
           <h3>🔍 Управление фильтрами</h3>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
-        
+
         <div className="filter-manager-content">
           <div className="filter-stats">
             <p>Активных фильтров: <strong>{activeFilterCount}</strong></p>
@@ -35,7 +35,7 @@ function FilterManager({ activeFilters, onClearAll, onClose }) {
           )}
 
           <div className="filter-actions">
-            <button 
+            <button
               className="clear-all-btn"
               onClick={onClearAll}
               disabled={activeFilterCount === 0}
@@ -46,7 +46,37 @@ function FilterManager({ activeFilters, onClearAll, onClose }) {
 
           <div className="filter-presets">
             <h4>Пресеты фильтров</h4>
-            <p className="presets-placeholder">Функционал в разработке...</p>
+
+            {/* Пресет по месяцу — показываем только если родитель передал onMonthPresetChange */}
+            {onMonthPresetChange && (
+              <div className="preset-item">
+                <label className="preset-label">📅 Работы за месяц</label>
+                <div className="preset-controls">
+                  <input
+                    type="month"
+                    value={monthPreset || ''}
+                    onChange={(e) => onMonthPresetChange(e.target.value || null)}
+                    className="preset-month-input"
+                  />
+                  {monthPreset && (
+                    <button
+                      className="preset-clear-btn"
+                      onClick={() => onMonthPresetChange(null)}
+                      title="Сбросить пресет"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <p className="preset-description">
+                  Показывает работы, у которых хотя бы один день плановых дат попадает в выбранный месяц.
+                </p>
+              </div>
+            )}
+
+            {!onMonthPresetChange && (
+              <p className="presets-placeholder">Пресеты недоступны для этой вкладки.</p>
+            )}
           </div>
         </div>
       </div>
