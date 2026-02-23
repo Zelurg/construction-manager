@@ -49,7 +49,7 @@ function getParentIds(task, allTasks) {
   return ids;
 }
 
-// Проверяет, попадает ли хотя бы один день работы в заданный месяц
+// ─ хотя бы один плановый день попадает в месяц ───────────────────────
 function taskInMonth(task, yearMonth) {
   if (!yearMonth) return true;
   const [year, month] = yearMonth.split('-').map(Number);
@@ -58,8 +58,21 @@ function taskInMonth(task, yearMonth) {
   const s = task.start_date_plan ? new Date(task.start_date_plan) : null;
   const e = task.end_date_plan   ? new Date(task.end_date_plan)   : null;
   if (!s || !e) return false;
-  // Пересечение: начало задачи <= конец месяца AND конец задачи >= начало месяца
   return s <= mEnd && e >= mStart;
+}
+
+// ─ нарушены сроки: финиш план < сегодня И остаток не 0 ─────────────────
+function taskIsOverdue(task) {
+  if (!task.end_date_plan) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = new Date(task.end_date_plan); end.setHours(0, 0, 0, 0);
+  const remaining = task.volume_plan - task.volume_fact;
+  return end < today && remaining > 0;
+}
+
+// ─ выполнение: остаток = 0 ─────────────────────────────────────
+function taskIsDone(task) {
+  return (task.volume_plan - task.volume_fact) <= 0;
 }
 
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
@@ -70,8 +83,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
-  // Пресет: выбранный месяц в формате 'YYYY-MM', null = пресет не активен
-  const [monthPreset, setMonthPreset] = useState(null);
+
+  // ── 4 пресета ───────────────────────────────────────────
+  const [monthPreset,      setMonthPreset]      = useState(null); // 'YYYY-MM' | null
+  const [overduePreset,    setOverduePreset]    = useState(null); // true | null
+  const [completionPreset, setCompletionPreset] = useState(null); // 'done' | 'undone' | null
+  const [executorPreset,   setExecutorPreset]   = useState(null); // string | null
+
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -199,16 +217,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     };
   }, []);
 
-  // Пересчитываем filteredTasks при изменении tasks, фильтров ИЛИ пресета месяца
-  useEffect(() => { applyFilters(); }, [tasks, filters, monthPreset]);
+  useEffect(() => { applyFilters(); }, [tasks, filters, monthPreset, overduePreset, completionPreset, executorPreset]);
 
   const loadTasks = async () => {
     try {
       const r = await scheduleAPI.getTasks();
       const withoutCustom = r.data.filter(t => !t.is_custom);
       setTasks([...withoutCustom].sort(compareCode));
-    }
-    catch (e) { console.error('Ошибка загрузки задач:', e); }
+    } catch (e) { console.error('Ошибка загрузки задач:', e); }
   };
   const loadEmployees = async () => {
     try { const r = await employeesAPI.getAll({ active_only: true }); setEmployees(r.data); }
@@ -218,9 +234,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const getChildTasks = (sectionCode, arr) => {
     const children = [];
     const prefix = sectionCode + '.';
-    arr.forEach(t => {
-      if (!t.is_section && String(t.code).startsWith(prefix)) children.push(t);
-    });
+    arr.forEach(t => { if (!t.is_section && String(t.code).startsWith(prefix)) children.push(t); });
     return children;
   };
 
@@ -270,62 +284,57 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
-    const hasPreset = Boolean(monthPreset);
+    const hasAnyPreset = monthPreset || overduePreset || completionPreset || executorPreset;
 
-    if (activeFilters.length === 0 && !hasPreset) {
+    if (activeFilters.length === 0 && !hasAnyPreset) {
       setHasActiveFilters(false);
       setFilteredTasks(tasks);
       return;
     }
     setHasActiveFilters(true);
 
-    // Шаг 1: отбираем работы (не разделы), которые проходят оба фильтра
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      // Текстовые фильтры по колонкам
-      const passesColumnFilters = activeFilters.every(([k, v]) =>
-        getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
-      );
-      // Пресет месяца: хотя бы один плановый день попадает в месяц
-      const passesMonthPreset = hasPreset ? taskInMonth(t, monthPreset) : true;
-      return passesColumnFilters && passesMonthPreset;
+      // — текстовые фильтры по колонкам
+      if (!activeFilters.every(([k, v]) => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()))) return false;
+      // — пресет месяца
+      if (monthPreset && !taskInMonth(t, monthPreset)) return false;
+      // — пресет просрочки
+      if (overduePreset && !taskIsOverdue(t)) return false;
+      // — пресет выполнения
+      if (completionPreset === 'done'   && !taskIsDone(t)) return false;
+      if (completionPreset === 'undone' &&  taskIsDone(t)) return false;
+      // — пресет исполнителя (подстрока)
+      if (executorPreset && !(t.executor || '').toLowerCase().includes(executorPreset.toLowerCase())) return false;
+      return true;
     });
 
-    // Шаг 2: собираем id всех родительских разделов найденных работ
     const parentIds = new Set();
-    matchedWorks.forEach(t => {
-      getParentIds(t, tasks).forEach(id => parentIds.add(id));
-    });
-
+    matchedWorks.forEach(t => getParentIds(t, tasks).forEach(id => parentIds.add(id)));
     const matchedWorkIds = new Set(matchedWorks.map(t => t.id));
-    const result = tasks.filter(t =>
-      matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))
-    );
-    setFilteredTasks(result);
+    setFilteredTasks(tasks.filter(t => matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))));
   };
 
   const handleFilterApply = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
   const handleClearAllFilters = () => {
     setFilters({});
     setMonthPreset(null);
+    setOverduePreset(null);
+    setCompletionPreset(null);
+    setExecutorPreset(null);
     setShowFilterManager(false);
   };
 
   const getColumnValues = (key) => {
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
-    active.forEach(([k, v]) => {
-      arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
-    });
+    active.forEach(([k, v]) => { arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())); });
     return arr.map(t => getDisplayValue(t, key));
   };
 
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
-    setFilterTriggers(prev => ({
-      ...prev,
-      [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() },
-    }));
+    setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
   const handleCellDoubleClick = (task, key) => {
@@ -378,10 +387,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     localStorage.setItem('scheduleVisibleColumns', JSON.stringify(cols));
   };
 
-  const getRowStyle = (task) => !task.is_section ? {} : {
-    backgroundColor: getSectionColor(task.level),
-    fontWeight: 'bold',
-    fontSize: task.level === 0 ? '1.02em' : '1em',
+  const getRowStyle = (task) => {
+    if (task.is_section) return {
+      backgroundColor: getSectionColor(task.level),
+      fontWeight: 'bold',
+      fontSize: task.level === 0 ? '1.02em' : '1em',
+    };
+    // Подсвечиваем просроченные строки лёгким красным
+    if (taskIsOverdue(task)) return { backgroundColor: '#fff0f0' };
+    return {};
   };
 
   const getCellStyle = (task, key) => {
@@ -404,26 +418,34 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
-  // Значок активного пресета на кнопке фильтров тулбара (через заголовок)
-  const presetActive = Boolean(monthPreset);
+  // Индикатор активных пресетов под тулбаром
+  const activePresetLabels = [
+    monthPreset      && `📅 ${monthPreset}`,
+    overduePreset    && '⚠️ Просрочки',
+    completionPreset === 'done'   && '✅ Выполнено',
+    completionPreset === 'undone' && '⏳ Не выполнено',
+    executorPreset   && `👤 ${executorPreset}`,
+  ].filter(Boolean);
 
   return (
     <div className="schedule-container-integrated" ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}>
 
-      {/* Индикатор активного пресета под тулбаром */}
-      {presetActive && (
+      {activePresetLabels.length > 0 && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
           padding: '4px 12px', background: '#e8f0fe',
           borderBottom: '1px solid #c5d4f0', fontSize: 13, color: '#1a5fa8',
         }}>
-          <span>📅 Активен пресет: работы за <strong>{monthPreset}</strong></span>
+          <span>Активны пресеты:</span>
+          {activePresetLabels.map((label, i) => (
+            <span key={i} style={{ background: '#c5d4f0', borderRadius: 4, padding: '1px 8px' }}>{label}</span>
+          ))}
           <button
-            onClick={() => setMonthPreset(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 15, lineHeight: 1 }}
-            title="Сбросить пресет"
-          >×</button>
+            onClick={handleClearAllFilters}
+            style={{ marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14 }}
+            title="Сбросить все пресеты"
+          >× сбросить</button>
         </div>
       )}
 
@@ -439,8 +461,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
               <thead>
                 <tr className="thead-labels">
                   {visibleColumns.map(key => (
-                    <th
-                      key={key}
+                    <th key={key}
                       className={filters[key] ? 'has-filter' : ''}
                       onContextMenu={(e) => handleThContextMenu(e, key)}
                       title="Правый клик — фильтр"
@@ -480,11 +501,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
         {showGantt && (
           <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
-            <GanttChart
-              tasks={filteredTasks}
-              externalScrollRef={ganttBodyRef}
-              headcountEnabled={false}
-            />
+            <GanttChart tasks={filteredTasks} externalScrollRef={ganttBodyRef} headcountEnabled={false} />
           </div>
         )}
       </div>
@@ -500,6 +517,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           onClose={() => setShowFilterManager(false)}
           monthPreset={monthPreset}
           onMonthPresetChange={setMonthPreset}
+          overduePreset={overduePreset}
+          onOverduePresetChange={setOverduePreset}
+          completionPreset={completionPreset}
+          onCompletionPresetChange={setCompletionPreset}
+          executorPreset={executorPreset}
+          onExecutorPresetChange={setExecutorPreset}
+          employees={employees}
         />
       )}
     </div>
