@@ -26,6 +26,7 @@ body {
 .header {
   background: #1a2332;
   color: #fff;
+
   padding: 16px 32px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   flex-shrink: 0;
@@ -288,20 +289,13 @@ body {
   transform: translateZ(0);
 }
 
-/*
-  Одна строка шапки = 60px.
-  Совпадает с шапкой Ганта:
-    gantt-controls-row  36px
-    gantt-timeline-row  24px
-    Итого: 60px
-*/
 .tasks-table-integrated thead tr.thead-labels {
   height: 60px;
 }
 
 /* Ячейки шапки */
 .tasks-table-integrated th {
-  padding: 0 20px 0 8px; /* справа 20px — место под кнопку фильтра + resize */
+  padding: 0 8px;
   text-align: left;
   border-right: 1px solid #e8e8e8;
   border-bottom: 1px solid #ddd;
@@ -311,29 +305,37 @@ body {
   vertical-align: middle;
   box-sizing: border-box;
   font-size: 12px;
-  position: relative;   /* нужно для absolute-дочерних элементов */
+  position: relative;
   overflow: hidden;
   user-select: none;
-  /* Убираем white-space: nowrap — теперь перенос разрешён */
+  cursor: context-menu; /* подсказка пользователю что есть правый клик */
+}
+
+/* Подсветка активного фильтра */
+.tasks-table-integrated th.has-filter {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.tasks-table-integrated th:hover {
+  background-color: #ececec;
+}
+.tasks-table-integrated th.has-filter:hover {
+  background-color: #d4edda;
 }
 
 /*
   Текст заголовка:
   - Переносится по словам (word-break: break-word)
   - Если текст не умещается по высоте — уходит за край (overflow: hidden)
-  - Никогда не растягивает строку высотой 60px больше нужного
 */
 .th-label-text {
   display: block;
   overflow: hidden;
-  /* Перенос по словам. Если слово одно длинное — разбиваем по буквам */
   white-space: normal;
   word-break: break-word;
   overflow-wrap: break-word;
-  /* Отступ справа под кнопку фильтра */
-  padding-right: 18px;
-  /* Высота строки шапки фиксирована — текст просто обрезается сверху/снизу */
-  max-height: 54px; /* чуть меньше 60px чтобы не упираться в границы */
+  max-height: 54px;
   line-height: 1.3;
 }
 
@@ -345,7 +347,7 @@ body {
   width: 5px;
   height: 100%;
   cursor: col-resize;
-  z-index: 3;           /* выше кнопки фильтра */
+  z-index: 3;
   background: transparent;
 }
 .col-resize-handle:hover {

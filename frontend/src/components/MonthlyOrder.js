@@ -62,8 +62,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [editValue, setEditValue] = useState('');
   const [employees, setEmployees] = useState([]);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [filterTriggers, setFilterTriggers] = useState({});
 
-  // drag-and-drop
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
   const [dragOverPos, setDragOverPos] = useState('before');
@@ -120,7 +120,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return s ? JSON.parse(s) : defaultColumns;
   });
 
-  // ─── Синхронизация скролла ───────────────────────────────────────────
   useEffect(() => {
     if (!showGantt) return;
     const timer = setTimeout(() => {
@@ -149,7 +148,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => clearTimeout(timer);
   }, [showGantt, filteredTasks]);
 
-  // ─── Ресайз колонок ───────────────────────────────────────────────────
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault(); e.stopPropagation();
     colResizeRef.current = { active: true, colKey, startX: e.clientX, startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100 };
@@ -171,10 +169,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
 
-  // ─── Загрузка данных ─────────────────────────────────────────────────
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
-
     const onUpdated = (msg) => {
       if (isDraggingRef.current) return;
       setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
@@ -200,14 +196,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
       const filtered = all.filter(task => {
         if (task.is_section) return true;
-
         const s = task.start_date_plan ? new Date(task.start_date_plan) : null;
         const e = task.end_date_plan   ? new Date(task.end_date_plan)   : null;
-
-        // Ручная строка без дат — показываем во всех месяцах
         if (task.is_custom && !s && !e) return true;
-
-        // Все остальные (включая ручные с датами) — фильтруем по месяцу
         if (!s || !e) return false;
         return s <= mEnd && e >= mStart;
       });
@@ -225,7 +216,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error(e); }
   };
 
-  // ─── Добавление ручной строки ─────────────────────────────────────────
   const handleAddCustomRow = async () => {
     if (!isAdmin) return;
     try {
@@ -267,7 +257,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch (e) { console.error(e); alert('Не удалось удалить строки'); }
   };
 
-  // ─── Drag-and-drop ──────────────────────────────────────────────────
   const handleDragStart = useCallback((e, task) => {
     if (!task.is_custom || !isAdmin) { e.preventDefault(); return; }
     dragTaskIdRef.current = task.id;
@@ -335,7 +324,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     }
   }, [isAdmin]);
 
-  // ─── Расчётные поля секций ───────────────────────────────────────────
   const getChildTasks = (sectionCode, arr) => {
     const children = [];
     const prefix = sectionCode + '.';
@@ -415,7 +403,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return arr.map(t => getDisplayValue(t, key));
   };
 
-  // ─── Редактирование ячеек ─────────────────────────────────────────────
+  // Правый клик на заголовок
+  const handleThContextMenu = useCallback((e, colKey) => {
+    e.preventDefault();
+    setFilterTriggers(prev => ({
+      ...prev,
+      [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() },
+    }));
+  }, []);
+
   const isFieldEditable = (task, key) => {
     if (!isAdmin || task.is_section) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
@@ -596,12 +592,20 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                   <tr className="thead-labels">
                     {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
                     {visibleColumns.map(key => (
-                      <th key={key}>
+                      <th
+                        key={key}
+                        className={filters[key] ? 'has-filter' : ''}
+                        onContextMenu={(e) => handleThContextMenu(e, key)}
+                        title="Правый клик — фильтр"
+                      >
                         <span className="th-label-text">{getColLabel(key)}</span>
-                        <ColumnFilter columnKey={key} columnLabel=""
+                        <ColumnFilter
+                          columnKey={key}
                           allValues={getColumnValues(key)}
                           currentFilter={filters[key] || ''}
-                          onApplyFilter={handleFilterApply} />
+                          onApplyFilter={handleFilterApply}
+                          triggerEvent={filterTriggers[key]}
+                        />
                         <div className="col-resize-handle"
                           onMouseDown={e => handleColResizeMouseDown(e, key)} />
                       </th>

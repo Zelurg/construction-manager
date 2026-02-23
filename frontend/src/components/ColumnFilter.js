@@ -2,48 +2,42 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import './ColumnFilter.css';
 
-function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onApplyFilter }) {
+/**
+ * ColumnFilter — дропдаун фильтра без кнопки.
+ * Открывается через triggerEvent (SyntheticEvent или нативный MouseEvent),
+ * который передаётся снаружи при правом клике на th.
+ */
+function ColumnFilter({ columnKey, allValues, currentFilter, onApplyFilter, triggerEvent }) {
   const [isOpen, setIsOpen] = useState(false);
   const [filterValue, setFilterValue] = useState(currentFilter || '');
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 250 });
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
 
-  const buttonRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  const recalcPosition = () => {
-    if (!buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    setDropdownPos({
-      top: rect.bottom,
-      left: rect.left,
-      width: Math.max(rect.width, 250),
-    });
-  };
-
+  // Открываемся каждый раз когда triggerEvent меняется (новый клик)
   useEffect(() => {
-    if (!isOpen) return;
-    recalcPosition();
-    const handleClickOutside = (event) => {
-      const btn = buttonRef.current;
-      const drop = dropdownRef.current;
-      if (drop && !drop.contains(event.target) && btn && !btn.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    const handleScrollResize = () => recalcPosition();
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('scroll', handleScrollResize, true);
-    window.addEventListener('resize', handleScrollResize);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('scroll', handleScrollResize, true);
-      window.removeEventListener('resize', handleScrollResize);
-    };
-  }, [isOpen]);
+    if (!triggerEvent) return;
+    setDropdownPos({
+      top: triggerEvent.clientY,
+      left: triggerEvent.clientX,
+    });
+    setIsOpen(true);
+  }, [triggerEvent]);
 
   useEffect(() => {
     setFilterValue(currentFilter || '');
   }, [currentFilter]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
 
   const handleApply = (value) => {
     const val = value !== undefined ? value : filterValue;
@@ -70,9 +64,9 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
     );
   }, [uniqueValues, filterValue]);
 
-  const hasActiveFilter = currentFilter && currentFilter !== '';
+  if (!isOpen) return null;
 
-  const dropdown = isOpen ? ReactDOM.createPortal(
+  return ReactDOM.createPortal(
     <div
       ref={dropdownRef}
       className="filter-dropdown"
@@ -80,7 +74,6 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
         position: 'fixed',
         top: `${dropdownPos.top}px`,
         left: `${dropdownPos.left}px`,
-        minWidth: `${dropdownPos.width}px`,
         zIndex: 99999,
       }}
     >
@@ -91,7 +84,7 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
           placeholder="Введите или выберите..."
           value={filterValue}
           onChange={(e) => setFilterValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleApply(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleApply(); if (e.key === 'Escape') setIsOpen(false); }}
           autoFocus
         />
       </div>
@@ -105,7 +98,6 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Сразу применяем фильтр при клике на пункт списка
                 setFilterValue(String(value));
                 handleApply(String(value));
               }}
@@ -130,20 +122,6 @@ function ColumnFilter({ columnKey, columnLabel, allValues, currentFilter, onAppl
       </div>
     </div>,
     document.body
-  ) : null;
-
-  return (
-    <div className="column-filter">
-      <button
-        ref={buttonRef}
-        className={`filter-toggle ${hasActiveFilter ? 'active' : ''}`}
-        onClick={() => setIsOpen(prev => !prev)}
-        title="Фильтр"
-      >
-        ▼
-      </button>
-      {dropdown}
-    </div>
   );
 }
 

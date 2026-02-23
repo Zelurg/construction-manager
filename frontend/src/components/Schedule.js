@@ -38,11 +38,6 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
-/**
- * Хлебные крошки через префикс кода.
- * parent_code в БД не заполнен, поэтому ищем родителя отрезаем последний сегмент кода.
- * 1.10.1.1 -> родитель 1.10.1 -> 1.10 -> 1
- */
 function buildBreadcrumb(task, allTasks) {
   const parts = String(task.code).split('.');
   if (parts.length <= 1) return '';
@@ -70,6 +65,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [employees, setEmployees] = useState([]);
+  // filterTriggers: { [colKey]: MouseEvent } — каждый раз новый объект = новое открытие
+  const [filterTriggers, setFilterTriggers] = useState({});
   const [colWidths, setColWidths] = useState(() => {
     try {
       const s = localStorage.getItem('scheduleColWidths');
@@ -93,10 +90,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     { key: 'volume_plan',             label: 'Объём план' },
     { key: 'volume_fact',             label: 'Объём факт' },
     { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
-    { key: 'start_date_contract',     label: 'Дата старта контракт' },
-    { key: 'end_date_contract',       label: 'Дата финиша контракт' },
-    { key: 'start_date_plan',         label: 'Дата старта план',    editable: true },
-    { key: 'end_date_plan',           label: 'Дата финиша план',    editable: true },
+    { key: 'start_date_contract',     label: 'Старт контракт' },
+    { key: 'end_date_contract',       label: 'Финиш контракт' },
+    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
+    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
     { key: 'unit_price',              label: 'Цена за ед.' },
     { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
     { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
@@ -281,6 +278,16 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return arr.map(t => getDisplayValue(t, key));
   };
 
+  // Правый клик на заголовок — открываем фильтр в позиции курсора
+  const handleThContextMenu = useCallback((e, colKey) => {
+    e.preventDefault();
+    // Сохраняем координаты как плоский объект (не SyntheticEvent — он нельзя хранить в state)
+    setFilterTriggers(prev => ({
+      ...prev,
+      [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() },
+    }));
+  }, []);
+
   const handleCellDoubleClick = (task, key) => {
     if (!isAdmin || task.is_section) return;
     if (!['start_date_plan','end_date_plan','executor'].includes(key)) return;
@@ -380,14 +387,19 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
               <thead>
                 <tr className="thead-labels">
                   {visibleColumns.map(key => (
-                    <th key={key}>
+                    <th
+                      key={key}
+                      className={filters[key] ? 'has-filter' : ''}
+                      onContextMenu={(e) => handleThContextMenu(e, key)}
+                      title="Правый клик — фильтр"
+                    >
                       <span className="th-label-text">{getColLabel(key)}</span>
                       <ColumnFilter
                         columnKey={key}
-                        columnLabel=""
                         allValues={getColumnValues(key)}
                         currentFilter={filters[key] || ''}
                         onApplyFilter={handleFilterApply}
+                        triggerEvent={filterTriggers[key]}
                       />
                       <div className="col-resize-handle"
                         onMouseDown={(e) => handleColResizeMouseDown(e, key)} />
