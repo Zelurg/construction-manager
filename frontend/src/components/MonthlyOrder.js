@@ -63,14 +63,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [filterTriggers, setFilterTriggers] = useState({});
 
-  // headcount: { [taskId]: { 'YYYY-MM-DD': count } }
   const [headcountData, setHeadcountData] = useState({});
-
-  // Синхронизация высоты шапки таблицы с шапкой Gantt:
-  // GanttChart сообщает нам true/false когда появляется/убирается строка итогов
   const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
-
-  // Высота thead таблицы = 36 (контролы Gantt) + 24 (таймлайн) + 24 (итоги если есть)
   const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
 
   const dragTaskIdRef = useRef(null);
@@ -95,29 +89,29 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const isDraggingRef  = useRef(false);
 
   const availableColumns = [
-    { key: 'code',                    label: '\u0428\u0438\u0444\u0440' },
-    { key: 'name',                    label: '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435' },
-    { key: 'unit',                    label: '\u0415\u0434. \u0438\u0437\u043c.' },
-    { key: 'volume_plan',             label: '\u041e\u0431\u044a\u0451\u043c \u043f\u043b\u0430\u043d' },
-    { key: 'volume_fact',             label: '\u041e\u0431\u044a\u0451\u043c \u0444\u0430\u043a\u0442' },
-    { key: 'volume_remaining',        label: '\u041e\u0431\u044a\u0451\u043c \u043e\u0441\u0442\u0430\u0442\u043e\u043a',  isCalculated: true },
-    { key: 'start_date_contract',     label: '\u0421\u0442\u0430\u0440\u0442 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
-    { key: 'end_date_contract',       label: '\u0424\u0438\u043d\u0438\u0448 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
-    { key: 'start_date_plan',         label: '\u0421\u0442\u0430\u0440\u0442 \u043f\u043b\u0430\u043d',    editable: true },
-    { key: 'end_date_plan',           label: '\u0424\u0438\u043d\u0438\u0448 \u043f\u043b\u0430\u043d',    editable: true },
-    { key: 'unit_price',              label: '\u0426\u0435\u043d\u0430 \u0437\u0430 \u0435\u0434.' },
-    { key: 'labor_per_unit',          label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b/\u0435\u0434.' },
-    { key: 'machine_hours_per_unit',  label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b/\u0435\u0434.' },
-    { key: 'executor',                label: '\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c',           editable: true },
-    { key: 'labor_total',             label: '\u0412\u0441\u0435\u0433\u043e \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442',   isCalculated: true },
-    { key: 'labor_fact',              label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b \u0444\u0430\u043a\u0442',   isCalculated: true },
-    { key: 'labor_remaining',         label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442', isCalculated: true },
-    { key: 'cost_total',              label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0432\u0441\u0435\u0433\u043e',       isCalculated: true },
-    { key: 'cost_fact',               label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0444\u0430\u043a\u0442',        isCalculated: true },
-    { key: 'cost_remaining',          label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438',     isCalculated: true },
-    { key: 'machine_hours_total',     label: '\u0412\u0441\u0435\u0433\u043e \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432',   isCalculated: true },
-    { key: 'machine_hours_fact',      label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b \u0444\u0430\u043a\u0442',       isCalculated: true },
-    { key: 'machine_hours_remaining', label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432', isCalculated: true },
+    { key: 'code',                    label: 'Шифр' },
+    { key: 'name',                    label: 'Наименование' },
+    { key: 'unit',                    label: 'Ед. изм.' },
+    { key: 'volume_plan',             label: 'Объём план' },
+    { key: 'volume_fact',             label: 'Объём факт' },
+    { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
+    { key: 'start_date_contract',     label: 'Старт контракт' },
+    { key: 'end_date_contract',       label: 'Финиш контракт' },
+    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
+    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
+    { key: 'unit_price',              label: 'Цена за ед.' },
+    { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
+    { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
+    { key: 'executor',                label: 'Исполнитель',           editable: true },
+    { key: 'labor_total',             label: 'Всего трудозатрат',   isCalculated: true },
+    { key: 'labor_fact',              label: 'Трудозатраты факт',   isCalculated: true },
+    { key: 'labor_remaining',         label: 'Остаток трудозатрат', isCalculated: true },
+    { key: 'cost_total',              label: 'Стоимость всего',       isCalculated: true },
+    { key: 'cost_fact',               label: 'Стоимость факт',        isCalculated: true },
+    { key: 'cost_remaining',          label: 'Остаток стоимости',     isCalculated: true },
+    { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
+    { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
+    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
   ];
 
   const defaultColumns = [
@@ -129,7 +123,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return s ? JSON.parse(s) : defaultColumns;
   });
 
-  // Загрузка headcount при смене месяца
   const loadHeadcount = useCallback(async () => {
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
@@ -140,7 +133,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         map[item.task_id][item.date] = item.headcount;
       });
       setHeadcountData(map);
-    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 headcount:', e); }
+    } catch (e) { console.error('Ошибка загрузки headcount:', e); }
   }, [selectedMonth]);
 
   useEffect(() => { loadHeadcount(); }, [loadHeadcount]);
@@ -152,16 +145,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         ...prev,
         [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
       }));
-    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u044f headcount:', e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c'); }
+    } catch (e) { console.error('Ошибка сохранения headcount:', e); alert('Не удалось сохранить'); }
   }, []);
 
   const handleDeleteHeadcount = useCallback(async () => {
-    if (!window.confirm(`\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043b\u044e\u0434\u0435\u0439 \u0437\u0430 ${selectedMonth}?`)) return;
+    if (!window.confirm(`Удалить все назначения людей за ${selectedMonth}?`)) return;
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
       await headcountAPI.deleteByMonth(year, month);
       setHeadcountData({});
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить'); }
   }, [selectedMonth]);
 
   useEffect(() => {
@@ -252,7 +245,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         filtered.some(t => t.is_section && String(t.code).startsWith(sectionCode + '.') && hasWork(t.code));
       const visible = filtered.filter(t => !t.is_section || hasWork(t.code));
       setTasks(visible);
-    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438:', e); }
+    } catch (e) { console.error('Ошибка загрузки:', e); }
   };
 
   const loadEmployees = async () => {
@@ -263,7 +256,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const handleAddCustomRow = async () => {
     if (!isAdmin) return;
     try {
-      const payload = { name: '\u041d\u043e\u0432\u0430\u044f \u0440\u0430\u0431\u043e\u0442\u0430' };
+      const payload = { name: 'Новая работа' };
       if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
@@ -278,27 +271,27 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
       setEditValue(newTask.name);
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443'); }
+    } catch (e) { console.error(e); alert('Не удалось создать строку'); }
   };
 
   const handleDeleteCustomRow = async (taskId) => {
     if (!isAdmin) return;
-    if (!window.confirm('\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u0443 \u0441\u0442\u0440\u043e\u043a\u0443?')) return;
+    if (!window.confirm('Удалить эту строку?')) return;
     try {
       await scheduleAPI.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить строку'); }
   };
 
   const handleDeleteAllCustomRows = async () => {
     if (!isAdmin) return;
-    if (!window.confirm('\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u0440\u0443\u0447\u043d\u044b\u0435 \u0441\u0442\u0440\u043e\u043a\u0438 \u043f\u0440\u043e\u0435\u043a\u0442\u0430?')) return;
+    if (!window.confirm('Удалить все ручные строки проекта?')) return;
     try {
       await scheduleAPI.deleteAllCustomTasks();
       setTasks(prev => prev.filter(t => !t.is_custom));
       setSelectedTaskId(null);
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0438'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить строки'); }
   };
 
   const handleDragStart = useCallback((e, task) => {
@@ -360,7 +353,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     try {
       await scheduleAPI.updateTask(draggedId, { sort_order: newSortOrder });
     } catch (err) {
-      console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f:', err);
+      console.error('Ошибка перемещения:', err);
       loadTasks();
     } finally {
       setTimeout(() => { isDraggingRef.current = false; }, 500);
@@ -514,7 +507,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
           style={{ width: '100%', padding: '2px' }}>
-          <option value="">\u041d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d</option>
+          <option value="">Не выбран</option>
           {employees.map(emp => <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>)}
         </select>
       );
@@ -597,28 +590,28 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   return (
     <div className="monthly-order">
       <div className="month-selector">
-        <label>\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043c\u0435\u0441\u044f\u0446:</label>
+        <label>Выберите месяц:</label>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
         <span style={{ fontSize: 13, color: '#666' }}>
-          \u041f\u043e\u043a\u0430\u0437\u0430\u043d\u044b \u0440\u0430\u0431\u043e\u0442\u044b \u0441 \u043f\u043b\u0430\u043d\u043e\u0432\u044b\u043c\u0438 \u0434\u0430\u0442\u0430\u043c\u0438, \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0449\u0438\u043c\u0438 \u0432 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u043c\u0435\u0441\u044f\u0446
+          Показаны работы с плановыми датами, попадающими в выбранный месяц
         </span>
         <button
           onClick={handleDeleteHeadcount}
-          title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043b\u044e\u0434\u0435\u0439 \u0437\u0430 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u043c\u0435\u0441\u044f\u0446"
+          title="Удалить все назначения людей за выбранный месяц"
           style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 12 }}>
-          \u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f
+          Удалить назначения
         </button>
         {isAdmin && (
           <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
             <button onClick={handleAddCustomRow}
-              title={selectedTaskId ? '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443 \u0432\u044b\u0448\u0435 \u0432\u044b\u0434\u0435\u043b\u0435\u043d\u043d\u043e\u0439' : '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443 \u0432 \u043a\u043e\u043d\u0435\u0446'}
+              title={selectedTaskId ? 'Добавить строку выше выделенной' : 'Добавить строку в конец'}
               style={{ padding: '4px 12px', background: '#4a90e2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
-              + \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443
+              + Добавить строку
             </button>
             <button onClick={handleDeleteAllCustomRows}
-              title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u0440\u0443\u0447\u043d\u044b\u0435 \u0441\u0442\u0440\u043e\u043a\u0438"
+              title="Удалить все ручные строки"
               style={{ padding: '4px 12px', background: '#e55', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
-              \u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u0440\u0443\u0447\u043d\u044b\u0435
+              Удалить все ручные
             </button>
           </div>
         )}
@@ -638,13 +631,13 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                 </colgroup>
                 <thead style={{ height: `${tableHeaderHeight}px` }}>
                   <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
-                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f" />}
+                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
                     {visibleColumns.map(key => (
                       <th
                         key={key}
                         className={filters[key] ? 'has-filter' : ''}
                         onContextMenu={(e) => handleThContextMenu(e, key)}
-                        title="\u041f\u0440\u0430\u0432\u044b\u0439 \u043a\u043b\u0438\u043a \u2014 \u0444\u0438\u043b\u044c\u0442\u0440"
+                        title="Правый клик — фильтр"
                         style={{ verticalAlign: 'middle' }}
                       >
                         <span className="th-label-text">{getColLabel(key)}</span>
@@ -679,9 +672,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                           {task.is_custom && (
                             <button
                               onClick={e => { e.stopPropagation(); handleDeleteCustomRow(task.id); }}
-                              title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443"
+                              title="Удалить строку"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14, lineHeight: 1, padding: 2 }}
-                            >\u2715</button>
+                            >✕</button>
                           )}
                         </td>
                       )}
@@ -689,7 +682,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                         <td key={key}
                           style={getCellStyle(task, key)}
                           onDoubleClick={() => handleCellDoubleClick(task, key)}
-                          title={isFieldEditable(task, key) ? '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u043a\u043b\u0438\u043a \u0434\u043b\u044f \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f' : ''}
+                          title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
                         >
                           {getCellValue(task, key)}
                         </td>
