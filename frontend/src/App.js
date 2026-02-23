@@ -42,7 +42,6 @@ function AppInner() {
     const currentUser = authService.getCurrentUser();
     setIsAuthenticated(true);
     setUser(currentUser);
-    // Сбрасываем выбранный объект при новом логине
     clearProject();
   };
 
@@ -55,14 +54,11 @@ function AppInner() {
 
   const handleProjectSelect = (project) => {
     setCurrentProject(project);
-    // При смене объекта сбрасываем вкладку на График
     setActiveTab('schedule');
     scheduleKey.current += 1;
   };
 
   const handleSwitchProject = () => {
-    // Не очищаем currentProject совсем — просто показываем экран выбора
-    // Очистка произойдёт только при выборе нового объекта
     clearProject();
   };
 
@@ -140,7 +136,7 @@ function AppInner() {
 
       <nav className="tabs">
         <button className={activeTab === 'schedule' ? 'active' : ''} onClick={() => setActiveTab('schedule')}>График</button>
-        <button className={activeTab === 'monthly'  ? 'active' : ''} onClick={() => setActiveTab('monthly')}>Наряд на месяц</button>
+        <button className={activeTab === 'monthly'  ? 'active' : ''} onClick={() => setActiveTab('monthly')}>МСГ</button>
         <button className={activeTab === 'daily'    ? 'active' : ''} onClick={() => setActiveTab('daily')}>Ежедневные наряды</button>
         <button className={activeTab === 'analytics'? 'active' : ''} onClick={() => setActiveTab('analytics')}>Аналитика</button>
         <button className={activeTab === 'directories'? 'active' : ''} onClick={() => setActiveTab('directories')}>Справочники</button>

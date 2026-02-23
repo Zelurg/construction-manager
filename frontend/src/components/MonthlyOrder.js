@@ -92,10 +92,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     { key: 'volume_plan',             label: 'Объём план' },
     { key: 'volume_fact',             label: 'Объём факт' },
     { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
-    { key: 'start_date_contract',     label: 'Дата старта контракт' },
-    { key: 'end_date_contract',       label: 'Дата финиша контракт' },
-    { key: 'start_date_plan',         label: 'Дата старта план',    editable: true },
-    { key: 'end_date_plan',           label: 'Дата финиша план',    editable: true },
+    { key: 'start_date_contract',     label: 'Старт контракт' },
+    { key: 'end_date_contract',       label: 'Финиш контракт' },
+    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
+    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
     { key: 'unit_price',              label: 'Цена за ед.' },
     { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
     { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
@@ -205,7 +205,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         const e = task.end_date_plan   ? new Date(task.end_date_plan)   : null;
 
         // Ручная строка без дат — показываем во всех месяцах
-        // (только что создана, пользователь ещё не заполнил даты)
         if (task.is_custom && !s && !e) return true;
 
         // Все остальные (включая ручные с датами) — фильтруем по месяцу

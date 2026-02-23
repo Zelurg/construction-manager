@@ -1,22 +1,22 @@
 .column-filter {
   /* Кнопка фильтра — абсолютно позиционирована внутри th */
   position: absolute;
-  right: 18px; /* отступ от правого края, чтобы не перекрывать resize-handle */
+  right: 14px; /* отступ от правого края, чтобы не перекрывать resize-handle */
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
 }
 
-/* Кнопка-стрелка */
+/* Кнопка-стрелка: компактная */
 .filter-toggle {
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
   background: rgba(245,245,245,0.92);
   border: 1px solid #ccc;
-  border-radius: 3px;
+  border-radius: 2px;
   padding: 0;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 7px;
   color: #666;
   display: flex;
   align-items: center;
@@ -24,6 +24,7 @@
   transition: all 0.15s;
   flex-shrink: 0;
   backdrop-filter: blur(2px);
+  line-height: 1;
 }
 
 .filter-toggle:hover {
