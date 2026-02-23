@@ -90,12 +90,14 @@ function HeadcountModal({ task, date, current, onSave, onClose }) {
   );
 }
 
-function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, headcountEnabled }) {
+// onTotalsRowChange(bool) — уведомляет родителя о смене высоты шапки
+// onMonthChange(year, month) — уведомляет родителя о текущем видимом месяце
+function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, headcountEnabled, onTotalsRowChange, onMonthChange }) {
   const [scale, setScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
   });
-  const [modal, setModal] = useState(null); // { task, dateStr }
+  const [modal, setModal] = useState(null);
   const internalScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);
 
@@ -158,6 +160,23 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return { minDate, maxDate, totalDays, timeMarks };
   }, [tasks, scale]);
 
+  // Флаг — показывать ли строку итогов (только в режиме день + фича включена)
+  const showTotalsRow = headcountEnabled && scale === 'day';
+
+  // Уведомляем родителя о смене высоты шапки
+  useEffect(() => {
+    if (onTotalsRowChange) onTotalsRowChange(showTotalsRow);
+  }, [showTotalsRow, onTotalsRowChange]);
+
+  // Уведомляем родителя о видимом месяце при смене масштаба
+  useEffect(() => {
+    if (!onMonthChange || !chartData) return;
+    if (scale === 'day' || scale === 'week') {
+      const now = new Date();
+      onMonthChange(now.getFullYear(), now.getMonth() + 1);
+    }
+  }, [scale, chartData, onMonthChange]);
+
   // Итоги по дням: { 'YYYY-MM-DD': sum }
   const dailyTotals = useMemo(() => {
     if (!headcountData || !headcountEnabled || scale !== 'day') return {};
@@ -170,7 +189,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return totals;
   }, [headcountData, headcountEnabled, scale]);
 
-  // Преобразуем Date в строку YYYY-MM-DD
   const toDateStr = (d) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -210,6 +228,12 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     setModal(null);
   };
 
+  // Высота шапки: если строка итогов есть — две строки, иначе одна
+  // Должно совпадать с tableHeaderHeight в Schedule.js:
+  // обычный: 36 (controls) + 24 (timeline) = 60px
+  // с итогами: 36 + 24 + 24 = 84px
+  const timelineRowHeight = showTotalsRow ? 48 : 24;
+
   if (!chartData || tasks.length === 0) {
     return (
       <div className="gantt-chart-integrated">
@@ -230,13 +254,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   const cfg = scaleConfig[scale];
   const ppd = cfg.pixelsPerDay;
   const totalWidth = chartData.totalDays * ppd;
-
-  // Флаг — показывать ли строку итогов (только в режиме день + фича включена)
-  const showTotalsRow = headcountEnabled && scale === 'day';
-
-  // Высота шапки: если строка итогов есть — две строки, иначе одна
-  // Синхронизируем через CSS-переменную высоты строки таймлайна
-  const timelineRowHeight = showTotalsRow ? 52 : 28;
 
   const getBarStyle = (task, type) => {
     const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
@@ -285,14 +302,14 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
           >
             <div className="gantt-timeline-content" style={{ width: `${totalWidth}px`, position: 'relative' }}>
               {/* Строка дат */}
-              <div style={{ position: 'relative', height: 28 }}>
+              <div style={{ position: 'relative', height: 24 }}>
                 {chartData.timeMarks.map((mark, i) => (
                   <div key={i} className="gantt-time-mark" style={{ left: `${mark.offset * ppd}px` }}>
                     <div className="gantt-time-label">{mark.label}</div>
                   </div>
                 ))}
               </div>
-              {/* Строка итогов (только в масштабе день) */}
+              {/* Строка итогов МСГ (только в масштабе день) */}
               {showTotalsRow && (
                 <div style={{
                   position: 'relative', height: 24,
@@ -321,7 +338,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                       </div>
                     );
                   })}
-                  {/* Лейбл слева — он будет перекрыт, но даём намёк через title */}
                 </div>
               )}
             </div>

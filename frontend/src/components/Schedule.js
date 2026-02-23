@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { scheduleAPI, employeesAPI } from '../services/api';
+import { scheduleAPI, employeesAPI, headcountAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
@@ -38,7 +38,6 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
-// Возвращает Set id всех родительских разделов для задачи
 function getParentIds(task, allTasks) {
   const ids = new Set();
   const parts = String(task.code).split('.');
@@ -66,6 +65,22 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [editValue, setEditValue] = useState('');
   const [employees, setEmployees] = useState([]);
   const [filterTriggers, setFilterTriggers] = useState({});
+
+  // --- Headcount state ---
+  // headcountData: { [taskId]: { 'YYYY-MM-DD': count } }
+  const [headcountData, setHeadcountData] = useState({});
+  // Текущий месяц для загрузки данных headcount
+  const [headcountMonth, setHeadcountMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
+  // Флаг: включён ли режим редактирования МСГ (только для admin)
+  const headcountEnabled = isAdmin;
+  // showTotalsRow — true когда Gantt в режиме день + headcount включён
+  // Передаём в GanttChart, он сам управляет своей высотой шапки.
+  // Нам нужно знать это значение чтобы добавить padding к thead таблицы.
+  const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
+
   const [colWidths, setColWidths] = useState(() => {
     try {
       const s = localStorage.getItem('scheduleColWidths');
@@ -110,12 +125,54 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const defaultColumns = [
     'code','name','unit','volume_plan','volume_fact','volume_remaining',
-    'start_date_contract','end_date_contract','start_date_plan','end_date_plan',
+    'start_date_contract','end_date_contract',
   ];
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const s = localStorage.getItem('scheduleVisibleColumns');
     return s ? JSON.parse(s) : defaultColumns;
   });
+
+  // --- Загрузка headcount при смене месяца или проекта ---
+  const loadHeadcount = useCallback(async (year, month) => {
+    try {
+      const res = await headcountAPI.getByMonth(year, month);
+      // Преобразуем массив в { [taskId]: { 'YYYY-MM-DD': count } }
+      const map = {};
+      res.data.forEach(item => {
+        if (!map[item.task_id]) map[item.task_id] = {};
+        map[item.task_id][item.date] = item.headcount;
+      });
+      setHeadcountData(map);
+    } catch (e) {
+      console.error('Ошибка загрузки headcount:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showGantt && headcountEnabled) {
+      loadHeadcount(headcountMonth.year, headcountMonth.month);
+    }
+  }, [showGantt, headcountEnabled, headcountMonth, loadHeadcount]);
+
+  // Когда Gantt меняет видимый месяц (при скролле к другому месяцу)
+  // обновляем месяц загрузки через callback из GanttChart
+  const handleGanttMonthChange = useCallback((year, month) => {
+    setHeadcountMonth({ year, month });
+  }, []);
+
+  // Сохранение headcount из Gantt
+  const handleHeadcountSave = useCallback(async (taskId, dateStr, count) => {
+    try {
+      await headcountAPI.upsert(taskId, dateStr, count);
+      setHeadcountData(prev => ({
+        ...prev,
+        [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
+      }));
+    } catch (e) {
+      console.error('Ошибка сохранения headcount:', e);
+      alert('Не удалось сохранить данные');
+    }
+  }, []);
 
   useEffect(() => {
     if (!showGantt) return;
@@ -256,19 +313,16 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       return;
     }
     setHasActiveFilters(true);
-    // Шаг 1: найти работы, прошедшие фильтр
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) =>
         getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
       );
     });
-    // Шаг 2: собрать id всех родительских разделов
     const parentIds = new Set();
     matchedWorks.forEach(t => {
       getParentIds(t, tasks).forEach(id => parentIds.add(id));
     });
-    // Шаг 3: вернуть разделы + работы в исходном порядке tasks
     const matchedWorkIds = new Set(matchedWorks.map(t => t.id));
     const result = tasks.filter(t =>
       matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))
@@ -372,6 +426,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
+  // Высота шапки таблицы синхронизируется с Gantt:
+  // - обычный режим: 60px (совпадает с gantt-controls-row 36px + gantt-timeline-row 24px)
+  // - режим день с МСГ: 60px + 24px строка итогов = 84px
+  const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
+
   return (
     <div className="schedule-container-integrated" ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}>
@@ -384,14 +443,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
               <colgroup>
                 {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
               </colgroup>
-              <thead>
-                <tr className="thead-labels">
+              <thead style={{ height: `${tableHeaderHeight}px` }}>
+                <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px` }}>
                   {visibleColumns.map(key => (
                     <th
                       key={key}
                       className={filters[key] ? 'has-filter' : ''}
                       onContextMenu={(e) => handleThContextMenu(e, key)}
                       title="Правый клик — фильтр"
+                      style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}
                     >
                       <span className="th-label-text">{getColLabel(key)}</span>
                       <ColumnFilter
@@ -428,7 +488,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
         {showGantt && (
           <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
-            <GanttChart tasks={filteredTasks} externalScrollRef={ganttBodyRef} />
+            <GanttChart
+              tasks={filteredTasks}
+              externalScrollRef={ganttBodyRef}
+              headcountData={headcountData}
+              onHeadcountSave={handleHeadcountSave}
+              headcountEnabled={headcountEnabled}
+              onTotalsRowChange={setGanttShowsTotals}
+              onMonthChange={handleGanttMonthChange}
+            />
           </div>
         )}
       </div>
