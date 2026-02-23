@@ -30,6 +30,8 @@ function AppInner() {
 
   const columnSettingsHandlers = useRef({ schedule: null, monthly: null, daily: null });
   const filtersHandlers = useRef({ schedule: null, monthly: null });
+  // Храним каллбэк, который MonthlyOrder передаёт наружу через onShowPrint
+  const printHandlers = useRef({ monthly: null });
   const scheduleKey = useRef(0);
 
   useEffect(() => {
@@ -42,7 +44,6 @@ function AppInner() {
     setLoading(false);
   }, []);
 
-  // Сохраняем выбранную вкладку при каждом изменении
   const handleSetActiveTab = (tab) => {
     setActiveTab(tab);
     localStorage.setItem('activeTab', tab);
@@ -64,14 +65,11 @@ function AppInner() {
 
   const handleProjectSelect = (project) => {
     setCurrentProject(project);
-    // При смене объекта возвращаемся на График
     handleSetActiveTab('schedule');
     scheduleKey.current += 1;
   };
 
-  const handleSwitchProject = () => {
-    clearProject();
-  };
+  const handleSwitchProject = () => { clearProject(); };
 
   const handleDownloadTemplate = async () => {
     try {
@@ -109,6 +107,12 @@ function AppInner() {
 
   const handleShowFilters = () => {
     const handler = filtersHandlers.current[activeTab];
+    if (handler) handler();
+  };
+
+  // Кнопка Печать МСГ в Toolbar — вызываем каллбэк из MonthlyOrder
+  const handleShowPrint = () => {
+    const handler = printHandlers.current.monthly;
     if (handler) handler();
   };
 
@@ -164,6 +168,7 @@ function AppInner() {
         onScheduleCleared={handleScheduleCleared}
         onDownloadTemplate={handleDownloadTemplate}
         onUploadTemplate={handleUploadTemplate}
+        onPrint={handleShowPrint}
       />
 
       <main className="content">
@@ -180,6 +185,7 @@ function AppInner() {
             showGantt={showGantt}
             onShowColumnSettings={(h) => (columnSettingsHandlers.current.monthly = h)}
             onShowFilters={(h) => (filtersHandlers.current.monthly = h)}
+            onShowPrint={(h) => (printHandlers.current.monthly = h)}
           />
         )}
         {activeTab === 'daily' && (
