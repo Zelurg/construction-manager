@@ -84,9 +84,12 @@ async def delete_brigade(
     if not db_brigade:
         raise HTTPException(status_code=404, detail="Бригада не найдена")
     project_id = db_brigade.project_id
-    db.query(models.DailyWork).filter(models.DailyWork.brigade_id == brigade_id).update({"brigade_id": None})
-    db.query(models.DailyExecutor).filter(models.DailyExecutor.brigade_id == brigade_id).update({"brigade_id": None})
-    db.query(models.DailyEquipmentUsage).filter(models.DailyEquipmentUsage.brigade_id == brigade_id).update({"brigade_id": None})
+
+    # Удаляем все связанные записи за этот день у этой бригады
+    db.query(models.DailyWork).filter(models.DailyWork.brigade_id == brigade_id).delete()
+    db.query(models.DailyExecutor).filter(models.DailyExecutor.brigade_id == brigade_id).delete()
+    db.query(models.DailyEquipmentUsage).filter(models.DailyEquipmentUsage.brigade_id == brigade_id).delete()
+
     db.delete(db_brigade)
     db.commit()
     touch_project(project_id, db)
@@ -94,7 +97,7 @@ async def delete_brigade(
         {"type": "brigade_deleted", "event": "brigades", "data": {"id": brigade_id}},
         event_type="brigades"
     )
-    return {"message": "Бригада удалена", "id": brigade_id}
+    return {"message": "Бригада и все связанные данные удалены", "id": brigade_id}
 
 
 @router.get("/stats", response_model=List[schemas.BrigadeStats])
