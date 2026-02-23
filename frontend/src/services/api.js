@@ -159,4 +159,18 @@ export const brigadesAPI = {
   delete: (id) => api.delete(`/brigades/${id}`),
 };
 
+// ─── Daily Headcount ─────────────────────────────────────────────────────────
+export const headcountAPI = {
+  getByMonth: (year, month) => {
+    const p = JSON.parse(localStorage.getItem('currentProject') || 'null');
+    return api.get('/headcount/', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });
+  },
+  upsert: (taskId, date, headcount) =>
+    api.post('/headcount/upsert', { task_id: taskId, date, headcount }),
+  deleteByMonth: (year, month) => {
+    const p = JSON.parse(localStorage.getItem('currentProject') || 'null');
+    return api.delete('/headcount/by-month', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });
+  },
+};
+
 export default api;

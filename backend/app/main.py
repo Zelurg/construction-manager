@@ -6,7 +6,7 @@ from .routes import (
     auth, users, admin, schedule, monthly,
     daily, brigades, executors, analytics,
     employees, equipment, equipment_usage,
-    import_export, websocket
+    import_export, websocket, headcount
 )
 from .routes import projects
 
@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Auth & users — prefix уже внутри роутеров
+# Auth & users
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
@@ -38,14 +38,14 @@ app.include_router(brigades.router, prefix="/brigades", tags=["brigades"])
 app.include_router(executors.router, prefix="/executors", tags=["executors"])
 app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 app.include_router(import_export.router, prefix="/import-export", tags=["import-export"])
+app.include_router(headcount.router, prefix="/headcount", tags=["headcount"])
 
 # Global directories
 app.include_router(employees.router, prefix="/employees", tags=["employees"])
 app.include_router(equipment.router, prefix="/equipment", tags=["equipment"])
 app.include_router(equipment_usage.router, prefix="/equipment-usage", tags=["equipment-usage"])
 
-# WebSocket — внутри роутера уже есть @router.websocket("/ws"),
-# поэтому prefix ЗДЕСЬ НЕ указываем — иначе путь станет /ws/ws
+# WebSocket
 app.include_router(websocket.router)
 
 

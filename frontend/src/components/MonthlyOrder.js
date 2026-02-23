@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { scheduleAPI, employeesAPI } from '../services/api';
+import { scheduleAPI, employeesAPI, headcountAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
@@ -24,7 +24,6 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
-// Возвращает Set id всех родительских разделов для задачи
 function getParentIds(task, allTasks) {
   const ids = new Set();
   const parts = String(task.code).split('.');
@@ -63,6 +62,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [employees, setEmployees] = useState([]);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [filterTriggers, setFilterTriggers] = useState({});
+
+  // headcount: { [taskId]: { 'YYYY-MM-DD': count } }
+  const [headcountData, setHeadcountData] = useState({});
 
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
@@ -119,6 +121,44 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     const s = localStorage.getItem('monthlyOrderVisibleColumns');
     return s ? JSON.parse(s) : defaultColumns;
   });
+
+  // ─── Загрузка headcount при смене месяца ────────────────────────────────
+  const loadHeadcount = useCallback(async () => {
+    try {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const r = await headcountAPI.getByMonth(year, month);
+      // Преобразуем список в { taskId: { 'YYYY-MM-DD': count } }
+      const map = {};
+      r.data.forEach(item => {
+        if (!map[item.task_id]) map[item.task_id] = {};
+        map[item.task_id][item.date] = item.headcount;
+      });
+      setHeadcountData(map);
+    } catch (e) { console.error('Ошибка загрузки headcount:', e); }
+  }, [selectedMonth]);
+
+  useEffect(() => { loadHeadcount(); }, [loadHeadcount]);
+
+  // ─── Сохранить назначение ────────────────────────────────────────────────
+  const handleHeadcountSave = useCallback(async (taskId, dateStr, count) => {
+    try {
+      await headcountAPI.upsert(taskId, dateStr, count);
+      setHeadcountData(prev => ({
+        ...prev,
+        [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
+      }));
+    } catch (e) { console.error('Ошибка сохранения headcount:', e); alert('Не удалось сохранить'); }
+  }, []);
+
+  // ─── Удалить назначения за месяц ─────────────────────────────────────────
+  const handleDeleteHeadcount = useCallback(async () => {
+    if (!window.confirm(`Удалить все назначения людей за ${selectedMonth}?`)) return;
+    try {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      await headcountAPI.deleteByMonth(year, month);
+      setHeadcountData({});
+    } catch (e) { console.error(e); alert('Не удалось удалить'); }
+  }, [selectedMonth]);
 
   useEffect(() => {
     if (!showGantt) return;
@@ -382,19 +422,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       return;
     }
     setHasActiveFilters(true);
-    // Шаг 1: найти работы, прошедшие фильтр
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) =>
         getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
       );
     });
-    // Шаг 2: собрать id всех родительских разделов
     const parentIds = new Set();
     matchedWorks.forEach(t => {
       getParentIds(t, tasks).forEach(id => parentIds.add(id));
     });
-    // Шаг 3: вернуть разделы + работы в исходном порядке tasks
     const matchedWorkIds = new Set(matchedWorks.map(t => t.id));
     const result = tasks.filter(t =>
       matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))
@@ -562,8 +599,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         <span style={{ fontSize: 13, color: '#666' }}>
           Показаны работы с плановыми датами, попадающими в выбранный месяц
         </span>
+        <button
+          onClick={handleDeleteHeadcount}
+          title="Удалить все назначения людей за выбранный месяц"
+          style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 12 }}>
+          👥 Удалить назначенных
+        </button>
         {isAdmin && (
-          <div style={{ display: 'inline-flex', gap: 8, marginLeft: 16 }}>
+          <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
             <button onClick={handleAddCustomRow}
               title={selectedTaskId ? 'Добавить строку выше выделенной' : 'Добавить строку в конец'}
               style={{ padding: '4px 12px', background: '#4a90e2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
@@ -662,7 +705,13 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
 
           {showGantt && (
             <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
-              <GanttChart tasks={filteredTasks} externalScrollRef={ganttBodyRef} />
+              <GanttChart
+                tasks={filteredTasks}
+                externalScrollRef={ganttBodyRef}
+                headcountEnabled={true}
+                headcountData={headcountData}
+                onHeadcountSave={handleHeadcountSave}
+              />
             </div>
           )}
         </div>

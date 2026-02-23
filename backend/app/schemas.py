@@ -93,9 +93,7 @@ class CustomTaskCreate(BaseModel):
     machine_hours_per_unit: Optional[float] = 0
     executor: Optional[str] = None
     parent_code: Optional[str] = None
-    # Вставить ПЕРЕД этой задачей
     insert_before_task_id: Optional[int] = None
-    # Вставить ПОСЛЕ этой задачи
     insert_after_task_id: Optional[int] = None
 
 
@@ -353,3 +351,20 @@ class BrigadeStats(BaseModel):
     works: List[dict]
     ancillary_works: List[dict]
     total_ancillary_hours: float
+
+
+# ─── DailyHeadcount ─────────────────────────────────────────────────────────
+
+class DailyHeadcountUpsert(BaseModel):
+    task_id: int
+    date: date
+    headcount: int = Field(..., gt=0)
+
+class DailyHeadcountRead(BaseModel):
+    id: int
+    task_id: int
+    date: date
+    headcount: int
+    project_id: Optional[int] = None
+    class Config:
+        from_attributes = True

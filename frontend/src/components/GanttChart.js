@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import '../styles/GanttChart.css';
 
 const SECTION_COLORS = [
@@ -17,17 +17,90 @@ function getSectionColor(level) {
 const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
 const GANTT_SCALE_KEY = 'ganttScale';
 
-function GanttChart({ tasks, externalScrollRef }) {
+// Модалка для ввода числа людей
+function HeadcountModal({ task, date, current, onSave, onClose }) {
+  const [value, setValue] = useState(current ? String(current) : '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.focus();
+  }, []);
+
+  const handleSave = () => {
+    const n = parseInt(value, 10);
+    if (!value || isNaN(n) || n <= 0) {
+      alert('Введите целое число больше 0');
+      return;
+    }
+    onSave(n);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave();
+    if (e.key === 'Escape') onClose();
+  };
+
+  const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 8, padding: '24px 28px', minWidth: 320,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Назначение людей</div>
+        <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}>
+          <b>Работа:</b> {task.name}
+        </div>
+        <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}>
+          <b>Дата:</b> {dateStr}
+        </div>
+        <input
+          ref={inputRef}
+          type="number"
+          min="1"
+          step="1"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Кол-во людей"
+          style={{
+            width: '100%', padding: '8px 10px', fontSize: 15,
+            border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none',
+            boxSizing: 'border-box', marginBottom: 16,
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{
+            padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc',
+            background: '#f5f5f5', cursor: 'pointer', fontSize: 13,
+          }}>Отмена</button>
+          <button onClick={handleSave} style={{
+            padding: '7px 18px', borderRadius: 5, border: 'none',
+            background: '#4a90e2', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          }}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, headcountEnabled }) {
   const [scale, setScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
   });
+  const [modal, setModal] = useState(null); // { task, dateStr }
   const internalScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);
 
   const bodyScrollRef = externalScrollRef || internalScrollRef;
 
-  // Сохраняем масштаб при каждом изменении
   const handleScaleChange = (newScale) => {
     setScale(newScale);
     localStorage.setItem(GANTT_SCALE_KEY, newScale);
@@ -85,6 +158,26 @@ function GanttChart({ tasks, externalScrollRef }) {
     return { minDate, maxDate, totalDays, timeMarks };
   }, [tasks, scale]);
 
+  // Итоги по дням: { 'YYYY-MM-DD': sum }
+  const dailyTotals = useMemo(() => {
+    if (!headcountData || !headcountEnabled || scale !== 'day') return {};
+    const totals = {};
+    Object.values(headcountData).forEach(byDate => {
+      Object.entries(byDate).forEach(([dateStr, count]) => {
+        totals[dateStr] = (totals[dateStr] || 0) + count;
+      });
+    });
+    return totals;
+  }, [headcountData, headcountEnabled, scale]);
+
+  // Преобразуем Date в строку YYYY-MM-DD
+  const toDateStr = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   useEffect(() => {
     const bodyEl  = bodyScrollRef.current;
     const timeEl  = timelineScrollRef.current;
@@ -103,6 +196,19 @@ function GanttChart({ tasks, externalScrollRef }) {
     bodyEl.addEventListener('scroll', onScroll, { passive: true });
     return () => bodyEl.removeEventListener('scroll', onScroll);
   }, [chartData]);
+
+  const handleCellClick = useCallback((task, dateStr) => {
+    if (!headcountEnabled || scale !== 'day' || task.is_section) return;
+    const current = headcountData?.[task.id]?.[dateStr];
+    setModal({ task, dateStr, current });
+  }, [headcountEnabled, scale, headcountData]);
+
+  const handleModalSave = (count) => {
+    if (modal && onHeadcountSave) {
+      onHeadcountSave(modal.task.id, modal.dateStr, count);
+    }
+    setModal(null);
+  };
 
   if (!chartData || tasks.length === 0) {
     return (
@@ -124,6 +230,13 @@ function GanttChart({ tasks, externalScrollRef }) {
   const cfg = scaleConfig[scale];
   const ppd = cfg.pixelsPerDay;
   const totalWidth = chartData.totalDays * ppd;
+
+  // Флаг — показывать ли строку итогов (только в режиме день + фича включена)
+  const showTotalsRow = headcountEnabled && scale === 'day';
+
+  // Высота шапки: если строка итогов есть — две строки, иначе одна
+  // Синхронизируем через CSS-переменную высоты строки таймлайна
+  const timelineRowHeight = showTotalsRow ? 52 : 28;
 
   const getBarStyle = (task, type) => {
     const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
@@ -155,59 +268,148 @@ function GanttChart({ tasks, externalScrollRef }) {
   };
 
   return (
-    <div className="gantt-chart-integrated">
-      <div className="gantt-combined-header">
-        <div className="gantt-controls-row">
-          <div className="gantt-title">Диаграмма Ганта</div>
-          <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
-            {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
-          </select>
-        </div>
-        <div className="gantt-timeline-row" ref={timelineScrollRef}>
-          <div className="gantt-timeline-content" style={{ width: `${totalWidth}px` }}>
-            {chartData.timeMarks.map((mark, i) => (
-              <div key={i} className="gantt-time-mark" style={{ left: `${mark.offset * ppd}px` }}>
-                <div className="gantt-time-label">{mark.label}</div>
+    <>
+      <div className="gantt-chart-integrated">
+        <div className="gantt-combined-header">
+          <div className="gantt-controls-row">
+            <div className="gantt-title">Диаграмма Ганта</div>
+            <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
+              {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
+            </select>
+          </div>
+          {/* Единый скроллируемый блок шапки: таймлайн + строка итогов */}
+          <div
+            className="gantt-timeline-row"
+            ref={timelineScrollRef}
+            style={{ height: `${timelineRowHeight}px`, overflowX: 'hidden', overflowY: 'hidden' }}
+          >
+            <div className="gantt-timeline-content" style={{ width: `${totalWidth}px`, position: 'relative' }}>
+              {/* Строка дат */}
+              <div style={{ position: 'relative', height: 28 }}>
+                {chartData.timeMarks.map((mark, i) => (
+                  <div key={i} className="gantt-time-mark" style={{ left: `${mark.offset * ppd}px` }}>
+                    <div className="gantt-time-label">{mark.label}</div>
+                  </div>
+                ))}
               </div>
-            ))}
+              {/* Строка итогов (только в масштабе день) */}
+              {showTotalsRow && (
+                <div style={{
+                  position: 'relative', height: 24,
+                  borderTop: '1px solid #d0d9e8',
+                  background: '#eaf3fb',
+                }}>
+                  {chartData.timeMarks.map((mark, i) => {
+                    const ds = toDateStr(mark.date);
+                    const total = dailyTotals[ds];
+                    return (
+                      <div key={i} style={{
+                        position: 'absolute',
+                        left: `${mark.offset * ppd}px`,
+                        width: `${ppd}px`,
+                        height: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 11,
+                        fontWeight: total ? 700 : 400,
+                        color: total ? '#1a5fa8' : '#aaa',
+                        borderRight: '1px solid #d0d9e8',
+                        boxSizing: 'border-box',
+                      }}>
+                        {total || ''}
+                      </div>
+                    );
+                  })}
+                  {/* Лейбл слева — он будет перекрыт, но даём намёк через title */}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="gantt-body-scroll" ref={bodyScrollRef}>
+          <div className="gantt-body-content" style={{ width: `${totalWidth}px` }}>
+            {tasks.map(task => {
+              const isSection = task.is_section;
+              return (
+                <div
+                  key={task.id || task.task_id}
+                  className={`gantt-row-integrated ${isSection ? 'gantt-row-section' : ''}`}
+                  style={getRowStyle(task)}
+                >
+                  {chartData.timeMarks.map((mark, idx) => {
+                    const ds = toDateStr(mark.date);
+                    const hc = !isSection && headcountEnabled && scale === 'day'
+                      ? (headcountData?.[task.id]?.[ds] || null)
+                      : null;
+                    return (
+                      <div
+                        key={idx}
+                        className="gantt-grid-line"
+                        style={{
+                          left: `${mark.offset * ppd}px`,
+                          ...(hc ? {
+                            width: `${ppd}px`,
+                            background: 'rgba(74,144,226,0.18)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#1a5fa8',
+                            zIndex: 1,
+                          } : (headcountEnabled && scale === 'day' && !isSection ? {
+                            width: `${ppd}px`,
+                            cursor: 'pointer',
+                          } : {})),
+                        }}
+                        title={!isSection && headcountEnabled && scale === 'day'
+                          ? (hc ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей')
+                          : undefined
+                        }
+                        onClick={() => handleCellClick(task, ds)}
+                      >
+                        {hc || ''}
+                      </div>
+                    );
+                  })}
+                  {!isSection && (
+                    <>
+                      {getBarStyle(task, 'contract') && (
+                        <div
+                          className="gantt-bar-contract"
+                          style={getBarStyle(task, 'contract')}
+                          title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`}
+                        />
+                      )}
+                      {getBarStyle(task, 'plan') && (
+                        <div
+                          className="gantt-bar-plan"
+                          style={getBarStyle(task, 'plan')}
+                          title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      <div className="gantt-body-scroll" ref={bodyScrollRef}>
-        <div className="gantt-body-content" style={{ width: `${totalWidth}px` }}>
-          {tasks.map(task => (
-            <div
-              key={task.id || task.task_id}
-              className={`gantt-row-integrated ${task.is_section ? 'gantt-row-section' : ''}`}
-              style={getRowStyle(task)}
-            >
-              {chartData.timeMarks.map((mark, idx) => (
-                <div key={idx} className="gantt-grid-line" style={{ left: `${mark.offset * ppd}px` }} />
-              ))}
-              {!task.is_section && (
-                <>
-                  {getBarStyle(task, 'contract') && (
-                    <div
-                      className="gantt-bar-contract"
-                      style={getBarStyle(task, 'contract')}
-                      title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`}
-                    />
-                  )}
-                  {getBarStyle(task, 'plan') && (
-                    <div
-                      className="gantt-bar-plan"
-                      style={getBarStyle(task, 'plan')}
-                      title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+      {modal && (
+        <HeadcountModal
+          task={modal.task}
+          date={modal.dateStr}
+          current={modal.current}
+          onSave={handleModalSave}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </>
   );
 }
 

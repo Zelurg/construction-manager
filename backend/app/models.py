@@ -63,14 +63,13 @@ class Task(Base):
     level = Column(Integer, default=0, nullable=False)
     parent_code = Column(String, nullable=True)
     is_custom = Column(Boolean, default=False, nullable=False)
-    # server_default гарантирует DEFAULT 0 на уровне Postgres,
-    # чтобы существующие строки без этого поля не давали NULL и 500.
     sort_order = Column(Integer, default=0, server_default='0', nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="tasks")
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
     daily_works = relationship("DailyWork", back_populates="task")
+    daily_headcounts = relationship("DailyHeadcount", back_populates="task", cascade="all, delete-orphan")
 
 
 class MonthlyTask(Base):
@@ -165,3 +164,21 @@ class DailyEquipmentUsage(Base):
 
     equipment = relationship("Equipment", back_populates="daily_equipment_usage")
     brigade = relationship("Brigade", back_populates="daily_equipment_usage")
+
+
+class DailyHeadcount(Base):
+    """Плановое количество людей на работу в конкретный день (МСГ)"""
+    __tablename__ = "daily_headcount"
+    __table_args__ = (
+        UniqueConstraint('task_id', 'date', name='uq_daily_headcount_task_date'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    headcount = Column(Integer, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    task = relationship("Task", back_populates="daily_headcounts")
