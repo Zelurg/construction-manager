@@ -2,23 +2,6 @@
    GANTT CHART — INTEGRATED
    ======================================== */
 
-/*
-  Высота шапки Ганта должна ТОЧНО совпадать с высотой thead таблицы.
-
-  thead таблицы:
-    tr.thead-labels  = 36px (height + line-height)
-    tr.thead-filters = 24px (height + line-height)
-    Итого: 60px
-
-  Шапка Ганта:
-    .gantt-controls-row  = 36px (height: 36px, box-sizing: border-box)
-    .gantt-timeline-row  = 24px (height: 24px, box-sizing: border-box)
-    Итого: 60px
-
-  Бордеры внутри блоков учитываются через box-sizing:border-box,
-  поэтому высота не «распухает».
-*/
-
 .gantt-chart-integrated {
   display: flex;
   flex-direction: column;
@@ -32,7 +15,6 @@
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
   z-index: 10;
-  /* Суммарная высота = 36 + 24 = 60px */
 }
 
 .gantt-controls-row {
@@ -40,14 +22,13 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  height: 36px;            /* строго 36px, включая border */
+  height: 36px;
   box-sizing: border-box;
   border-bottom: 1px solid #e0e0e0;
   flex-shrink: 0;
-  overflow: hidden;        /* предотвращаем случайное увеличение */
+  overflow: hidden;
 }
 
-/* используется в empty-state */
 .gantt-controls-fixed {
   display: flex;
   align-items: center;
@@ -75,20 +56,18 @@
   background: white;
 }
 
-/* Временная шкала — ровно 24px, border включён в высоту */
 .gantt-timeline-row {
   overflow-x: hidden;
-  height: 24px;            /* строго 24px */
+  overflow-y: hidden;
+  /* Высота управляется через style в JS (24px или 48px) */
   box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
   border-bottom: 1px solid #e0e0e0;
-  overflow: hidden;
 }
 
 .gantt-timeline-content {
   position: relative;
-  height: 24px;
   min-width: 100%;
 }
 
@@ -107,7 +86,6 @@
   line-height: 16px;
 }
 
-/* Тело диаграммы */
 .gantt-body-scroll {
   flex: 1;
   overflow: auto;
@@ -119,7 +97,6 @@
   min-height: 100%;
 }
 
-/* Строки диаграммы — высота совпадает с tbody tr таблицы (32px) */
 .gantt-row-integrated {
   position: relative;
   height: 32px;
@@ -131,16 +108,15 @@
   border-bottom: 1px solid #e0e0e0;
 }
 
-/* Вертикальные линии сетки */
+/* Вертикальные линии сетки.
+   pointer-events: none УБРАН — теперь клики управляются через JS (headcountEnabled). */
 .gantt-grid-line {
   position: absolute;
   top: 0;
   height: 100%;
   border-left: 1px solid #f0f0f0;
-  pointer-events: none;
 }
 
-/* Скроллбар */
 .gantt-body-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .gantt-body-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 6px; }
 .gantt-body-scroll::-webkit-scrollbar-thumb { background: #bbb; border-radius: 6px; }
