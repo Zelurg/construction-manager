@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
-from . import models
+from . import models  # noqa — все модели должны быть зарегистрированы до create_all
 from .routes import (
     auth, users, admin, schedule, monthly,
     daily, brigades, executors, analytics,
@@ -10,7 +10,9 @@ from .routes import (
 )
 from .routes import projects
 
-Base.metadata.create_all(bind=engine)
+# Создаём ВСЕ таблицы, включая daily_headcount если она ещё не существует.
+# checkfirst=True — безопасно, не трогает существующие таблицы.
+Base.metadata.create_all(bind=engine, checkfirst=True)
 
 app = FastAPI(title="Construction Manager API", version="2.0.0")
 
