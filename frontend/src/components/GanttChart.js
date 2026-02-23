@@ -19,7 +19,7 @@ function HeadcountModal({ task, date, current, onSave, onClose }) {
 
   const handleSave = () => {
     const n = parseInt(value, 10);
-    if (!value || isNaN(n) || n <= 0) { alert('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e \u0431\u043e\u043b\u044c\u0448\u0435 0'); return; }
+    if (!value || isNaN(n) || n <= 0) { alert('Введите целое число больше 0'); return; }
     onSave(n);
   };
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); };
@@ -28,17 +28,17 @@ function HeadcountModal({ task, date, current, onSave, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
       <div style={{ background: '#fff', borderRadius: 8, padding: '24px 28px', minWidth: 320, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u043b\u044e\u0434\u0435\u0439</div>
-        <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}><b>\u0420\u0430\u0431\u043e\u0442\u0430:</b> {task.name}</div>
-        <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}><b>\u0414\u0430\u0442\u0430:</b> {dateLabel}</div>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Назначение людей</div>
+        <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}><b>Работа:</b> {task.name}</div>
+        <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}><b>Дата:</b> {dateLabel}</div>
         <input ref={inputRef} type="number" min="1" step="1" value={value}
           onChange={e => setValue(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder="\u041a\u043e\u043b-\u0432\u043e \u043b\u044e\u0434\u0435\u0439"
+          placeholder="Кол-во людей"
           style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 16 }}
         />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>\u041e\u0442\u043c\u0435\u043d\u0430</button>
-          <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 5, border: 'none', background: '#4a90e2', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c</button>
+          <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
+          <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 5, border: 'none', background: '#4a90e2', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Сохранить</button>
         </div>
       </div>
     </div>
@@ -62,11 +62,11 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   };
 
   const scaleConfig = {
-    year:    { pixelsPerDay: 1,  label: '\u0413\u043e\u0434',     format: (d) => d.getFullYear().toString() },
-    quarter: { pixelsPerDay: 3,  label: '\u041a\u0432\u0430\u0440\u0442\u0430\u043b', format: (d) => `Q${Math.floor(d.getMonth()/3)+1} ${d.getFullYear()}` },
-    month:   { pixelsPerDay: 5,  label: '\u041c\u0435\u0441\u044f\u0446',   format: (d) => d.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }) },
-    week:    { pixelsPerDay: 15, label: '\u041d\u0435\u0434\u0435\u043b\u044f',  format: (d) => `${d.getDate()}.${String(d.getMonth()+1).padStart(2,'0')}` },
-    day:     { pixelsPerDay: 60, label: '\u0414\u0435\u043d\u044c',    format: (d) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) },
+    year:    { pixelsPerDay: 1,  label: 'Год',     format: (d) => d.getFullYear().toString() },
+    quarter: { pixelsPerDay: 3,  label: 'Квартал', format: (d) => `Q${Math.floor(d.getMonth()/3)+1} ${d.getFullYear()}` },
+    month:   { pixelsPerDay: 5,  label: 'Месяц',   format: (d) => d.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }) },
+    week:    { pixelsPerDay: 15, label: 'Неделя',  format: (d) => `${d.getDate()}.${String(d.getMonth()+1).padStart(2,'0')}` },
+    day:     { pixelsPerDay: 60, label: 'День',    format: (d) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) },
   };
 
   const chartData = useMemo(() => {
@@ -165,14 +165,14 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
       <div className="gantt-chart-integrated">
         <div className="gantt-combined-header">
           <div className="gantt-controls-fixed">
-            <div className="gantt-title">\u0414\u0438\u0430\u0433\u0440\u0430\u043c\u043c\u0430 \u0413\u0430\u043d\u0442\u0430</div>
+            <div className="gantt-title">Диаграмма Ганта</div>
             <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
               {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
             </select>
           </div>
-          <div className="gantt-timeline-row"><div className="gantt-empty-timeline">\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445</div></div>
+          <div className="gantt-timeline-row"><div className="gantt-empty-timeline">Нет данных</div></div>
         </div>
-        <div className="gantt-empty">\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u0434\u043b\u044f \u043e\u0442\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u044f</div>
+        <div className="gantt-empty">Нет данных для отображения</div>
       </div>
     );
   }
@@ -197,7 +197,7 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
       backgroundColor: type === 'contract' ? '#aaa' : '#4a90e2',
       position: 'absolute',
       borderRadius: '3px',
-      pointerEvents: 'none',  // Клики проходят сквозь бар на grid-ячейку
+      pointerEvents: 'none',
     };
   };
 
@@ -206,7 +206,7 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
       <div className="gantt-chart-integrated">
         <div className="gantt-combined-header">
           <div className="gantt-controls-row">
-            <div className="gantt-title">\u0414\u0438\u0430\u0433\u0440\u0430\u043c\u043c\u0430 \u0413\u0430\u043d\u0442\u0430</div>
+            <div className="gantt-title">Диаграмма Ганта</div>
             <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
               {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
             </select>
@@ -255,7 +255,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                   className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`}
                   style={!isSection ? {} : { backgroundColor: getSectionColor(task.level) }}
                 >
-                  {/* Grid-ячейки — принимают клики в режиме headcount */}
                   {chartData.timeMarks.map((mark, idx) => {
                     const ds = toDateStr(mark.date);
                     const hc = isClickable ? (headcountData?.[task.id]?.[ds] || null) : null;
@@ -275,18 +274,23 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                             } : {}),
                           } : { pointerEvents: 'none' }),
                         }}
-                        title={isClickable ? (hc ? `${hc} \u0447\u0435\u043b. \u2014 \u043d\u0430\u0436\u043c\u0438\u0442\u0435 \u0434\u043b\u044f \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f` : '\u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u0434\u043b\u044f \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043b\u044e\u0434\u0435\u0439') : undefined}
+                        title={isClickable ? (hc ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей') : undefined}
                         onClick={isClickable ? () => handleCellClick(task, ds) : undefined}
                       >
                         {hc || ''}
                       </div>
                     );
                   })}
-                  {/* Бары: pointerEvents none, чтобы клики проходили на grid-ячейку */}
                   {!isSection && (
                     <>
-                      {getBarStyle(task, 'contract') && <div className="gantt-bar-contract" style={getBarStyle(task, 'contract')} title={`\u041a\u043e\u043d\u0442\u0440\u0430\u043a\u0442: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} \u2014 ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />}
-                      {getBarStyle(task, 'plan') && <div className="gantt-bar-plan" style={getBarStyle(task, 'plan')} title={`\u041f\u043b\u0430\u043d: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} \u2014 ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />}
+                      {getBarStyle(task, 'contract') && (
+                        <div className="gantt-bar-contract" style={getBarStyle(task, 'contract')}
+                          title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />
+                      )}
+                      {getBarStyle(task, 'plan') && (
+                        <div className="gantt-bar-plan" style={getBarStyle(task, 'plan')}
+                          title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />
+                      )}
                     </>
                   )}
                 </div>
