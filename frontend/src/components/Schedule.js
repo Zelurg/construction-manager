@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { scheduleAPI, employeesAPI, headcountAPI } from '../services/api';
+import { scheduleAPI, employeesAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
@@ -66,21 +66,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [employees, setEmployees] = useState([]);
   const [filterTriggers, setFilterTriggers] = useState({});
 
-  // --- Headcount state ---
-  // headcountData: { [taskId]: { 'YYYY-MM-DD': count } }
-  const [headcountData, setHeadcountData] = useState({});
-  // Текущий месяц для загрузки данных headcount
-  const [headcountMonth, setHeadcountMonth] = useState(() => {
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() + 1 };
-  });
-  // Флаг: включён ли режим редактирования МСГ (только для admin)
-  const headcountEnabled = isAdmin;
-  // showTotalsRow — true когда Gantt в режиме день + headcount включён
-  // Передаём в GanttChart, он сам управляет своей высотой шапки.
-  // Нам нужно знать это значение чтобы добавить padding к thead таблицы.
-  const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
-
   const [colWidths, setColWidths] = useState(() => {
     try {
       const s = localStorage.getItem('scheduleColWidths');
@@ -98,29 +83,29 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
 
   const availableColumns = [
-    { key: 'code',                    label: 'Шифр' },
-    { key: 'name',                    label: 'Наименование' },
-    { key: 'unit',                    label: 'Ед. изм.' },
-    { key: 'volume_plan',             label: 'Объём план' },
-    { key: 'volume_fact',             label: 'Объём факт' },
-    { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
-    { key: 'start_date_contract',     label: 'Старт контракт' },
-    { key: 'end_date_contract',       label: 'Финиш контракт' },
-    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
-    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
-    { key: 'unit_price',              label: 'Цена за ед.' },
-    { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
-    { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
-    { key: 'executor',                label: 'Исполнитель',           editable: true },
-    { key: 'labor_total',             label: 'Всего трудозатрат',   isCalculated: true },
-    { key: 'labor_fact',              label: 'Трудозатраты факт',   isCalculated: true },
-    { key: 'labor_remaining',         label: 'Остаток трудозатрат', isCalculated: true },
-    { key: 'cost_total',              label: 'Стоимость всего',       isCalculated: true },
-    { key: 'cost_fact',               label: 'Стоимость факт',        isCalculated: true },
-    { key: 'cost_remaining',          label: 'Остаток стоимости',     isCalculated: true },
-    { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
-    { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
-    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
+    { key: 'code',                    label: '\u0428\u0438\u0444\u0440' },
+    { key: 'name',                    label: '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435' },
+    { key: 'unit',                    label: '\u0415\u0434. \u0438\u0437\u043c.' },
+    { key: 'volume_plan',             label: '\u041e\u0431\u044a\u0451\u043c \u043f\u043b\u0430\u043d' },
+    { key: 'volume_fact',             label: '\u041e\u0431\u044a\u0451\u043c \u0444\u0430\u043a\u0442' },
+    { key: 'volume_remaining',        label: '\u041e\u0431\u044a\u0451\u043c \u043e\u0441\u0442\u0430\u0442\u043e\u043a',  isCalculated: true },
+    { key: 'start_date_contract',     label: '\u0421\u0442\u0430\u0440\u0442 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
+    { key: 'end_date_contract',       label: '\u0424\u0438\u043d\u0438\u0448 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
+    { key: 'start_date_plan',         label: '\u0421\u0442\u0430\u0440\u0442 \u043f\u043b\u0430\u043d',    editable: true },
+    { key: 'end_date_plan',           label: '\u0424\u0438\u043d\u0438\u0448 \u043f\u043b\u0430\u043d',    editable: true },
+    { key: 'unit_price',              label: '\u0426\u0435\u043d\u0430 \u0437\u0430 \u0435\u0434.' },
+    { key: 'labor_per_unit',          label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b/\u0435\u0434.' },
+    { key: 'machine_hours_per_unit',  label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b/\u0435\u0434.' },
+    { key: 'executor',                label: '\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c',           editable: true },
+    { key: 'labor_total',             label: '\u0412\u0441\u0435\u0433\u043e \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442',   isCalculated: true },
+    { key: 'labor_fact',              label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b \u0444\u0430\u043a\u0442',   isCalculated: true },
+    { key: 'labor_remaining',         label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442', isCalculated: true },
+    { key: 'cost_total',              label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0432\u0441\u0435\u0433\u043e',       isCalculated: true },
+    { key: 'cost_fact',               label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0444\u0430\u043a\u0442',        isCalculated: true },
+    { key: 'cost_remaining',          label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438',     isCalculated: true },
+    { key: 'machine_hours_total',     label: '\u0412\u0441\u0435\u0433\u043e \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432',   isCalculated: true },
+    { key: 'machine_hours_fact',      label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b \u0444\u0430\u043a\u0442',       isCalculated: true },
+    { key: 'machine_hours_remaining', label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432', isCalculated: true },
   ];
 
   const defaultColumns = [
@@ -131,48 +116,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     const s = localStorage.getItem('scheduleVisibleColumns');
     return s ? JSON.parse(s) : defaultColumns;
   });
-
-  // --- Загрузка headcount при смене месяца или проекта ---
-  const loadHeadcount = useCallback(async (year, month) => {
-    try {
-      const res = await headcountAPI.getByMonth(year, month);
-      // Преобразуем массив в { [taskId]: { 'YYYY-MM-DD': count } }
-      const map = {};
-      res.data.forEach(item => {
-        if (!map[item.task_id]) map[item.task_id] = {};
-        map[item.task_id][item.date] = item.headcount;
-      });
-      setHeadcountData(map);
-    } catch (e) {
-      console.error('Ошибка загрузки headcount:', e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (showGantt && headcountEnabled) {
-      loadHeadcount(headcountMonth.year, headcountMonth.month);
-    }
-  }, [showGantt, headcountEnabled, headcountMonth, loadHeadcount]);
-
-  // Когда Gantt меняет видимый месяц (при скролле к другому месяцу)
-  // обновляем месяц загрузки через callback из GanttChart
-  const handleGanttMonthChange = useCallback((year, month) => {
-    setHeadcountMonth({ year, month });
-  }, []);
-
-  // Сохранение headcount из Gantt
-  const handleHeadcountSave = useCallback(async (taskId, dateStr, count) => {
-    try {
-      await headcountAPI.upsert(taskId, dateStr, count);
-      setHeadcountData(prev => ({
-        ...prev,
-        [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
-      }));
-    } catch (e) {
-      console.error('Ошибка сохранения headcount:', e);
-      alert('Не удалось сохранить данные');
-    }
-  }, []);
 
   useEffect(() => {
     if (!showGantt) return;
@@ -245,11 +188,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const loadTasks = async () => {
     try { const r = await scheduleAPI.getTasks(); setTasks([...r.data].sort(compareCode)); }
-    catch (e) { console.error('Ошибка загрузки задач:', e); }
+    catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0437\u0430\u0434\u0430\u0447:', e); }
   };
   const loadEmployees = async () => {
     try { const r = await employeesAPI.getAll({ active_only: true }); setEmployees(r.data); }
-    catch (e) { console.error('Ошибка загрузки сотрудников:', e); }
+    catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u0432:', e); }
   };
 
   const getChildTasks = (sectionCode, arr) => {
@@ -369,7 +312,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     try {
       await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: editValue || null });
       setTasks(prev => prev.map(t => t.id === editingCell.taskId ? { ...t, [editingCell.field]: editValue || null } : t));
-    } catch (e) { console.error('Ошибка обновления:', e); }
+    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f:', e); }
     finally { setEditingCell(null); }
   };
 
@@ -383,7 +326,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }}>
-          <option value="">Не выбран</option>
+          <option value="">\u041d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d</option>
           {employees.map(emp => <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>)}
         </select>
       );
@@ -426,11 +369,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
-  // Высота шапки таблицы синхронизируется с Gantt:
-  // - обычный режим: 60px (совпадает с gantt-controls-row 36px + gantt-timeline-row 24px)
-  // - режим день с МСГ: 60px + 24px строка итогов = 84px
-  const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
-
   return (
     <div className="schedule-container-integrated" ref={containerRef}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}>
@@ -443,15 +381,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
               <colgroup>
                 {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
               </colgroup>
-              <thead style={{ height: `${tableHeaderHeight}px` }}>
-                <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px` }}>
+              <thead>
+                <tr className="thead-labels">
                   {visibleColumns.map(key => (
                     <th
                       key={key}
                       className={filters[key] ? 'has-filter' : ''}
                       onContextMenu={(e) => handleThContextMenu(e, key)}
-                      title="Правый клик — фильтр"
-                      style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}
+                      title="\u041f\u0440\u0430\u0432\u044b\u0439 \u043a\u043b\u0438\u043a \u2014 \u0444\u0438\u043b\u044c\u0442\u0440"
                     >
                       <span className="th-label-text">{getColLabel(key)}</span>
                       <ColumnFilter
@@ -473,7 +410,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                     {visibleColumns.map(key => (
                       <td key={key} style={getCellStyle(task, key)}
                         onDoubleClick={() => handleCellDoubleClick(task, key)}
-                        title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? 'Двойной клик для редактирования' : ''}>
+                        title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u043a\u043b\u0438\u043a \u0434\u043b\u044f \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f' : ''}>
                         {getCellValue(task, key)}
                       </td>
                     ))}
@@ -488,14 +425,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
         {showGantt && (
           <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
+            {/* headcountEnabled=false — МСГ только в вкладке МСГ, не в Графике */}
             <GanttChart
               tasks={filteredTasks}
               externalScrollRef={ganttBodyRef}
-              headcountData={headcountData}
-              onHeadcountSave={handleHeadcountSave}
-              headcountEnabled={headcountEnabled}
-              onTotalsRowChange={setGanttShowsTotals}
-              onMonthChange={handleGanttMonthChange}
+              headcountEnabled={false}
             />
           </div>
         )}
