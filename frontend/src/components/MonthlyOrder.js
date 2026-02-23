@@ -68,9 +68,9 @@ const TaskRow = React.memo(function TaskRow({
           {task.is_custom && (
             <button
               onClick={e => { e.stopPropagation(); onDeleteCustomRow(task.id); }}
-              title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443"
+              title="Удалить строку"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14, lineHeight: 1, padding: 2 }}
-            >\u2715</button>
+            >✕</button>
           )}
         </td>
       )}
@@ -78,7 +78,7 @@ const TaskRow = React.memo(function TaskRow({
         <td key={key}
           style={getCellStyle(task, key)}
           onDoubleClick={() => onCellDoubleClick(task, key)}
-          title={isFieldEditable(task, key) ? '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u043a\u043b\u0438\u043a \u0434\u043b\u044f \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f' : ''}
+          title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
         >
           {getCellValue(task, key)}
         </td>
@@ -95,17 +95,16 @@ const TaskRow = React.memo(function TaskRow({
   prev.isAdmin === next.isAdmin
 ));
 
-// ─── Генератор HTML диаграммы Ганта для печати ────────────────────────────────
-// Воспроизводит ту же логику что в GanttChart.js: minDate, ppd, полосы plan/contract
-// Возвращает строку HTML с SVG-полосами внутри абсолютно позиционированных div
-function buildGanttHtml(tasks, ganttScale) {
+// ─── Генератор HTML диаграммы Ганта для печати ───────────────────────────────
+// Использует <table> для строк — высота TR точно совпадает с таблицей задач.
+// Полосы рисуются внутри <td> через position:relative на ячейке.
+function buildGanttHtml(tasks, ganttScale, ROW_H) {
   const SCALE_PPD = { year: 1, quarter: 3, month: 5, week: 15, day: 60 };
   const ppd = SCALE_PPD[ganttScale] || 5;
 
   const workTasks = tasks.filter(t => !t.is_section && (t.start_date_plan || t.start_date_contract));
   if (workTasks.length === 0) return '<p style="color:#999;font-size:11px;">Нет данных для диаграммы</p>';
 
-  // Находим диапазон дат
   const allDates = [];
   workTasks.forEach(t => {
     if (t.start_date_contract) allDates.push(new Date(t.start_date_contract));
@@ -115,12 +114,12 @@ function buildGanttHtml(tasks, ganttScale) {
   });
   if (allDates.length === 0) return '<p style="color:#999">Нет дат</p>';
 
-  const minDate = new Date(Math.min(...allDates)); minDate.setHours(0,0,0,0);
-  const maxDate = new Date(Math.max(...allDates)); maxDate.setHours(23,59,59,999);
+  const minDate = new Date(Math.min(...allDates)); minDate.setHours(0, 0, 0, 0);
+  const maxDate = new Date(Math.max(...allDates)); maxDate.setHours(23, 59, 59, 999);
   const totalDays = Math.ceil((maxDate - minDate) / 864e5) + 1;
   const totalWidth = totalDays * ppd;
 
-  // Строим метки шкалы времени
+  // Метки шкалы времени
   const timeMarks = [];
   if (ganttScale === 'day' || ganttScale === 'week') {
     const step = ganttScale === 'week' ? 7 : 1;
@@ -128,7 +127,7 @@ function buildGanttHtml(tasks, ganttScale) {
       const md = new Date(minDate); md.setDate(md.getDate() + d);
       if (md <= maxDate) {
         const label = ganttScale === 'week'
-          ? `${md.getDate()}.${String(md.getMonth()+1).padStart(2,'0')}`
+          ? `${md.getDate()}.${String(md.getMonth() + 1).padStart(2, '0')}`
           : md.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
         timeMarks.push({ offset: d, label });
       }
@@ -139,62 +138,71 @@ function buildGanttHtml(tasks, ganttScale) {
       const offset = Math.ceil((cur - minDate) / 864e5);
       let label = '';
       if (ganttScale === 'year')    label = cur.getFullYear().toString();
-      if (ganttScale === 'quarter') label = `Q${Math.floor(cur.getMonth()/3)+1} ${cur.getFullYear()}`;
+      if (ganttScale === 'quarter') label = `Q${Math.floor(cur.getMonth() / 3) + 1} ${cur.getFullYear()}`;
       if (ganttScale === 'month')   label = cur.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' });
       timeMarks.push({ offset, label });
-      if (ganttScale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
-      else if (ganttScale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth()+3, 1);
-      else                               cur = new Date(cur.getFullYear()+1, 0, 1);
+      if (ganttScale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      else if (ganttScale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+      else                               cur = new Date(cur.getFullYear() + 1, 0, 1);
     }
   }
 
-  const ROW_H = 30; // высота строки
-
-  // Заголовок шкалы
-  const headerMarks = timeMarks.map(m =>
-    `<div style="position:absolute;left:${m.offset*ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333">${m.label}</div>`
-  ).join('');
-  const headerHtml = `<div style="position:relative;width:${totalWidth}px;height:20px;background:#e0e8f5;border-bottom:1px solid #bbb;overflow:hidden">${headerMarks}</div>`;
-
-  // Вертикальные линии сетки поверх строк
+  // Вертикальные линии сетки — абсолютные div поверх ячейки
   const gridLines = timeMarks.map(m =>
-    `<div style="position:absolute;left:${m.offset*ppd}px;top:0;bottom:0;border-left:1px solid #e0e0e0;pointer-events:none"></div>`
+    `<div style="position:absolute;left:${m.offset * ppd}px;top:0;bottom:0;border-left:1px solid #e0e0e0;pointer-events:none;"></div>`
   ).join('');
 
-  // Строки
-  const rowsHtml = tasks.map(task => {
-    const bgColor = task.is_section ? getSectionColor(task.level) : (task.is_custom ? '#fff9e6' : '#fff');
+  // Заголовочная строка шкалы
+  const headerMarks = timeMarks.map(m =>
+    `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;">${m.label}</div>`
+  ).join('');
+
+  // Строки через <table> — высота TR гарантированно совпадает с таблицей задач
+  const headerTr = `<tr style="height:${ROW_H}px;">
+    <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;">
+      <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${headerMarks}</div>
+    </td>
+  </tr>`;
+
+  const bodyRows = tasks.map(task => {
+    const bgColor = task.is_section
+      ? getSectionColor(task.level)
+      : (task.is_custom ? '#fff9e6' : '#fff');
+
     let bars = '';
     if (!task.is_section) {
-      // Полоса контракт (серая)
       if (task.start_date_contract && task.end_date_contract) {
-        const s = new Date(task.start_date_contract); s.setHours(0,0,0,0);
-        const e = new Date(task.end_date_contract);   e.setHours(0,0,0,0);
+        const s = new Date(task.start_date_contract); s.setHours(0, 0, 0, 0);
+        const e = new Date(task.end_date_contract);   e.setHours(0, 0, 0, 0);
         const left = Math.floor((s - minDate) / 864e5) * ppd;
         const w    = Math.max((Math.floor((e - s) / 864e5) + 1) * ppd, 4);
-        bars += `<div style="position:absolute;left:${left}px;top:5px;width:${w}px;height:8px;background:#aaa;border-radius:3px"></div>`;
+        bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H * 0.15)}px;width:${w}px;height:${Math.round(ROW_H * 0.28)}px;background:#aaa;border-radius:2px;"></div>`;
       }
-      // Полоса план (синяя)
       if (task.start_date_plan && task.end_date_plan) {
-        const s = new Date(task.start_date_plan); s.setHours(0,0,0,0);
-        const e = new Date(task.end_date_plan);   e.setHours(0,0,0,0);
+        const s = new Date(task.start_date_plan); s.setHours(0, 0, 0, 0);
+        const e = new Date(task.end_date_plan);   e.setHours(0, 0, 0, 0);
         const left = Math.floor((s - minDate) / 864e5) * ppd;
         const w    = Math.max((Math.floor((e - s) / 864e5) + 1) * ppd, 4);
-        bars += `<div style="position:absolute;left:${left}px;top:16px;width:${w}px;height:8px;background:#4a90e2;border-radius:3px"></div>`;
+        bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H * 0.55)}px;width:${w}px;height:${Math.round(ROW_H * 0.28)}px;background:#4a90e2;border-radius:2px;"></div>`;
       }
     }
-    return `<div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;background:${bgColor};border-bottom:1px solid #e8e8e8;box-sizing:border-box">${gridLines}${bars}</div>`;
+
+    return `<tr style="height:${ROW_H}px;">
+      <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:${bgColor};border-bottom:1px solid #e8e8e8;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${gridLines}${bars}</div>
+      </td>
+    </tr>`;
   }).join('');
 
   return `
-    <div style="overflow:hidden">
-      ${headerHtml}
-      <div style="position:relative">${rowsHtml}</div>
-    </div>
-    <div style="margin-top:6px;font-size:10px;color:#555">
-      <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Контракт
+    <table style="border-collapse:collapse;table-layout:fixed;">
+      <thead>${headerTr}</thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+    <div style="margin-top:6px;font-size:10px;color:#555;">
+      <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Контракт
       &nbsp;&nbsp;
-      <span style="display:inline-block;width:16px;height:8px;background:#4a90e2;border-radius:2px;vertical-align:middle;margin-right:4px"></span>План
+      <span style="display:inline-block;width:16px;height:8px;background:#4a90e2;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>План
     </div>
   `;
 }
@@ -245,29 +253,29 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const isDraggingRef  = useRef(false);
 
   const availableColumns = useMemo(() => [
-    { key: 'code',                    label: '\u0428\u0438\u0444\u0440' },
-    { key: 'name',                    label: '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435' },
-    { key: 'unit',                    label: '\u0415\u0434. \u0438\u0437\u043c.' },
-    { key: 'volume_plan',             label: '\u041e\u0431\u044a\u0451\u043c \u043f\u043b\u0430\u043d' },
-    { key: 'volume_fact',             label: '\u041e\u0431\u044a\u0451\u043c \u0444\u0430\u043a\u0442' },
-    { key: 'volume_remaining',        label: '\u041e\u0431\u044a\u0451\u043c \u043e\u0441\u0442\u0430\u0442\u043e\u043a',  isCalculated: true },
-    { key: 'start_date_contract',     label: '\u0421\u0442\u0430\u0440\u0442 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
-    { key: 'end_date_contract',       label: '\u0424\u0438\u043d\u0438\u0448 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
-    { key: 'start_date_plan',         label: '\u0421\u0442\u0430\u0440\u0442 \u043f\u043b\u0430\u043d',    editable: true },
-    { key: 'end_date_plan',           label: '\u0424\u0438\u043d\u0438\u0448 \u043f\u043b\u0430\u043d',    editable: true },
-    { key: 'unit_price',              label: '\u0426\u0435\u043d\u0430 \u0437\u0430 \u0435\u0434.' },
-    { key: 'labor_per_unit',          label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b/\u0435\u0434.' },
-    { key: 'machine_hours_per_unit',  label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b/\u0435\u0434.' },
-    { key: 'executor',                label: '\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c',           editable: true },
-    { key: 'labor_total',             label: '\u0412\u0441\u0435\u0433\u043e \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442',   isCalculated: true },
-    { key: 'labor_fact',              label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b \u0444\u0430\u043a\u0442',   isCalculated: true },
-    { key: 'labor_remaining',         label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442', isCalculated: true },
-    { key: 'cost_total',              label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0432\u0441\u0435\u0433\u043e',       isCalculated: true },
-    { key: 'cost_fact',               label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0444\u0430\u043a\u0442',        isCalculated: true },
-    { key: 'cost_remaining',          label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438',     isCalculated: true },
-    { key: 'machine_hours_total',     label: '\u0412\u0441\u0435\u0433\u043e \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432',   isCalculated: true },
-    { key: 'machine_hours_fact',      label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b \u0444\u0430\u043a\u0442',       isCalculated: true },
-    { key: 'machine_hours_remaining', label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432', isCalculated: true },
+    { key: 'code',                    label: 'Шифр' },
+    { key: 'name',                    label: 'Наименование' },
+    { key: 'unit',                    label: 'Ед. изм.' },
+    { key: 'volume_plan',             label: 'Объём план' },
+    { key: 'volume_fact',             label: 'Объём факт' },
+    { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
+    { key: 'start_date_contract',     label: 'Старт контракт' },
+    { key: 'end_date_contract',       label: 'Финиш контракт' },
+    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
+    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
+    { key: 'unit_price',              label: 'Цена за ед.' },
+    { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
+    { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
+    { key: 'executor',                label: 'Исполнитель',           editable: true },
+    { key: 'labor_total',             label: 'Всего трудозатрат',   isCalculated: true },
+    { key: 'labor_fact',              label: 'Трудозатраты факт',   isCalculated: true },
+    { key: 'labor_remaining',         label: 'Остаток трудозатрат', isCalculated: true },
+    { key: 'cost_total',              label: 'Стоимость всего',       isCalculated: true },
+    { key: 'cost_fact',               label: 'Стоимость факт',        isCalculated: true },
+    { key: 'cost_remaining',          label: 'Остаток стоимости',     isCalculated: true },
+    { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
+    { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
+    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
   ], []);
 
   const defaultColumns = [
@@ -301,16 +309,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         ...prev,
         [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
       }));
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c'); }
+    } catch (e) { console.error(e); alert('Не удалось сохранить'); }
   }, []);
 
   const handleDeleteHeadcount = useCallback(async () => {
-    if (!window.confirm(`\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043b\u044e\u0434\u0435\u0439 \u0437\u0430 ${selectedMonth}?`)) return;
+    if (!window.confirm(`Удалить все назначения людей за ${selectedMonth}?`)) return;
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
       await headcountAPI.deleteByMonth(year, month);
       setHeadcountData({});
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить'); }
   }, [selectedMonth]);
 
   useEffect(() => {
@@ -419,7 +427,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const handleAddCustomRow = async () => {
     if (!isAdmin) return;
     try {
-      const payload = { name: '\u041d\u043e\u0432\u0430\u044f \u0440\u0430\u0431\u043e\u0442\u0430' };
+      const payload = { name: 'Новая работа' };
       if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
@@ -432,27 +440,27 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
       setEditValue(newTask.name);
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443'); }
+    } catch (e) { console.error(e); alert('Не удалось создать строку'); }
   };
 
   const handleDeleteCustomRow = useCallback(async (taskId) => {
     if (!isAdmin) return;
-    if (!window.confirm('\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u0443 \u0441\u0442\u0440\u043e\u043a\u0443?')) return;
+    if (!window.confirm('Удалить эту строку?')) return;
     try {
       await scheduleAPI.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить строку'); }
   }, [isAdmin, selectedTaskId]);
 
   const handleDeleteAllCustomRows = async () => {
     if (!isAdmin) return;
-    if (!window.confirm('\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u0440\u0443\u0447\u043d\u044b\u0435 \u0441\u0442\u0440\u043e\u043a\u0438 \u043f\u0440\u043e\u0435\u043a\u0442\u0430?')) return;
+    if (!window.confirm('Удалить все ручные строки проекта?')) return;
     try {
       await scheduleAPI.deleteAllCustomTasks();
       setTasks(prev => prev.filter(t => !t.is_custom));
       setSelectedTaskId(null);
-    } catch (e) { console.error(e); alert('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0438'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить строки'); }
   };
 
   const handleDragStart = useCallback((e, task) => {
@@ -629,22 +637,22 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }}>
-          <option value="">\u041d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d</option>
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }}>
+          <option value="">Не выбран</option>
           {employees.map(emp => <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>)}
         </select>
       );
       if (NUMBER_FIELDS.includes(key)) return (
         <input type="number" step="any" value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }} />
       );
       if (DATE_FIELDS.includes(key)) return (
         <input type="date" value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }} />
       );
       return (
         <input type="text" value={editValue} onChange={e => setEditValue(e.target.value)}
-          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />
+          onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }} />
       );
     }
     return getDisplayValue(task, key);
@@ -702,18 +710,19 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
-  // ─── ПЕЧАТЬ ───────────────────────────────────────────────────────────────────
-  // Таблица + Ганта генерируются как чистый HTML в скрытый iframe.
-  // ROW_H таблицы и Ганта одинаковый (30px) — строки визуально совпадают.
+  // ─── ПЕЧАТЬ ──────────────────────────────────────────────────────────────────
   const handlePrint = useCallback((selectedCols, ganttScale) => {
     setShowPrintDialog(false);
     localStorage.setItem('ganttScale', ganttScale);
 
     const project = JSON.parse(localStorage.getItem('currentProject') || 'null');
-    const projectName = project?.name || '\u041f\u0440\u043e\u0435\u043a\u0442';
+    const projectName = project?.name || 'Проект';
     const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 
-    const ROW_H = 30; // высота строки одинакова для таблицы и Ганта
+    // ROW_H одинаков и для таблицы и для Ганта — строки совпадают визуально.
+    // Значение 24px: меньше чем стандартные 30px экрана, но при печати padding
+    // таблицы компенсируется нулевым padding ячеек Ганта, итого одинаково.
+    const ROW_H = 24;
 
     // ── Таблица ──
     const colLabels = selectedCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
@@ -721,13 +730,13 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const bodyRows = filteredTasks.map(task => {
       const bgColor = task.is_section ? getSectionColor(task.level) : (task.is_custom ? '#fff9e6' : '#fff');
       const fw = task.is_section ? 'bold' : 'normal';
-      const cells = selectedCols.map(key => `<td style="font-weight:${fw}">${getDisplayValue(task, key)}</td>`).join('');
-      return `<tr style="background:${bgColor};height:${ROW_H}px">${cells}</tr>`;
+      const cells = selectedCols.map(key => `<td style="font-weight:${fw};">${getDisplayValue(task, key)}</td>`).join('');
+      return `<tr style="background:${bgColor};" class="data-row">${cells}</tr>`;
     }).join('');
-    const tableHtml = `<table><thead><tr style="height:${ROW_H}px">${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+    const tableHtml = `<table id="main-table"><thead><tr class="header-row">${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
 
     // ── Ганта ──
-    const ganttHtml = showGantt ? buildGanttHtml(filteredTasks, ganttScale) : '';
+    const ganttHtml = showGantt ? buildGanttHtml(filteredTasks, ganttScale, ROW_H) : '';
 
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
@@ -735,51 +744,75 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
     const doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open();
-    doc.write(`
-      <!DOCTYPE html><html><head>
-        <meta charset="utf-8" />
-        <title>\u041c\u0421\u0413 \u2014 ${projectName} \u2014 ${monthLabel}</title>
-        <style>
-          @page { size: A3 landscape; margin: 8mm; }
-          * { box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; font-size: 9px; margin: 0; }
-          h2  { font-size: 13px; margin: 0 0 2px; }
-          p.sub { font-size: 10px; color: #555; margin: 0 0 6px; }
+    doc.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8" />
+      <title>МСГ — ${projectName} — ${monthLabel}</title>
+      <style>
+        @page { size: A3 landscape; margin: 8mm; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 9px; }
+        h2   { font-size: 13px; margin-bottom: 2px; }
+        p.sub { font-size: 10px; color: #555; margin-bottom: 6px; }
 
-          /* ── Макет: таблица слева, Ганта справа ── */
-          .print-layout { display: flex; align-items: flex-start; gap: 0; }
-          .print-table-wrap { flex-shrink: 0; }
-          .print-gantt-wrap { flex: 1; overflow: hidden; margin-left: 4px; }
+        /* Макет: таблица слева, Ганта справа, выровнены по верху */
+        .print-layout { display: flex; align-items: flex-start; gap: 4px; }
+        .print-table-wrap { flex-shrink: 0; }
+        .print-gantt-wrap { flex-shrink: 0; }
 
-          table { border-collapse: collapse; table-layout: auto; }
-          th, td { border: 1px solid #bbb; padding: 2px 4px; white-space: nowrap; font-size: 9px; vertical-align: middle; }
-          th { background: #d0dff0 !important; font-weight: 700; height: ${ROW_H}px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          tr { height: ${ROW_H}px; page-break-inside: avoid; }
-          td { height: ${ROW_H}px; }
+        /* Таблица задач */
+        #main-table { border-collapse: collapse; table-layout: auto; }
+        #main-table th,
+        #main-table td {
+          border: 1px solid #bbb;
+          padding: 0 4px;
+          white-space: nowrap;
+          font-size: 9px;
+          vertical-align: middle;
+          height: ${ROW_H}px;
+          max-height: ${ROW_H}px;
+          overflow: hidden;
+        }
+        #main-table th {
+          background: #d0dff0 !important;
+          font-weight: 700;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        #main-table tr { height: ${ROW_H}px; page-break-inside: avoid; }
 
-          /* Цвета фона */
-          .bg-section0 { background: #B8D4E8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .bg-section1 { background: #C8DFF0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .bg-section2 { background: #D8EAF5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .bg-custom    { background: #fff9e6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        /* Цвета секций — обязательно для печати */
+        tr[style*="#B8D4E8"] td { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#C8DFF0"] td { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#D8EAF5"] td { background: #D8EAF5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#E4F1F8"] td { background: #E4F1F8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#EFF6FB"] td { background: #EFF6FB !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#fff9e6"] td { background: #fff9e6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 
-          /* Ганта-строки */
-          .g-row { height: ${ROW_H}px; position: relative; border-bottom: 1px solid #e8e8e8; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .g-header { height: ${ROW_H}px; background: #e0e8f5; border-bottom: 1px solid #bbb; position: relative; }
-          .g-bar-contract { position: absolute; top: 6px;  height: 8px; background: #aaa;    border-radius: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .g-bar-plan     { position: absolute; top: 17px; height: 8px; background: #4a90e2; border-radius: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .g-grid-line    { position: absolute; top: 0; bottom: 0; border-left: 1px solid #e0e0e0; }
-          .g-label        { position: absolute; top: 0; height: 100%; font-size: 8px; padding-left: 2px; white-space: nowrap; color: #333; display: flex; align-items: center; }
-        </style>
-      </head><body>
-        <h2>\u041c\u0421\u0413 \u2014 ${projectName}</h2>
-        <p class="sub">\u041f\u0435\u0440\u0438\u043e\u0434: ${monthLabel} &nbsp;|&nbsp; \u0421\u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u043d\u043e: ${new Date().toLocaleDateString('ru-RU')}</p>
-        <div class="print-layout">
-          <div class="print-table-wrap">${tableHtml}</div>
-          ${showGantt ? `<div class="print-gantt-wrap">${ganttHtml}</div>` : ''}
-        </div>
-      </body></html>
-    `);
+        /* Ганта-таблица — ровно те же размеры строк */
+        .gantt-table { border-collapse: collapse; table-layout: fixed; }
+        .gantt-table tr  { height: ${ROW_H}px; page-break-inside: avoid; }
+        .gantt-table td  { padding: 0; overflow: hidden; height: ${ROW_H}px; border-bottom: 1px solid #e8e8e8; }
+        .gantt-table thead td { background: #e0e8f5 !important; border-bottom: 1px solid #bbb; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+        /* Полосы Ганта */
+        .g-cell   { position: relative; }
+        .g-wrap   { position: relative; width: 100%; height: 100%; overflow: hidden; }
+        .g-bar    { position: absolute; border-radius: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .g-bar.contract { background: #aaa; }
+        .g-bar.plan     { background: #4a90e2; }
+        .g-vline  { position: absolute; top: 0; bottom: 0; border-left: 1px solid #e0e0e0; }
+        .g-label  { position: absolute; top: 0; height: 100%; font-size: 8px; padding-left: 2px; white-space: nowrap; color: #333; display: flex; align-items: center; }
+        .g-legend { margin-top: 6px; font-size: 10px; color: #555; }
+        .g-dot    { display: inline-block; width: 16px; height: 8px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+      </style>
+    </head><body>
+      <h2>МСГ — ${projectName}</h2>
+      <p class="sub">Период: ${monthLabel} &nbsp;|&nbsp; Сформировано: ${new Date().toLocaleDateString('ru-RU')}</p>
+      <div class="print-layout">
+        <div class="print-table-wrap">${tableHtml}</div>
+        ${showGantt ? `<div class="print-gantt-wrap">${ganttHtml}</div>` : ''}
+      </div>
+    </body></html>`);
     doc.close();
     iframe.contentWindow.focus();
     iframe.contentWindow.print();
@@ -789,27 +822,33 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   return (
     <div className="monthly-order">
       <div className="month-selector">
-        <label>\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043c\u0435\u0441\u044f\u0446:</label>
+        <label>Выберите месяц:</label>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
         <span style={{ fontSize: 13, color: '#666' }}>
-          \u041f\u043e\u043a\u0430\u0437\u0430\u043d\u044b \u0440\u0430\u0431\u043e\u0442\u044b \u0441 \u043f\u043b\u0430\u043d\u043e\u0432\u044b\u043c\u0438 \u0434\u0430\u0442\u0430\u043c\u0438, \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0449\u0438\u043c\u0438 \u0432 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u043c\u0435\u0441\u044f\u0446
+          Показаны работы с плановыми датами, попадающими в выбранный месяц
         </span>
-        <button onClick={handleDeleteHeadcount}
-          title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u043b\u044e\u0434\u0435\u0439 \u0437\u0430 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u043c\u0435\u0441\u044f\u0446"
-          style={{ padding:'4px 12px', background:'#e07b00', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', fontSize:13, marginLeft:12 }}>
-          \u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f
+        <button
+          onClick={handleDeleteHeadcount}
+          title="Удалить все назначения людей за выбранный месяц"
+          style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 12 }}
+        >
+          Удалить назначения
         </button>
         {isAdmin && (
-          <div style={{ display:'inline-flex', gap:8, marginLeft:8 }}>
-            <button onClick={handleAddCustomRow}
-              title={selectedTaskId ? '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443 \u0432\u044b\u0448\u0435 \u0432\u044b\u0434\u0435\u043b\u0435\u043d\u043d\u043e\u0439' : '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443 \u0432 \u043a\u043e\u043d\u0435\u0446'}
-              style={{ padding:'4px 12px', background:'#4a90e2', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', fontSize:13 }}>
-              + \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u0442\u0440\u043e\u043a\u0443
+          <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
+            <button
+              onClick={handleAddCustomRow}
+              title={selectedTaskId ? 'Добавить строку выше выделенной' : 'Добавить строку в конец'}
+              style={{ padding: '4px 12px', background: '#4a90e2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}
+            >
+              + Добавить строку
             </button>
-            <button onClick={handleDeleteAllCustomRows}
-              title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u0440\u0443\u0447\u043d\u044b\u0435 \u0441\u0442\u0440\u043e\u043a\u0438"
-              style={{ padding:'4px 12px', background:'#e55', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', fontSize:13 }}>
-              \u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0432\u0441\u0435 \u0440\u0443\u0447\u043d\u044b\u0435
+            <button
+              onClick={handleDeleteAllCustomRows}
+              title="Удалить все ручные строки"
+              style={{ padding: '4px 12px', background: '#e55', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}
+            >
+              Удалить все ручные
             </button>
           </div>
         )}
@@ -824,18 +863,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
             <div className="table-wrapper">
               <table className="tasks-table-integrated">
                 <colgroup>
-                  {isAdmin && <col style={{ width:'32px' }} />}
-                  {visibleColumns.map(k => <col key={k} style={{ width:`${colWidths[k] || 100}px` }} />)}
+                  {isAdmin && <col style={{ width: '32px' }} />}
+                  {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
                 </colgroup>
-                <thead style={{ height:`${tableHeaderHeight}px` }}>
-                  <tr className="thead-labels" style={{ height:`${tableHeaderHeight}px`, verticalAlign:'middle' }}>
-                    {isAdmin && <th style={{ width:32, padding:0 }} title="\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f" />}
+                <thead style={{ height: `${tableHeaderHeight}px` }}>
+                  <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
+                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
                     {visibleColumns.map(key => (
                       <th key={key}
                         className={filters[key] ? 'has-filter' : ''}
                         onContextMenu={e => handleThContextMenu(e, key)}
-                        title="\u041f\u0440\u0430\u0432\u044b\u0439 \u043a\u043b\u0438\u043a \u2014 \u0444\u0438\u043b\u044c\u0442\u0440"
-                        style={{ verticalAlign:'middle' }}
+                        title="Правый клик — фильтр"
+                        style={{ verticalAlign: 'middle' }}
                       >
                         <span className="th-label-text">{getColLabel(key)}</span>
                         <ColumnFilter
@@ -887,7 +926,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           )}
 
           {showGantt && (
-            <div className="schedule-gantt-section" style={{ width:`${100 - tableWidth}%` }}>
+            <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
               <GanttChart
                 tasks={filteredTasks}
                 externalScrollRef={ganttBodyRef}
