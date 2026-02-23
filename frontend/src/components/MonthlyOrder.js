@@ -44,6 +44,62 @@ const CUSTOM_EDITABLE = [
 const DATE_FIELDS = ['start_date_plan', 'end_date_plan', 'start_date_contract', 'end_date_contract'];
 const NUMBER_FIELDS = ['volume_plan', 'unit_price', 'labor_per_unit', 'machine_hours_per_unit'];
 
+// ─── Вынесено в отдельный мемоизированный компонент ───────────────────────────
+// Это ключевая оптимизация: при клике/выделении/редактировании другой строки
+// React не будет перерисовывать строки, данные которых не изменились.
+const TaskRow = React.memo(function TaskRow({
+  task, visibleColumns, isAdmin, isEditing, isSelected, isDragOver, dragOverPos,
+  getRowStyle, getCellStyle, getCellValue, isFieldEditable,
+  onRowClick, onCellDoubleClick,
+  onDragStart, onDragOver, onDragLeave, onDragEnd, onDrop,
+  onDeleteCustomRow,
+}) {
+  return (
+    <tr
+      style={getRowStyle(task)}
+      onClick={() => onRowClick(task)}
+      draggable={task.is_custom && isAdmin}
+      onDragStart={e => onDragStart(e, task)}
+      onDragOver={e => onDragOver(e, task)}
+      onDragLeave={onDragLeave}
+      onDragEnd={onDragEnd}
+      onDrop={e => onDrop(e, task)}
+    >
+      {isAdmin && (
+        <td style={{ width: 32, padding: '0 4px', textAlign: 'center' }}>
+          {task.is_custom && (
+            <button
+              onClick={e => { e.stopPropagation(); onDeleteCustomRow(task.id); }}
+              title="Удалить строку"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14, lineHeight: 1, padding: 2 }}
+            >✕</button>
+          )}
+        </td>
+      )}
+      {visibleColumns.map(key => (
+        <td key={key}
+          style={getCellStyle(task, key)}
+          onDoubleClick={() => onCellDoubleClick(task, key)}
+          title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
+        >
+          {getCellValue(task, key)}
+        </td>
+      ))}
+    </tr>
+  );
+}, (prev, next) => {
+  // Перерисовываем строку только если изменились её данные или состояние
+  return (
+    prev.task === next.task &&
+    prev.isEditing === next.isEditing &&
+    prev.isSelected === next.isSelected &&
+    prev.isDragOver === next.isDragOver &&
+    prev.dragOverPos === next.dragOverPos &&
+    prev.visibleColumns === next.visibleColumns &&
+    prev.isAdmin === next.isAdmin
+  );
+});
+
 function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
@@ -88,7 +144,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
   const isDraggingRef  = useRef(false);
 
-  const availableColumns = [
+  const availableColumns = useMemo(() => [
     { key: 'code',                    label: 'Шифр' },
     { key: 'name',                    label: 'Наименование' },
     { key: 'unit',                    label: 'Ед. изм.' },
@@ -112,7 +168,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
     { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
     { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
-  ];
+  ], []);
 
   const defaultColumns = [
     'code', 'name', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
@@ -166,14 +222,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       const onTable = () => {
         if (syncingRef.current) return;
         syncingRef.current = true;
-        ganttEl.scrollTop = tableEl.scrollTop;
-        requestAnimationFrame(() => { syncingRef.current = false; });
+        requestAnimationFrame(() => {
+          ganttEl.scrollTop = tableEl.scrollTop;
+          syncingRef.current = false;
+        });
       };
       const onGantt = () => {
         if (syncingRef.current) return;
         syncingRef.current = true;
-        tableEl.scrollTop = ganttEl.scrollTop;
-        requestAnimationFrame(() => { syncingRef.current = false; });
+        requestAnimationFrame(() => {
+          tableEl.scrollTop = ganttEl.scrollTop;
+          syncingRef.current = false;
+        });
       };
       tableEl.addEventListener('scroll', onTable, { passive: true });
       ganttEl.addEventListener('scroll', onGantt, { passive: true });
@@ -185,15 +245,30 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => clearTimeout(timer);
   }, [showGantt, filteredTasks]);
 
+  // RAF-throttle на resize колонок: обновляем DOM не чаще 1 раза за кадр (60fps)
   const handleColResizeMouseDown = useCallback((e, colKey) => {
     e.preventDefault(); e.stopPropagation();
-    colResizeRef.current = { active: true, colKey, startX: e.clientX, startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100 };
+    colResizeRef.current = {
+      active: true, colKey,
+      startX: e.clientX,
+      startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100,
+      rafId: null,
+    };
     const onMove = (ev) => {
       if (!colResizeRef.current.active) return;
-      const w = Math.max(50, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
-      setColWidths(prev => ({ ...prev, [colResizeRef.current.colKey]: w }));
+      // Пропускаем событие если предыдущий кадр ещё не отрисован
+      if (colResizeRef.current.rafId) return;
+      colResizeRef.current.rafId = requestAnimationFrame(() => {
+        const w = Math.max(50, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
+        setColWidths(prev => ({ ...prev, [colResizeRef.current.colKey]: w }));
+        colResizeRef.current.rafId = null;
+      });
     };
     const onUp = () => {
+      if (colResizeRef.current.rafId) {
+        cancelAnimationFrame(colResizeRef.current.rafId);
+        colResizeRef.current.rafId = null;
+      }
       colResizeRef.current.active = false;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
@@ -274,7 +349,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     } catch (e) { console.error(e); alert('Не удалось создать строку'); }
   };
 
-  const handleDeleteCustomRow = async (taskId) => {
+  const handleDeleteCustomRow = useCallback(async (taskId) => {
     if (!isAdmin) return;
     if (!window.confirm('Удалить эту строку?')) return;
     try {
@@ -282,7 +357,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
     } catch (e) { console.error(e); alert('Не удалось удалить строку'); }
-  };
+  }, [isAdmin, selectedTaskId]);
 
   const handleDeleteAllCustomRows = async () => {
     if (!isAdmin) return;
@@ -360,14 +435,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     }
   }, [isAdmin]);
 
-  const getChildTasks = (sectionCode, arr) => {
+  const getChildTasks = useCallback((sectionCode, arr) => {
     const children = [];
     const prefix = sectionCode + '.';
     arr.forEach(t => { if (!t.is_section && String(t.code).startsWith(prefix)) children.push(t); });
     return children;
-  };
+  }, []);
 
-  const calculateSectionSum = (section, key) => {
+  const calculateSectionSum = useCallback((section, key) => {
     let sum = 0;
     getChildTasks(section.code, filteredTasks).forEach(t => {
       switch (key) {
@@ -384,9 +459,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       }
     });
     return sum;
-  };
+  }, [filteredTasks, getChildTasks]);
 
-  const getDisplayValue = (task, key) => {
+  const getDisplayValue = useCallback((task, key) => {
     if (task.is_section) {
       const sumCols = ['labor_total', 'labor_fact', 'labor_remaining', 'cost_total', 'cost_fact', 'cost_remaining', 'machine_hours_total', 'machine_hours_fact', 'machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
@@ -408,7 +483,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         return task[key] ? new Date(task[key]).toLocaleDateString('ru-RU') : '-';
       default: return task[key] !== undefined && task[key] !== null ? String(task[key]) : '-';
     }
-  };
+  }, [calculateSectionSum]);
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
@@ -435,17 +510,17 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     setFilteredTasks(result);
   };
 
-  const handleFilterApply = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
-  const handleClearAllFilters = () => { setFilters({}); setShowFilterManager(false); };
+  const handleFilterApply = useCallback((k, v) => setFilters(prev => ({ ...prev, [k]: v })), []);
+  const handleClearAllFilters = useCallback(() => { setFilters({}); setShowFilterManager(false); }, []);
 
-  const getColumnValues = (key) => {
+  const getColumnValues = useCallback((key) => {
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
     active.forEach(([k, v]) => {
       arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()));
     });
     return arr.map(t => getDisplayValue(t, key));
-  };
+  }, [filters, tasks, getDisplayValue]);
 
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
@@ -455,13 +530,13 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     }));
   }, []);
 
-  const isFieldEditable = (task, key) => {
+  const isFieldEditable = useCallback((task, key) => {
     if (!isAdmin || task.is_section) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
     return STANDARD_EDITABLE.includes(key);
-  };
+  }, [isAdmin]);
 
-  const handleCellDoubleClick = (task, key) => {
+  const handleCellDoubleClick = useCallback((task, key) => {
     if (!isFieldEditable(task, key)) return;
     setEditingCell({ taskId: task.id, field: key });
     let val = '';
@@ -471,9 +546,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       val = task[key] !== null && task[key] !== undefined ? String(task[key]) : '';
     }
     setEditValue(val);
-  };
+  }, [isFieldEditable]);
 
-  const handleCellBlur = async () => {
+  const handleCellBlur = useCallback(async () => {
     if (!editingCell) return;
     const task = tasks.find(t => t.id === editingCell.taskId);
     if (!task) return;
@@ -494,14 +569,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
         t.id === editingCell.taskId ? { ...t, [editingCell.field]: updateVal } : t
       ));
     } catch (e) { console.error(e); } finally { setEditingCell(null); }
-  };
+  }, [editingCell, editValue, tasks]);
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter') handleCellBlur();
     else if (e.key === 'Escape') setEditingCell(null);
-  };
+  }, [handleCellBlur]);
 
-  const getCellValue = (task, key) => {
+  const getCellValue = useCallback((task, key) => {
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
@@ -529,16 +604,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       );
     }
     return getDisplayValue(task, key);
-  };
+  }, [editingCell, editValue, employees, handleCellBlur, handleKeyDown, getDisplayValue]);
 
-  const getColLabel = (key) => availableColumns.find(c => c.key === key)?.label ?? key;
+  const getColLabel = useCallback((key) => availableColumns.find(c => c.key === key)?.label ?? key, [availableColumns]);
 
-  const handleSaveColumnSettings = (cols) => {
+  const handleSaveColumnSettings = useCallback((cols) => {
     setVisibleColumns(cols);
     localStorage.setItem('monthlyOrderVisibleColumns', JSON.stringify(cols));
-  };
+  }, []);
 
-  const getRowStyle = (task) => {
+  const getRowStyle = useCallback((task) => {
     const isSelected = task.id === selectedTaskId;
     const isDragOver = task.id === dragOverTaskId;
     if (task.is_section) return {
@@ -556,9 +631,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       borderBottom: isDragOver && dragOverPos === 'after' ? '3px solid #4a90e2' : undefined,
       cursor: task.is_custom && isAdmin ? 'grab' : 'default',
     };
-  };
+  }, [selectedTaskId, dragOverTaskId, dragOverPos, isAdmin]);
 
-  const getCellStyle = (task, key) => {
+  const getCellStyle = useCallback((task, key) => {
     if (!isAdmin || task.is_section) return {};
     if (isFieldEditable(task, key))
       return {
@@ -567,12 +642,12 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
           ? '#ffffcc' : 'inherit',
       };
     return {};
-  };
+  }, [isAdmin, isFieldEditable, editingCell]);
 
-  const handleRowClick = (task) => {
+  const handleRowClick = useCallback((task) => {
     if (editingCell) return;
     setSelectedTaskId(prev => prev === task.id ? null : task.id);
-  };
+  }, [editingCell]);
 
   const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
   useEffect(() => {
@@ -656,38 +731,28 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
                 </thead>
                 <tbody>
                   {filteredTasks.map(task => (
-                    <tr
+                    <TaskRow
                       key={task.id}
-                      style={getRowStyle(task)}
-                      onClick={() => handleRowClick(task)}
-                      draggable={task.is_custom && isAdmin}
-                      onDragStart={e => handleDragStart(e, task)}
-                      onDragOver={e => handleDragOver(e, task)}
+                      task={task}
+                      visibleColumns={visibleColumns}
+                      isAdmin={isAdmin}
+                      isEditing={editingCell?.taskId === task.id}
+                      isSelected={selectedTaskId === task.id}
+                      isDragOver={dragOverTaskId === task.id}
+                      dragOverPos={dragOverPos}
+                      getRowStyle={getRowStyle}
+                      getCellStyle={getCellStyle}
+                      getCellValue={getCellValue}
+                      isFieldEditable={isFieldEditable}
+                      onRowClick={handleRowClick}
+                      onCellDoubleClick={handleCellDoubleClick}
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDragEnd={handleDragEnd}
-                      onDrop={e => handleDrop(e, task)}
-                    >
-                      {isAdmin && (
-                        <td style={{ width: 32, padding: '0 4px', textAlign: 'center' }}>
-                          {task.is_custom && (
-                            <button
-                              onClick={e => { e.stopPropagation(); handleDeleteCustomRow(task.id); }}
-                              title="Удалить строку"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14, lineHeight: 1, padding: 2 }}
-                            >✕</button>
-                          )}
-                        </td>
-                      )}
-                      {visibleColumns.map(key => (
-                        <td key={key}
-                          style={getCellStyle(task, key)}
-                          onDoubleClick={() => handleCellDoubleClick(task, key)}
-                          title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
-                        >
-                          {getCellValue(task, key)}
-                        </td>
-                      ))}
-                    </tr>
+                      onDrop={handleDrop}
+                      onDeleteCustomRow={handleDeleteCustomRow}
+                    />
                   ))}
                 </tbody>
               </table>

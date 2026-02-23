@@ -45,7 +45,72 @@ function HeadcountModal({ task, date, current, onSave, onClose }) {
   );
 }
 
-// onTotalsRowChange(bool) — уведомляет родителя о смене высоты шапки
+// ─── Мемоизированная строка Gantt ─────────────────────────────────────────────
+// Принимает headcount только своей задачи (не весь объект headcountData),
+// поэтому не перерисовывается при изменении headcount другой строки.
+const GanttRow = React.memo(function GanttRow({
+  task, timeMarks, ppd, headcountEnabled, scale,
+  taskHeadcount, getBarStyle, onCellClick,
+}) {
+  const isSection = task.is_section;
+  const isClickable = headcountEnabled && scale === 'day' && !isSection;
+
+  return (
+    <div
+      className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`}
+      style={!isSection ? {} : { backgroundColor: getSectionColor(task.level) }}
+    >
+      {timeMarks.map((mark, idx) => {
+        const ds = mark.dateStr;
+        const hc = isClickable ? (taskHeadcount?.[ds] || null) : null;
+        return (
+          <div key={idx} className="gantt-grid-line"
+            style={{
+              left: `${mark.offset * ppd}px`,
+              ...(isClickable ? {
+                width: `${ppd}px`,
+                cursor: 'pointer',
+                zIndex: 1,
+                pointerEvents: 'auto',
+                ...(hc ? {
+                  background: 'rgba(74,144,226,0.18)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, color: '#1a5fa8',
+                } : {}),
+              } : { pointerEvents: 'none' }),
+            }}
+            title={isClickable ? (hc ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей') : undefined}
+            onClick={isClickable ? () => onCellClick(task, ds) : undefined}
+          >
+            {hc || ''}
+          </div>
+        );
+      })}
+      {!isSection && (
+        <>
+          {getBarStyle(task, 'contract') && (
+            <div className="gantt-bar-contract" style={getBarStyle(task, 'contract')}
+              title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />
+          )}
+          {getBarStyle(task, 'plan') && (
+            <div className="gantt-bar-plan" style={getBarStyle(task, 'plan')}
+              title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />
+          )}
+        </>
+      )}
+    </div>
+  );
+}, (prev, next) => {
+  return (
+    prev.task === next.task &&
+    prev.taskHeadcount === next.taskHeadcount &&
+    prev.timeMarks === next.timeMarks &&
+    prev.ppd === next.ppd &&
+    prev.scale === next.scale &&
+    prev.headcountEnabled === next.headcountEnabled
+  );
+});
+
 function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, headcountEnabled, onTotalsRowChange }) {
   const [scale, setScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
@@ -85,19 +150,25 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     const maxDate = new Date(Math.max(...dates));
     minDate.setHours(0,0,0,0); maxDate.setHours(23,59,59,999);
     const totalDays = Math.ceil((maxDate - minDate) / (1000*60*60*24)) + 1;
-    const timeMarks = [];
     const cfg = scaleConfig[scale];
+    const timeMarks = [];
+    const toDateStr = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    };
     if (scale === 'day' || scale === 'week') {
       const step = scale === 'week' ? 7 : 1;
       for (let day = 0; day <= totalDays; day += step) {
         const md = new Date(minDate); md.setDate(md.getDate() + day);
-        if (md <= maxDate) timeMarks.push({ date: new Date(md), offset: day, label: cfg.format(md) });
+        if (md <= maxDate) timeMarks.push({ date: new Date(md), dateStr: toDateStr(md), offset: day, label: cfg.format(md) });
       }
     } else {
       let cur = new Date(minDate);
       while (cur <= maxDate) {
         const offset = Math.ceil((cur - minDate) / (1000*60*60*24));
-        timeMarks.push({ date: new Date(cur), offset, label: cfg.format(cur) });
+        timeMarks.push({ date: new Date(cur), dateStr: toDateStr(cur), offset, label: cfg.format(cur) });
         if (scale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
         else if (scale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth()+3, 1);
         else                          cur = new Date(cur.getFullYear()+1, 0, 1);
@@ -106,10 +177,8 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return { minDate, maxDate, totalDays, timeMarks };
   }, [tasks, scale]);
 
-  // Строка итогов МСГ: только когда headcountEnabled=true и масштаб день
   const showTotalsRow = Boolean(headcountEnabled && scale === 'day');
 
-  // Уведомляем родителя (MonthlyOrder) об изменении высоты шапки
   useEffect(() => {
     if (onTotalsRowChange) onTotalsRowChange(showTotalsRow);
   }, [showTotalsRow, onTotalsRowChange]);
@@ -124,13 +193,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     });
     return totals;
   }, [headcountData, showTotalsRow]);
-
-  const toDateStr = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,'0');
-    const day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  };
 
   useEffect(() => {
     const bodyEl = bodyScrollRef.current;
@@ -157,7 +219,29 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     setModal(null);
   };
 
-  // Высота таймлайна: 24px базовый + 24px строка итогов если есть
+  const getBarStyle = useCallback((task, type) => {
+    if (!chartData) return null;
+    const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
+    const endKey   = type === 'contract' ? 'end_date_contract'   : 'end_date_plan';
+    if (!task[startKey] || !task[endKey]) return null;
+    const cfg = scaleConfig[scale];
+    const ppd = cfg.pixelsPerDay;
+    const start = new Date(task[startKey]); start.setHours(0,0,0,0);
+    const end   = new Date(task[endKey]);   end.setHours(0,0,0,0);
+    const startOffset = Math.floor((start - chartData.minDate) / (1000*60*60*24));
+    const duration    = Math.floor((end - start) / (1000*60*60*24)) + 1;
+    return {
+      left: `${startOffset * ppd}px`,
+      width: `${Math.max(duration * ppd, 6)}px`,
+      top: type === 'contract' ? '4px' : '16px',
+      height: '10px',
+      backgroundColor: type === 'contract' ? '#aaa' : '#4a90e2',
+      position: 'absolute',
+      borderRadius: '3px',
+      pointerEvents: 'none',
+    };
+  }, [chartData, scale]);
+
   const timelineRowHeight = showTotalsRow ? 48 : 24;
 
   if (!chartData || tasks.length === 0) {
@@ -181,26 +265,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   const ppd = cfg.pixelsPerDay;
   const totalWidth = chartData.totalDays * ppd;
 
-  const getBarStyle = (task, type) => {
-    const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
-    const endKey   = type === 'contract' ? 'end_date_contract'   : 'end_date_plan';
-    if (!task[startKey] || !task[endKey]) return null;
-    const start = new Date(task[startKey]); start.setHours(0,0,0,0);
-    const end   = new Date(task[endKey]);   end.setHours(0,0,0,0);
-    const startOffset = Math.floor((start - chartData.minDate) / (1000*60*60*24));
-    const duration    = Math.floor((end - start) / (1000*60*60*24)) + 1;
-    return {
-      left: `${startOffset * ppd}px`,
-      width: `${Math.max(duration * ppd, 6)}px`,
-      top: type === 'contract' ? '4px' : '16px',
-      height: '10px',
-      backgroundColor: type === 'contract' ? '#aaa' : '#4a90e2',
-      position: 'absolute',
-      borderRadius: '3px',
-      pointerEvents: 'none',
-    };
-  };
-
   return (
     <>
       <div className="gantt-chart-integrated">
@@ -214,7 +278,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
           <div className="gantt-timeline-row" ref={timelineScrollRef}
             style={{ height: `${timelineRowHeight}px`, overflowX: 'hidden', overflowY: 'hidden' }}>
             <div className="gantt-timeline-content" style={{ width: `${totalWidth}px` }}>
-              {/* Строка дат */}
               <div style={{ position: 'relative', height: 24 }}>
                 {chartData.timeMarks.map((mark, i) => (
                   <div key={i} className="gantt-time-mark" style={{ left: `${mark.offset * ppd}px` }}>
@@ -222,12 +285,10 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                   </div>
                 ))}
               </div>
-              {/* Строка итогов МСГ (только при headcountEnabled + день) */}
               {showTotalsRow && (
                 <div style={{ position: 'relative', height: 24, borderTop: '1px solid #d0d9e8', background: '#eaf3fb' }}>
                   {chartData.timeMarks.map((mark, i) => {
-                    const ds = toDateStr(mark.date);
-                    const total = dailyTotals[ds];
+                    const total = dailyTotals[mark.dateStr];
                     return (
                       <div key={i} style={{
                         position: 'absolute', left: `${mark.offset * ppd}px`, width: `${ppd}px`, height: '24px',
@@ -247,55 +308,19 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
 
         <div className="gantt-body-scroll" ref={bodyScrollRef}>
           <div className="gantt-body-content" style={{ width: `${totalWidth}px` }}>
-            {tasks.map(task => {
-              const isSection = task.is_section;
-              const isClickable = headcountEnabled && scale === 'day' && !isSection;
-              return (
-                <div key={task.id || task.task_id}
-                  className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`}
-                  style={!isSection ? {} : { backgroundColor: getSectionColor(task.level) }}
-                >
-                  {chartData.timeMarks.map((mark, idx) => {
-                    const ds = toDateStr(mark.date);
-                    const hc = isClickable ? (headcountData?.[task.id]?.[ds] || null) : null;
-                    return (
-                      <div key={idx} className="gantt-grid-line"
-                        style={{
-                          left: `${mark.offset * ppd}px`,
-                          ...(isClickable ? {
-                            width: `${ppd}px`,
-                            cursor: 'pointer',
-                            zIndex: 1,
-                            pointerEvents: 'auto',
-                            ...(hc ? {
-                              background: 'rgba(74,144,226,0.18)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 11, fontWeight: 700, color: '#1a5fa8',
-                            } : {}),
-                          } : { pointerEvents: 'none' }),
-                        }}
-                        title={isClickable ? (hc ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей') : undefined}
-                        onClick={isClickable ? () => handleCellClick(task, ds) : undefined}
-                      >
-                        {hc || ''}
-                      </div>
-                    );
-                  })}
-                  {!isSection && (
-                    <>
-                      {getBarStyle(task, 'contract') && (
-                        <div className="gantt-bar-contract" style={getBarStyle(task, 'contract')}
-                          title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />
-                      )}
-                      {getBarStyle(task, 'plan') && (
-                        <div className="gantt-bar-plan" style={getBarStyle(task, 'plan')}
-                          title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
+            {tasks.map(task => (
+              <GanttRow
+                key={task.id || task.task_id}
+                task={task}
+                timeMarks={chartData.timeMarks}
+                ppd={ppd}
+                headcountEnabled={headcountEnabled}
+                scale={scale}
+                taskHeadcount={headcountData?.[task.id]}
+                getBarStyle={getBarStyle}
+                onCellClick={handleCellClick}
+              />
+            ))}
           </div>
         </div>
       </div>
