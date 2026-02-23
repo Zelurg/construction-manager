@@ -15,9 +15,13 @@ import { importExportAPI } from './services/api';
 import './styles/Toolbar.css';
 import './styles/GanttChart.css';
 
-// ─── Внутренний компонент (имеет доступ к ProjectContext) ──────────────────
+const VALID_TABS = ['schedule', 'monthly', 'daily', 'analytics', 'directories', 'admin'];
+
 function AppInner() {
-  const [activeTab, setActiveTab] = useState('schedule');
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem('activeTab');
+    return saved && VALID_TABS.includes(saved) ? saved : 'schedule';
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +42,12 @@ function AppInner() {
     setLoading(false);
   }, []);
 
+  // Сохраняем выбранную вкладку при каждом изменении
+  const handleSetActiveTab = (tab) => {
+    setActiveTab(tab);
+    localStorage.setItem('activeTab', tab);
+  };
+
   const handleLoginSuccess = () => {
     const currentUser = authService.getCurrentUser();
     setIsAuthenticated(true);
@@ -54,7 +64,8 @@ function AppInner() {
 
   const handleProjectSelect = (project) => {
     setCurrentProject(project);
-    setActiveTab('schedule');
+    // При смене объекта возвращаемся на График
+    handleSetActiveTab('schedule');
     scheduleKey.current += 1;
   };
 
@@ -105,7 +116,6 @@ function AppInner() {
 
   if (loading) return <div>Загрузка...</div>;
 
-  // ─── Рабочее пространство объекта ─────────────────────────────────────────
   const WorkspaceApp = () => (
     <div className="app">
       <header className="header">
@@ -135,13 +145,13 @@ function AppInner() {
       </header>
 
       <nav className="tabs">
-        <button className={activeTab === 'schedule' ? 'active' : ''} onClick={() => setActiveTab('schedule')}>График</button>
-        <button className={activeTab === 'monthly'  ? 'active' : ''} onClick={() => setActiveTab('monthly')}>МСГ</button>
-        <button className={activeTab === 'daily'    ? 'active' : ''} onClick={() => setActiveTab('daily')}>Ежедневные наряды</button>
-        <button className={activeTab === 'analytics'? 'active' : ''} onClick={() => setActiveTab('analytics')}>Аналитика</button>
-        <button className={activeTab === 'directories'? 'active' : ''} onClick={() => setActiveTab('directories')}>Справочники</button>
+        <button className={activeTab === 'schedule'    ? 'active' : ''} onClick={() => handleSetActiveTab('schedule')}>График</button>
+        <button className={activeTab === 'monthly'     ? 'active' : ''} onClick={() => handleSetActiveTab('monthly')}>МСГ</button>
+        <button className={activeTab === 'daily'       ? 'active' : ''} onClick={() => handleSetActiveTab('daily')}>Ежедневные наряды</button>
+        <button className={activeTab === 'analytics'   ? 'active' : ''} onClick={() => handleSetActiveTab('analytics')}>Аналитика</button>
+        <button className={activeTab === 'directories' ? 'active' : ''} onClick={() => handleSetActiveTab('directories')}>Справочники</button>
         {user?.role === 'admin' && (
-          <button className={activeTab === 'admin' ? 'active' : ''} onClick={() => setActiveTab('admin')}>Админ-панель</button>
+          <button className={activeTab === 'admin' ? 'active' : ''} onClick={() => handleSetActiveTab('admin')}>Админ-панель</button>
         )}
       </nav>
 
@@ -210,7 +220,6 @@ function AppInner() {
   );
 }
 
-// ─── Корневой компонент — оборачивает в Provider ───────────────────────────
 function App() {
   return (
     <ProjectProvider>

@@ -14,17 +14,24 @@ function getSectionColor(level) {
   return SECTION_COLORS[idx];
 }
 
-/**
- * externalScrollRef — реф на gantt-body-scroll, переданный из Schedule/MonthlyOrder
- * для синхронизации вертикального скролла с таблицей.
- */
+const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
+const GANTT_SCALE_KEY = 'ganttScale';
+
 function GanttChart({ tasks, externalScrollRef }) {
-  const [scale, setScale] = useState('month');
+  const [scale, setScale] = useState(() => {
+    const saved = localStorage.getItem(GANTT_SCALE_KEY);
+    return saved && VALID_SCALES.includes(saved) ? saved : 'month';
+  });
   const internalScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);
 
-  // Если снаружи передан реф — используем его, иначе внутренний
   const bodyScrollRef = externalScrollRef || internalScrollRef;
+
+  // Сохраняем масштаб при каждом изменении
+  const handleScaleChange = (newScale) => {
+    setScale(newScale);
+    localStorage.setItem(GANTT_SCALE_KEY, newScale);
+  };
 
   const scaleConfig = {
     year:    { pixelsPerDay: 1,  label: 'Год',     gridUnit: 365, format: (d) => d.getFullYear().toString() },
@@ -69,16 +76,15 @@ function GanttChart({ tasks, externalScrollRef }) {
       while (cur <= maxDate) {
         const offset = Math.ceil((cur - minDate) / (1000*60*60*24));
         timeMarks.push({ date: new Date(cur), offset, label: cfg.format(cur) });
-        if (scale === 'month')   cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+        if (scale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
         else if (scale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
-        else cur = new Date(cur.getFullYear() + 1, 0, 1);
+        else                          cur = new Date(cur.getFullYear() + 1, 0, 1);
       }
     }
 
     return { minDate, maxDate, totalDays, timeMarks };
   }, [tasks, scale]);
 
-  // Синхронизация горизонтального скролла временной шкалы
   useEffect(() => {
     const bodyEl  = bodyScrollRef.current;
     const timeEl  = timelineScrollRef.current;
@@ -104,7 +110,7 @@ function GanttChart({ tasks, externalScrollRef }) {
         <div className="gantt-combined-header">
           <div className="gantt-controls-fixed">
             <div className="gantt-title">Диаграмма Ганта</div>
-            <select className="gantt-scale-select" value={scale} onChange={e => setScale(e.target.value)}>
+            <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
               {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
             </select>
           </div>
@@ -153,7 +159,7 @@ function GanttChart({ tasks, externalScrollRef }) {
       <div className="gantt-combined-header">
         <div className="gantt-controls-row">
           <div className="gantt-title">Диаграмма Ганта</div>
-          <select className="gantt-scale-select" value={scale} onChange={e => setScale(e.target.value)}>
+          <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
             {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
           </select>
         </div>
