@@ -24,16 +24,16 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
-function buildBreadcrumb(task, allTasks) {
+// Возвращает Set id всех родительских разделов для задачи
+function getParentIds(task, allTasks) {
+  const ids = new Set();
   const parts = String(task.code).split('.');
-  if (parts.length <= 1) return '';
-  const crumbs = [];
   for (let len = parts.length - 1; len >= 1; len--) {
     const parentCode = parts.slice(0, len).join('.');
     const parent = allTasks.find(t => t.is_section && t.code === parentCode);
-    if (parent) crumbs.unshift(parent.name);
+    if (parent) ids.add(parent.id);
   }
-  return crumbs.length ? crumbs.join(' / ') + ' / ' : '';
+  return ids;
 }
 
 const STANDARD_EDITABLE = ['start_date_plan', 'end_date_plan', 'executor'];
@@ -382,12 +382,23 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
       return;
     }
     setHasActiveFilters(true);
-    const result = tasks.filter(t => {
+    // Шаг 1: найти работы, прошедшие фильтр
+    const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) =>
         getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())
       );
     });
+    // Шаг 2: собрать id всех родительских разделов
+    const parentIds = new Set();
+    matchedWorks.forEach(t => {
+      getParentIds(t, tasks).forEach(id => parentIds.add(id));
+    });
+    // Шаг 3: вернуть разделы + работы в исходном порядке tasks
+    const matchedWorkIds = new Set(matchedWorks.map(t => t.id));
+    const result = tasks.filter(t =>
+      matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))
+    );
     setFilteredTasks(result);
   };
 
@@ -403,7 +414,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
     return arr.map(t => getDisplayValue(t, key));
   };
 
-  // Правый клик на заголовок
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
     setFilterTriggers(prev => ({
@@ -484,14 +494,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters }) {
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
           style={{ width: '100%', padding: '2px' }} />
       );
-    }
-    if (key === 'name') {
-      const crumb = (hasActiveFilters && !task.is_section)
-        ? buildBreadcrumb(task, allTasksRef.current)
-        : '';
-      return crumb
-        ? <span><span style={{ color: '#888', fontSize: '0.82em', fontStyle: 'italic' }}>{crumb}</span>{task.name}</span>
-        : task.name;
     }
     return getDisplayValue(task, key);
   };
