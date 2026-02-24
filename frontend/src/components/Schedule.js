@@ -9,15 +9,28 @@ import { useAuth } from '../contexts/AuthContext';
 
 // Постельные оттенки синего от тёмного (уровень 0) к светлому (уровень 4+)
 const SECTION_COLORS = [
-  '#7B9BBF', // уровень 0 — тёмно-синий (постельный)
+  '#7B9BBF', // уровень 0 — тёмно-синий
   '#9BB5CF', // уровень 1
-  '#B5CADf', // уровень 2
+  '#B5CADF', // уровень 2
   '#CDE0EE', // уровень 3
   '#E0EDF6', // уровень 4+
 ];
 
 function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
+}
+
+/**
+ * Вычисляем уровень по коду (надёжнее чем значение из БД):
+ *  "1"     -> 0
+ *  "1.1"   -> 1
+ *  "1.1.1" -> 2
+ * Для работ (is_section=false) уровень не используется для цвета.
+ */
+function getLevelFromCode(code) {
+  if (!code) return 0;
+  const parts = String(code).split('.');
+  return parts.length - 1;
 }
 
 function parseCode(code) {
@@ -44,8 +57,23 @@ const DEFAULT_COL_WIDTHS = {
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
 
-// Колонки, которые НЕ центрируются (шифр и наименование)
+// Колонки, которые НЕ центрируются
 const LEFT_ALIGN_COLS = new Set(['code', 'name']);
+
+const COLLAPSED_STORAGE_KEY = 'scheduleCollapsedSections';
+
+function loadCollapsedFromStorage() {
+  try {
+    const s = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    return s ? new Set(JSON.parse(s)) : new Set();
+  } catch { return new Set(); }
+}
+
+function saveCollapsedToStorage(set) {
+  try {
+    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...set]));
+  } catch { /* ignore */ }
+}
 
 function getParentIds(task, allTasks) {
   const ids = new Set();
@@ -58,7 +86,6 @@ function getParentIds(task, allTasks) {
   return ids;
 }
 
-// ─ хотя бы один плановый день попадает в месяц ───────────────────────
 function taskInMonth(task, yearMonth) {
   if (!yearMonth) return true;
   const [year, month] = yearMonth.split('-').map(Number);
@@ -70,7 +97,6 @@ function taskInMonth(task, yearMonth) {
   return s <= mEnd && e >= mStart;
 }
 
-// ─ нарушены сроки: финиш план < сегодня И остаток не 0 ─────────────────
 function taskIsOverdue(task) {
   if (!task.end_date_plan) return false;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -79,12 +105,10 @@ function taskIsOverdue(task) {
   return end < today && remaining > 0;
 }
 
-// ─ выполнение: остаток = 0 ─────────────────────────────────────
 function taskIsDone(task) {
   return (task.volume_plan - task.volume_fact) <= 0;
 }
 
-// Получаем ID всех дочерних разделов и работ для заданного раздела
 function getDescendantIds(sectionId, allTasks) {
   const section = allTasks.find(t => t.id === sectionId);
   if (!section) return new Set();
@@ -107,14 +131,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
 
-  // ── 4 пресета ───────────────────────────────────────────
-  const [monthPreset,      setMonthPreset]      = useState(null); // 'YYYY-MM' | null
-  const [overduePreset,    setOverduePreset]    = useState(null); // true | null
-  const [completionPreset, setCompletionPreset] = useState(null); // 'done' | 'undone' | null
-  const [executorPreset,   setExecutorPreset]   = useState(null); // string | null
+  const [monthPreset,      setMonthPreset]      = useState(null);
+  const [overduePreset,    setOverduePreset]    = useState(null);
+  const [completionPreset, setCompletionPreset] = useState(null);
+  const [executorPreset,   setExecutorPreset]   = useState(null);
 
-  // ── Свёрнутые разделы: Set из id разделов ────────────────
-  const [collapsedSections, setCollapsedSections] = useState(new Set());
+  // Свёрнутые разделы: инициализация из localStorage, сохраняется при каждом изменении
+  const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedFromStorage());
 
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
@@ -321,16 +344,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      // — текстовые фильтры по колонкам
       if (!activeFilters.every(([k, v]) => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()))) return false;
-      // — пресет месяца
       if (monthPreset && !taskInMonth(t, monthPreset)) return false;
-      // — пресет просрочки
       if (overduePreset && !taskIsOverdue(t)) return false;
-      // — пресет выполнения
       if (completionPreset === 'done'   && !taskIsDone(t)) return false;
       if (completionPreset === 'undone' &&  taskIsDone(t)) return false;
-      // — пресет исполнителя (подстрока)
       if (executorPreset && !(t.executor || '').toLowerCase().includes(executorPreset.toLowerCase())) return false;
       return true;
     });
@@ -341,7 +359,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setFilteredTasks(tasks.filter(t => matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))));
   };
 
-  // ── Переключение сворачивания раздела ────────────────────
+  // Переключение сворачивания с сохранением в localStorage
   const toggleSection = useCallback((sectionId) => {
     setCollapsedSections(prev => {
       const next = new Set(prev);
@@ -350,11 +368,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       } else {
         next.add(sectionId);
       }
+      saveCollapsedToStorage(next);
       return next;
     });
   }, []);
 
-  // ── Вычисляем видимые строки с учётом свёрнутых разделов ─
   const visibleTasks = useMemo(() => {
     if (collapsedSections.size === 0) return filteredTasks;
     const hiddenIds = new Set();
@@ -364,7 +382,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return filteredTasks.filter(t => !hiddenIds.has(t.id));
   }, [filteredTasks, collapsedSections]);
 
-  // Проверяем, есть ли у раздела дочерние элементы (среди filteredTasks)
   const sectionHasChildren = useCallback((section) => {
     const prefix = section.code + '.';
     return filteredTasks.some(t => t.id !== section.id && String(t.code).startsWith(prefix));
@@ -443,12 +460,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getRowStyle = (task) => {
-    if (task.is_section) return {
-      backgroundColor: getSectionColor(task.level),
-      fontWeight: 'bold',
-      fontSize: task.level === 0 ? '1.02em' : '1em',
-    };
-    // Подсвечиваем просроченные строки лёгким красным
+    if (task.is_section) {
+      // Вычисляем уровень по коду — надёжно, не зависим от значения в БД
+      const level = getLevelFromCode(task.code);
+      return {
+        backgroundColor: getSectionColor(level),
+        fontWeight: 'bold',
+        fontSize: level === 0 ? '1.02em' : '1em',
+      };
+    }
     if (taskIsOverdue(task)) return { backgroundColor: '#fff0f0' };
     return {};
   };
@@ -481,7 +501,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
   }, [isResizing]);
 
-  // Индикатор активных пресетов под тулбаром
   const activePresetLabels = [
     monthPreset      && `📅 ${monthPreset}`,
     overduePreset    && '⚠️ Просрочки',
@@ -548,7 +567,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                 {visibleTasks.map(task => (
                   <tr key={task.id} style={getRowStyle(task)}>
                     {visibleColumns.map(key => {
-                      // Ячейка «Наименование» раздела — кнопка сворачивания + tooltip
                       if (key === 'name' && task.is_section) {
                         const hasChildren = sectionHasChildren(task);
                         const isCollapsed = collapsedSections.has(task.id);
@@ -596,7 +614,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         );
                       }
 
-                      // Обычная ячейка «Наименование» (не раздел) — tooltip
                       if (key === 'name' && !task.is_section) {
                         const nameText = getDisplayValue(task, key);
                         return (
@@ -617,7 +634,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         );
                       }
 
-                      // Все остальные ячейки
                       return (
                         <td key={key} style={getCellStyle(task, key)}
                           onDoubleClick={() => handleCellDoubleClick(task, key)}
