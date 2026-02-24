@@ -7,9 +7,15 @@ import ColumnFilter from './ColumnFilter';
 import FilterManager from './FilterManager';
 import { useAuth } from '../contexts/AuthContext';
 
+// Постельные оттенки синего от тёмного (уровень 0) к светлому (уровень 4+)
 const SECTION_COLORS = [
-  '#B8D4E8', '#C8DFF0', '#D8EAF5', '#E4F1F8', '#EFF6FB',
+  '#7B9BBF', // уровень 0 — тёмно-синий (постельный)
+  '#9BB5CF', // уровень 1
+  '#B5CADf', // уровень 2
+  '#CDE0EE', // уровень 3
+  '#E0EDF6', // уровень 4+
 ];
+
 function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
@@ -37,6 +43,9 @@ const DEFAULT_COL_WIDTHS = {
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
 };
+
+// Колонки, которые НЕ центрируются (шифр и наименование)
+const LEFT_ALIGN_COLS = new Set(['code', 'name']);
 
 function getParentIds(task, allTasks) {
   const ids = new Set();
@@ -75,6 +84,20 @@ function taskIsDone(task) {
   return (task.volume_plan - task.volume_fact) <= 0;
 }
 
+// Получаем ID всех дочерних разделов и работ для заданного раздела
+function getDescendantIds(sectionId, allTasks) {
+  const section = allTasks.find(t => t.id === sectionId);
+  if (!section) return new Set();
+  const prefix = section.code + '.';
+  const ids = new Set();
+  allTasks.forEach(t => {
+    if (t.id !== sectionId && String(t.code).startsWith(prefix)) {
+      ids.add(t.id);
+    }
+  });
+  return ids;
+}
+
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
@@ -89,6 +112,9 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [overduePreset,    setOverduePreset]    = useState(null); // true | null
   const [completionPreset, setCompletionPreset] = useState(null); // 'done' | 'undone' | null
   const [executorPreset,   setExecutorPreset]   = useState(null); // string | null
+
+  // ── Свёрнутые разделы: Set из id разделов ────────────────
+  const [collapsedSections, setCollapsedSections] = useState(new Set());
 
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
@@ -315,6 +341,35 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setFilteredTasks(tasks.filter(t => matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))));
   };
 
+  // ── Переключение сворачивания раздела ────────────────────
+  const toggleSection = useCallback((sectionId) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Вычисляем видимые строки с учётом свёрнутых разделов ─
+  const visibleTasks = useMemo(() => {
+    if (collapsedSections.size === 0) return filteredTasks;
+    const hiddenIds = new Set();
+    collapsedSections.forEach(secId => {
+      getDescendantIds(secId, filteredTasks).forEach(id => hiddenIds.add(id));
+    });
+    return filteredTasks.filter(t => !hiddenIds.has(t.id));
+  }, [filteredTasks, collapsedSections]);
+
+  // Проверяем, есть ли у раздела дочерние элементы (среди filteredTasks)
+  const sectionHasChildren = useCallback((section) => {
+    const prefix = section.code + '.';
+    return filteredTasks.some(t => t.id !== section.id && String(t.code).startsWith(prefix));
+  }, [filteredTasks]);
+
   const handleFilterApply = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
   const handleClearAllFilters = () => {
     setFilters({});
@@ -399,10 +454,18 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getCellStyle = (task, key) => {
-    if (!isAdmin || task.is_section) return {};
+    const base = LEFT_ALIGN_COLS.has(key)
+      ? { textAlign: 'left' }
+      : { textAlign: 'center' };
+
+    if (!isAdmin || task.is_section) return base;
     if (['start_date_plan','end_date_plan','executor'].includes(key))
-      return { cursor: 'pointer', backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit' };
-    return {};
+      return {
+        ...base,
+        cursor: 'pointer',
+        backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit',
+      };
+    return base;
   };
 
   const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
@@ -415,7 +478,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     };
     const onUp = () => setIsResizing(false);
     if (isResizing) { document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); }
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
   }, [isResizing]);
 
   // Индикатор активных пресетов под тулбаром
@@ -465,6 +528,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                       className={filters[key] ? 'has-filter' : ''}
                       onContextMenu={(e) => handleThContextMenu(e, key)}
                       title="Правый клик — фильтр"
+                      style={{ textAlign: LEFT_ALIGN_COLS.has(key) ? 'left' : 'center' }}
                     >
                       <span className="th-label-text">{getColLabel(key)}</span>
                       <ColumnFilter
@@ -481,15 +545,87 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredTasks.map(task => (
+                {visibleTasks.map(task => (
                   <tr key={task.id} style={getRowStyle(task)}>
-                    {visibleColumns.map(key => (
-                      <td key={key} style={getCellStyle(task, key)}
-                        onDoubleClick={() => handleCellDoubleClick(task, key)}
-                        title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? 'Двойной клик для редактирования' : ''}>
-                        {getCellValue(task, key)}
-                      </td>
-                    ))}
+                    {visibleColumns.map(key => {
+                      // Ячейка «Наименование» раздела — кнопка сворачивания + tooltip
+                      if (key === 'name' && task.is_section) {
+                        const hasChildren = sectionHasChildren(task);
+                        const isCollapsed = collapsedSections.has(task.id);
+                        const nameText = getDisplayValue(task, key);
+                        return (
+                          <td key={key} style={getCellStyle(task, key)}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {hasChildren && (
+                                <button
+                                  onClick={() => toggleSection(task.id)}
+                                  title={isCollapsed ? 'Развернуть' : 'Свернуть'}
+                                  style={{
+                                    flexShrink: 0,
+                                    width: 18, height: 18,
+                                    padding: 0,
+                                    background: 'rgba(255,255,255,0.5)',
+                                    border: '1px solid rgba(0,0,80,0.25)',
+                                    borderRadius: 3,
+                                    cursor: 'pointer',
+                                    fontSize: 11,
+                                    lineHeight: '16px',
+                                    textAlign: 'center',
+                                    color: '#1a3a5c',
+                                    fontWeight: 'bold',
+                                  }}
+                                >
+                                  {isCollapsed ? '+' : '−'}
+                                </button>
+                              )}
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  display: 'block',
+                                  flex: 1,
+                                  paddingLeft: hasChildren ? 0 : 22,
+                                }}
+                                title={nameText}
+                              >
+                                {nameText}
+                              </span>
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      // Обычная ячейка «Наименование» (не раздел) — tooltip
+                      if (key === 'name' && !task.is_section) {
+                        const nameText = getDisplayValue(task, key);
+                        return (
+                          <td key={key} style={getCellStyle(task, key)}
+                            onDoubleClick={() => handleCellDoubleClick(task, key)}>
+                            <span
+                              style={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                display: 'block',
+                              }}
+                              title={nameText}
+                            >
+                              {nameText}
+                            </span>
+                          </td>
+                        );
+                      }
+
+                      // Все остальные ячейки
+                      return (
+                        <td key={key} style={getCellStyle(task, key)}
+                          onDoubleClick={() => handleCellDoubleClick(task, key)}
+                          title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? 'Двойной клик для редактирования' : ''}>
+                          {getCellValue(task, key)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -501,7 +637,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
         {showGantt && (
           <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
-            <GanttChart tasks={filteredTasks} externalScrollRef={ganttBodyRef} headcountEnabled={false} />
+            <GanttChart tasks={visibleTasks} externalScrollRef={ganttBodyRef} headcountEnabled={false} />
           </div>
         )}
       </div>
