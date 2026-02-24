@@ -15,6 +15,11 @@ function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
 
+function getLevelFromCode(code) {
+  if (!code) return 0;
+  return String(code).split('.').length - 1;
+}
+
 const DEFAULT_COL_WIDTHS = {
   code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
   volume_remaining: 90, start_date_contract: 110, end_date_contract: 110,
@@ -45,6 +50,19 @@ const CUSTOM_EDITABLE = [
 const DATE_FIELDS = ['start_date_plan', 'end_date_plan', 'start_date_contract', 'end_date_contract'];
 const NUMBER_FIELDS = ['volume_plan', 'unit_price', 'labor_per_unit', 'machine_hours_per_unit'];
 
+const MONTH_STORAGE_KEY = 'monthlyOrderSelectedMonth';
+
+function getInitialMonth() {
+  try {
+    const saved = localStorage.getItem(MONTH_STORAGE_KEY);
+    if (saved && /^\d{4}-\d{2}$/.test(saved)) return saved;
+  } catch { /* ignore */ }
+  return new Date().toISOString().substring(0, 7);
+}
+
+// TaskRow — простой React.memo без кастомного компаратора.
+// Кастомный компаратор убран: он не учитывал editValue и editingCell,
+// из-за чего при onBlur input успевал потерять изменения до сохранения.
 const TaskRow = React.memo(function TaskRow({
   task, visibleColumns, isAdmin, isEditing, isSelected, isDragOver, dragOverPos,
   getRowStyle, getCellStyle, getCellValue, isFieldEditable,
@@ -85,19 +103,9 @@ const TaskRow = React.memo(function TaskRow({
       ))}
     </tr>
   );
-}, (prev, next) => (
-  prev.task === next.task &&
-  prev.isEditing === next.isEditing &&
-  prev.isSelected === next.isSelected &&
-  prev.isDragOver === next.isDragOver &&
-  prev.dragOverPos === next.dragOverPos &&
-  prev.visibleColumns === next.visibleColumns &&
-  prev.isAdmin === next.isAdmin
-));
+});
 
-// ─── Генератор HTML диаграммы Ганта для печати ───────────────────────────────
-// Использует <table> для строк — высота TR точно совпадает с таблицей задач.
-// Полосы рисуются внутри <td> через position:relative на ячейке.
+// ─── Генератор HTML диаграммы Ганта для печати
 function buildGanttHtml(tasks, ganttScale, ROW_H) {
   const SCALE_PPD = { year: 1, quarter: 3, month: 5, week: 15, day: 60 };
   const ppd = SCALE_PPD[ganttScale] || 5;
@@ -119,7 +127,6 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
   const totalDays = Math.ceil((maxDate - minDate) / 864e5) + 1;
   const totalWidth = totalDays * ppd;
 
-  // Метки шкалы времени
   const timeMarks = [];
   if (ganttScale === 'day' || ganttScale === 'week') {
     const step = ganttScale === 'week' ? 7 : 1;
@@ -147,17 +154,13 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
     }
   }
 
-  // Вертикальные линии сетки — абсолютные div поверх ячейки
   const gridLines = timeMarks.map(m =>
     `<div style="position:absolute;left:${m.offset * ppd}px;top:0;bottom:0;border-left:1px solid #e0e0e0;pointer-events:none;"></div>`
   ).join('');
-
-  // Заголовочная строка шкалы
   const headerMarks = timeMarks.map(m =>
     `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;">${m.label}</div>`
   ).join('');
 
-  // Строки через <table> — высота TR гарантированно совпадает с таблицей задач
   const headerTr = `<tr style="height:${ROW_H}px;">
     <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;">
       <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${headerMarks}</div>
@@ -166,9 +169,8 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
 
   const bodyRows = tasks.map(task => {
     const bgColor = task.is_section
-      ? getSectionColor(task.level)
+      ? getSectionColor(getLevelFromCode(task.code))
       : (task.is_custom ? '#fff9e6' : '#fff');
-
     let bars = '';
     if (!task.is_section) {
       if (task.start_date_contract && task.end_date_contract) {
@@ -186,7 +188,6 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
         bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H * 0.55)}px;width:${w}px;height:${Math.round(ROW_H * 0.28)}px;background:#4a90e2;border-radius:2px;"></div>`;
       }
     }
-
     return `<tr style="height:${ROW_H}px;">
       <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:${bgColor};border-bottom:1px solid #e8e8e8;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
         <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${gridLines}${bars}</div>
@@ -215,7 +216,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+
+  // Инициализация из localStorage, сохранение при каждом изменении
+  const [selectedMonth, setSelectedMonthState] = useState(getInitialMonth);
+
+  const setSelectedMonth = useCallback((month) => {
+    setSelectedMonthState(month);
+    try { localStorage.setItem(MONTH_STORAGE_KEY, month); } catch { /* ignore */ }
+  }, []);
+
   const [tableWidth, setTableWidth] = useState(60);
   const [isResizing, setIsResizing] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -251,6 +260,12 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const syncingRef     = useRef(false);
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
   const isDraggingRef  = useRef(false);
+
+  // editValue ref — для чтения актуального значения из замыканий (onBlur)
+  const editValueRef = useRef('');
+  useEffect(() => { editValueRef.current = editValue; }, [editValue]);
+  const editingCellRef = useRef(null);
+  useEffect(() => { editingCellRef.current = editingCell; }, [editingCell]);
 
   const availableColumns = useMemo(() => [
     { key: 'code',                    label: 'Шифр' },
@@ -611,22 +626,26 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setEditValue(val);
   }, [isFieldEditable]);
 
+  // handleCellBlur читает значения через ref, чтобы избежать устаревшего замыкания
   const handleCellBlur = useCallback(async () => {
-    if (!editingCell) return;
-    const task = tasks.find(t => t.id === editingCell.taskId);
+    const ec = editingCellRef.current;
+    const ev = editValueRef.current;
+    if (!ec) return;
+    setEditingCell(null);
+    const task = allTasksRef.current.find(t => t.id === ec.taskId);
     if (!task) return;
-    let cur = task[editingCell.field];
-    if (DATE_FIELDS.includes(editingCell.field)) cur = cur ? new Date(cur).toISOString().split('T')[0] : '';
+    let cur = task[ec.field];
+    if (DATE_FIELDS.includes(ec.field)) cur = cur ? new Date(cur).toISOString().split('T')[0] : '';
     else cur = cur !== null && cur !== undefined ? String(cur) : '';
-    if (editValue === cur) { setEditingCell(null); return; }
-    const updateVal = NUMBER_FIELDS.includes(editingCell.field)
-      ? (editValue === '' ? 0 : parseFloat(editValue))
-      : (editValue || null);
+    if (ev === cur) return;
+    const updateVal = NUMBER_FIELDS.includes(ec.field)
+      ? (ev === '' ? 0 : parseFloat(ev))
+      : (ev || null);
     try {
-      await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: updateVal });
-      setTasks(prev => prev.map(t => t.id === editingCell.taskId ? { ...t, [editingCell.field]: updateVal } : t));
-    } catch (e) { console.error(e); } finally { setEditingCell(null); }
-  }, [editingCell, editValue, tasks]);
+      await scheduleAPI.updateTask(ec.taskId, { [ec.field]: updateVal });
+      setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [ec.field]: updateVal } : t));
+    } catch (e) { console.error(e); }
+  }, []);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter') handleCellBlur();
@@ -668,14 +687,17 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const getRowStyle = useCallback((task) => {
     const isSelected = task.id === selectedTaskId;
     const isDragOver = task.id === dragOverTaskId;
-    if (task.is_section) return {
-      backgroundColor: isSelected ? '#b3d4ff' : getSectionColor(task.level),
-      fontWeight: 'bold',
-      fontSize: task.level === 0 ? '1.02em' : '1em',
-      outline: isSelected ? '2px solid #4a90e2' : 'none',
-      borderTop: isDragOver && dragOverPos === 'before' ? '3px solid #4a90e2' : undefined,
-      borderBottom: isDragOver && dragOverPos === 'after' ? '3px solid #4a90e2' : undefined,
-    };
+    if (task.is_section) {
+      const level = getLevelFromCode(task.code);
+      return {
+        backgroundColor: isSelected ? '#b3d4ff' : getSectionColor(level),
+        fontWeight: 'bold',
+        fontSize: level === 0 ? '1.02em' : '1em',
+        outline: isSelected ? '2px solid #4a90e2' : 'none',
+        borderTop: isDragOver && dragOverPos === 'before' ? '3px solid #4a90e2' : undefined,
+        borderBottom: isDragOver && dragOverPos === 'after' ? '3px solid #4a90e2' : undefined,
+      };
+    }
     return {
       backgroundColor: isSelected ? '#e8f0fe' : task.is_custom ? '#fff9e6' : 'inherit',
       outline: isSelected ? '2px solid #4a90e2' : 'none',
@@ -693,9 +715,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [isAdmin, isFieldEditable, editingCell]);
 
   const handleRowClick = useCallback((task) => {
-    if (editingCell) return;
+    if (editingCellRef.current) return;
     setSelectedTaskId(prev => prev === task.id ? null : task.id);
-  }, [editingCell]);
+  }, []);
 
   const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
   useEffect(() => {
@@ -710,7 +732,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isResizing]);
 
-  // ─── ПЕЧАТЬ ──────────────────────────────────────────────────────────────────
   const handlePrint = useCallback((selectedCols, ganttScale) => {
     setShowPrintDialog(false);
     localStorage.setItem('ganttScale', ganttScale);
@@ -719,23 +740,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const projectName = project?.name || 'Проект';
     const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 
-    // ROW_H одинаков и для таблицы и для Ганта — строки совпадают визуально.
-    // Значение 24px: меньше чем стандартные 30px экрана, но при печати padding
-    // таблицы компенсируется нулевым padding ячеек Ганта, итого одинаково.
     const ROW_H = 24;
 
-    // ── Таблица ──
     const colLabels = selectedCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
     const headerRow = colLabels.map(l => `<th>${l}</th>`).join('');
     const bodyRows = filteredTasks.map(task => {
-      const bgColor = task.is_section ? getSectionColor(task.level) : (task.is_custom ? '#fff9e6' : '#fff');
+      const bgColor = task.is_section ? getSectionColor(getLevelFromCode(task.code)) : (task.is_custom ? '#fff9e6' : '#fff');
       const fw = task.is_section ? 'bold' : 'normal';
       const cells = selectedCols.map(key => `<td style="font-weight:${fw};">${getDisplayValue(task, key)}</td>`).join('');
       return `<tr style="background:${bgColor};" class="data-row">${cells}</tr>`;
     }).join('');
     const tableHtml = `<table id="main-table"><thead><tr class="header-row">${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
 
-    // ── Ганта ──
     const ganttHtml = showGantt ? buildGanttHtml(filteredTasks, ganttScale, ROW_H) : '';
 
     const iframe = document.createElement('iframe');
@@ -753,13 +769,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         body { font-family: Arial, sans-serif; font-size: 9px; }
         h2   { font-size: 13px; margin-bottom: 2px; }
         p.sub { font-size: 10px; color: #555; margin-bottom: 6px; }
-
-        /* Макет: таблица слева, Ганта справа, выровнены по верху */
         .print-layout { display: flex; align-items: flex-start; gap: 4px; }
         .print-table-wrap { flex-shrink: 0; }
         .print-gantt-wrap { flex-shrink: 0; }
-
-        /* Таблица задач */
         #main-table { border-collapse: collapse; table-layout: auto; }
         #main-table th,
         #main-table td {
@@ -779,31 +791,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           print-color-adjust: exact;
         }
         #main-table tr { height: ${ROW_H}px; page-break-inside: avoid; }
-
-        /* Цвета секций — обязательно для печати */
         tr[style*="#B8D4E8"] td { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#C8DFF0"] td { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#D8EAF5"] td { background: #D8EAF5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#E4F1F8"] td { background: #E4F1F8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#EFF6FB"] td { background: #EFF6FB !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#fff9e6"] td { background: #fff9e6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-
-        /* Ганта-таблица — ровно те же размеры строк */
         .gantt-table { border-collapse: collapse; table-layout: fixed; }
         .gantt-table tr  { height: ${ROW_H}px; page-break-inside: avoid; }
         .gantt-table td  { padding: 0; overflow: hidden; height: ${ROW_H}px; border-bottom: 1px solid #e8e8e8; }
         .gantt-table thead td { background: #e0e8f5 !important; border-bottom: 1px solid #bbb; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-
-        /* Полосы Ганта */
-        .g-cell   { position: relative; }
-        .g-wrap   { position: relative; width: 100%; height: 100%; overflow: hidden; }
-        .g-bar    { position: absolute; border-radius: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .g-bar.contract { background: #aaa; }
-        .g-bar.plan     { background: #4a90e2; }
-        .g-vline  { position: absolute; top: 0; bottom: 0; border-left: 1px solid #e0e0e0; }
-        .g-label  { position: absolute; top: 0; height: 100%; font-size: 8px; padding-left: 2px; white-space: nowrap; color: #333; display: flex; align-items: center; }
-        .g-legend { margin-top: 6px; font-size: 10px; color: #555; }
-        .g-dot    { display: inline-block; width: 16px; height: 8px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
       </style>
     </head><body>
       <h2>МСГ — ${projectName}</h2>
