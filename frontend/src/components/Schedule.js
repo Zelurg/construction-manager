@@ -5,28 +5,21 @@ import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
 import FilterManager from './FilterManager';
+import ChecklistStatus from './ChecklistStatus';
 import { useAuth } from '../contexts/AuthContext';
 
-// Постельные оттенки синего от тёмного (уровень 0) к светлому (уровень 4+)
 const SECTION_COLORS = [
-  '#7B9BBF', // уровень 0 — тёмно-синий
-  '#9BB5CF', // уровень 1
-  '#B5CADF', // уровень 2
-  '#CDE0EE', // уровень 3
-  '#E0EDF6', // уровень 4+
+  '#7B9BBF',
+  '#9BB5CF',
+  '#B5CADF',
+  '#CDE0EE',
+  '#E0EDF6',
 ];
 
 function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
 
-/**
- * Вычисляем уровень по коду (надёжнее чем значение из БД):
- *  "1"     -> 0
- *  "1.1"   -> 1
- *  "1.1.1" -> 2
- * Для работ (is_section=false) уровень не используется для цвета.
- */
 function getLevelFromCode(code) {
   if (!code) return 0;
   const parts = String(code).split('.');
@@ -55,9 +48,9 @@ const DEFAULT_COL_WIDTHS = {
   labor_total: 100, labor_fact: 100, labor_remaining: 110,
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
+  checklist: 120,
 };
 
-// Колонки, которые НЕ центрируются
 const LEFT_ALIGN_COLS = new Set(['code', 'name']);
 
 const COLLAPSED_STORAGE_KEY = 'scheduleCollapsedSections';
@@ -122,6 +115,30 @@ function getDescendantIds(sectionId, allTasks) {
   return ids;
 }
 
+// Колонка чек-листа: рендерит 4 кружка для работ
+function renderChecklist(task, isAdmin, onStatusChange) {
+  if (task.is_section) return null;
+  const fields = [
+    { key: 'status_people',    label: '\u041bюди' },
+    { key: 'status_equipment', label: '\u0422ехника' },
+    { key: 'status_mtr',       label: '\u041c\u0422\u0420' },
+    { key: 'status_access',    label: '\u0414опуск' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'flex-end' }}>
+      {fields.map(f => (
+        <ChecklistStatus
+          key={f.key}
+          value={task[f.key] || 'gray'}
+          label={f.label}
+          size={14}
+          onChange={isAdmin ? (val) => onStatusChange(task.id, f.key, val) : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
 function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
@@ -136,7 +153,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [completionPreset, setCompletionPreset] = useState(null);
   const [executorPreset,   setExecutorPreset]   = useState(null);
 
-  // Свёрнутые разделы: инициализация из localStorage, сохраняется при каждом изменении
   const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedFromStorage());
 
   const [tableWidth, setTableWidth] = useState(60);
@@ -165,38 +181,45 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
 
   const availableColumns = [
-    { key: 'code',                    label: 'Шифр' },
-    { key: 'name',                    label: 'Наименование' },
-    { key: 'unit',                    label: 'Ед. изм.' },
-    { key: 'volume_plan',             label: 'Объём план' },
-    { key: 'volume_fact',             label: 'Объём факт' },
-    { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
-    { key: 'start_date_contract',     label: 'Старт контракт' },
-    { key: 'end_date_contract',       label: 'Финиш контракт' },
-    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
-    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
-    { key: 'unit_price',              label: 'Цена за ед.' },
-    { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
-    { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
-    { key: 'executor',                label: 'Исполнитель',           editable: true },
-    { key: 'labor_total',             label: 'Всего трудозатрат',   isCalculated: true },
-    { key: 'labor_fact',              label: 'Трудозатраты факт',   isCalculated: true },
-    { key: 'labor_remaining',         label: 'Остаток трудозатрат', isCalculated: true },
-    { key: 'cost_total',              label: 'Стоимость всего',       isCalculated: true },
-    { key: 'cost_fact',               label: 'Стоимость факт',        isCalculated: true },
-    { key: 'cost_remaining',          label: 'Остаток стоимости',     isCalculated: true },
-    { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
-    { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
-    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
+    { key: 'code',                    label: '\u0428\u0438\u0444\u0440' },
+    { key: 'name',                    label: '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435' },
+    { key: 'checklist',               label: '\u0427\u0435\u043a-\u043b\u0438\u0441\u0442', isCalculated: true },
+    { key: 'unit',                    label: '\u0415\u0434. \u0438\u0437\u043c.' },
+    { key: 'volume_plan',             label: '\u041e\u0431\u044a\u0451\u043c \u043f\u043b\u0430\u043d' },
+    { key: 'volume_fact',             label: '\u041e\u0431\u044a\u0451\u043c \u0444\u0430\u043a\u0442' },
+    { key: 'volume_remaining',        label: '\u041e\u0431\u044a\u0451\u043c \u043e\u0441\u0442\u0430\u0442\u043e\u043a',  isCalculated: true },
+    { key: 'start_date_contract',     label: '\u0421\u0442\u0430\u0440\u0442 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
+    { key: 'end_date_contract',       label: '\u0424\u0438\u043d\u0438\u0448 \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442' },
+    { key: 'start_date_plan',         label: '\u0421\u0442\u0430\u0440\u0442 \u043f\u043b\u0430\u043d',    editable: true },
+    { key: 'end_date_plan',           label: '\u0424\u0438\u043d\u0438\u0448 \u043f\u043b\u0430\u043d',    editable: true },
+    { key: 'unit_price',              label: '\u0426\u0435\u043d\u0430 \u0437\u0430 \u0435\u0434.' },
+    { key: 'labor_per_unit',          label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b/\u0435\u0434.' },
+    { key: 'machine_hours_per_unit',  label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b/\u0435\u0434.' },
+    { key: 'executor',                label: '\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c',           editable: true },
+    { key: 'labor_total',             label: '\u0412\u0441\u0435\u0433\u043e \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442',   isCalculated: true },
+    { key: 'labor_fact',              label: '\u0422\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442\u044b \u0444\u0430\u043a\u0442',   isCalculated: true },
+    { key: 'labor_remaining',         label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0442\u0440\u0443\u0434\u043e\u0437\u0430\u0442\u0440\u0430\u0442', isCalculated: true },
+    { key: 'cost_total',              label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0432\u0441\u0435\u0433\u043e',       isCalculated: true },
+    { key: 'cost_fact',               label: '\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c \u0444\u0430\u043a\u0442',        isCalculated: true },
+    { key: 'cost_remaining',          label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438',     isCalculated: true },
+    { key: 'machine_hours_total',     label: '\u0412\u0441\u0435\u0433\u043e \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432',   isCalculated: true },
+    { key: 'machine_hours_fact',      label: '\u041c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u044b \u0444\u0430\u043a\u0442',       isCalculated: true },
+    { key: 'machine_hours_remaining', label: '\u041e\u0441\u0442\u0430\u0442\u043e\u043a \u043c\u0430\u0448\u0438\u043d\u043e\u0447\u0430\u0441\u043e\u0432', isCalculated: true },
   ];
 
   const defaultColumns = [
-    'code','name','unit','volume_plan','volume_fact','volume_remaining',
+    'code','name','checklist','unit','volume_plan','volume_fact','volume_remaining',
     'start_date_contract','end_date_contract',
   ];
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const s = localStorage.getItem('scheduleVisibleColumns');
-    return s ? JSON.parse(s) : defaultColumns;
+    if (s) {
+      const parsed = JSON.parse(s);
+      // Добавляем checklist если его нет в сохранённых настройках
+      if (!parsed.includes('checklist')) return ['code', 'name', 'checklist', ...parsed.filter(c => c !== 'code' && c !== 'name')];
+      return parsed;
+    }
+    return defaultColumns;
   });
 
   useEffect(() => {
@@ -273,12 +296,20 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       const r = await scheduleAPI.getTasks();
       const withoutCustom = r.data.filter(t => !t.is_custom);
       setTasks([...withoutCustom].sort(compareCode));
-    } catch (e) { console.error('Ошибка загрузки задач:', e); }
+    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0437\u0430\u0434\u0430\u0447:', e); }
   };
   const loadEmployees = async () => {
     try { const r = await employeesAPI.getAll({ active_only: true }); setEmployees(r.data); }
-    catch (e) { console.error('Ошибка загрузки сотрудников:', e); }
+    catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u0432:', e); }
   };
+
+  // Сохранение статуса чек-листа
+  const handleStatusChange = useCallback(async (taskId, field, value) => {
+    try {
+      await scheduleAPI.updateTask(taskId, { [field]: value });
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
+    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u044f \u0441\u0442\u0430\u0442\u0443\u0441\u0430:', e); }
+  }, []);
 
   const getChildTasks = (sectionCode, arr) => {
     const children = [];
@@ -307,6 +338,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getDisplayValue = (task, key) => {
+    if (key === 'checklist') return null; // рендерится отдельно
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
@@ -344,7 +376,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      if (!activeFilters.every(([k, v]) => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase()))) return false;
+      if (!activeFilters.every(([k, v]) => String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase()))) return false;
       if (monthPreset && !taskInMonth(t, monthPreset)) return false;
       if (overduePreset && !taskIsOverdue(t)) return false;
       if (completionPreset === 'done'   && !taskIsDone(t)) return false;
@@ -359,15 +391,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setFilteredTasks(tasks.filter(t => matchedWorkIds.has(t.id) || (t.is_section && parentIds.has(t.id))));
   };
 
-  // Переключение сворачивания с сохранением в localStorage
   const toggleSection = useCallback((sectionId) => {
     setCollapsedSections(prev => {
       const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
+      if (next.has(sectionId)) { next.delete(sectionId); } else { next.add(sectionId); }
       saveCollapsedToStorage(next);
       return next;
     });
@@ -398,18 +425,21 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getColumnValues = (key) => {
+    if (key === 'checklist') return [];
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
-    active.forEach(([k, v]) => { arr = arr.filter(t => getDisplayValue(t, k).toLowerCase().includes(v.toLowerCase())); });
+    active.forEach(([k, v]) => { arr = arr.filter(t => String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase())); });
     return arr.map(t => getDisplayValue(t, key));
   };
 
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
+    if (colKey === 'checklist') return;
     setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
   const handleCellDoubleClick = (task, key) => {
+    if (key === 'checklist') return;
     if (!isAdmin || task.is_section) return;
     if (!['start_date_plan','end_date_plan','executor'].includes(key)) return;
     setEditingCell({ taskId: task.id, field: key });
@@ -428,7 +458,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     try {
       await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: editValue || null });
       setTasks(prev => prev.map(t => t.id === editingCell.taskId ? { ...t, [editingCell.field]: editValue || null } : t));
-    } catch (e) { console.error('Ошибка обновления:', e); }
+    } catch (e) { console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f:', e); }
     finally { setEditingCell(null); }
   };
 
@@ -438,11 +468,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getCellValue = (task, key) => {
+    if (key === 'checklist') {
+      return renderChecklist(task, isAdmin, handleStatusChange);
+    }
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }}>
-          <option value="">Не выбран</option>
+          <option value="">\u041d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d</option>
           {employees.map(emp => <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>)}
         </select>
       );
@@ -461,7 +494,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getRowStyle = (task) => {
     if (task.is_section) {
-      // Вычисляем уровень по коду — надёжно, не зависим от значения в БД
       const level = getLevelFromCode(task.code);
       return {
         backgroundColor: getSectionColor(level),
@@ -474,10 +506,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getCellStyle = (task, key) => {
-    const base = LEFT_ALIGN_COLS.has(key)
-      ? { textAlign: 'left' }
-      : { textAlign: 'center' };
-
+    if (key === 'checklist') return { textAlign: 'center', padding: '2px 4px' };
+    const base = LEFT_ALIGN_COLS.has(key) ? { textAlign: 'left' } : { textAlign: 'center' };
     if (!isAdmin || task.is_section) return base;
     if (['start_date_plan','end_date_plan','executor'].includes(key))
       return {
@@ -502,11 +532,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, [isResizing]);
 
   const activePresetLabels = [
-    monthPreset      && `📅 ${monthPreset}`,
-    overduePreset    && '⚠️ Просрочки',
-    completionPreset === 'done'   && '✅ Выполнено',
-    completionPreset === 'undone' && '⏳ Не выполнено',
-    executorPreset   && `👤 ${executorPreset}`,
+    monthPreset      && `\u{1F4C5} ${monthPreset}`,
+    overduePreset    && '\u26A0\uFE0F \u041F\u0440\u043E\u0441\u0440\u043E\u0447\u043A\u0438',
+    completionPreset === 'done'   && '\u2705 \u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E',
+    completionPreset === 'undone' && '\u23F3 \u041D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E',
+    executorPreset   && `\u{1F464} ${executorPreset}`,
   ].filter(Boolean);
 
   return (
@@ -519,15 +549,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           padding: '4px 12px', background: '#e8f0fe',
           borderBottom: '1px solid #c5d4f0', fontSize: 13, color: '#1a5fa8',
         }}>
-          <span>Активны пресеты:</span>
+          <span>\u0410\u043a\u0442\u0438\u0432\u043d\u044b \u043f\u0440\u0435\u0441\u0435\u0442\u044b:</span>
           {activePresetLabels.map((label, i) => (
             <span key={i} style={{ background: '#c5d4f0', borderRadius: 4, padding: '1px 8px' }}>{label}</span>
           ))}
           <button
             onClick={handleClearAllFilters}
             style={{ marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14 }}
-            title="Сбросить все пресеты"
-          >× сбросить</button>
+            title="\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u0432\u0441\u0435 \u043F\u0440\u0435\u0441\u0435\u0442\u044B"
+          >\u00D7 \u0441\u0431\u0440\u043E\u0441\u0438\u0442\u044C</button>
         </div>
       )}
 
@@ -546,17 +576,19 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                     <th key={key}
                       className={filters[key] ? 'has-filter' : ''}
                       onContextMenu={(e) => handleThContextMenu(e, key)}
-                      title="Правый клик — фильтр"
+                      title={key !== 'checklist' ? '\u041F\u0440\u0430\u0432\u044B\u0439 \u043A\u043B\u0438\u043A \u2014 \u0444\u0438\u043B\u044C\u0442\u0440' : ''}
                       style={{ textAlign: LEFT_ALIGN_COLS.has(key) ? 'left' : 'center' }}
                     >
                       <span className="th-label-text">{getColLabel(key)}</span>
-                      <ColumnFilter
-                        columnKey={key}
-                        allValues={getColumnValues(key)}
-                        currentFilter={filters[key] || ''}
-                        onApplyFilter={handleFilterApply}
-                        triggerEvent={filterTriggers[key]}
-                      />
+                      {key !== 'checklist' && (
+                        <ColumnFilter
+                          columnKey={key}
+                          allValues={getColumnValues(key)}
+                          currentFilter={filters[key] || ''}
+                          onApplyFilter={handleFilterApply}
+                          triggerEvent={filterTriggers[key]}
+                        />
+                      )}
                       <div className="col-resize-handle"
                         onMouseDown={(e) => handleColResizeMouseDown(e, key)} />
                     </th>
@@ -577,38 +609,22 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                               {hasChildren && (
                                 <button
                                   onClick={() => toggleSection(task.id)}
-                                  title={isCollapsed ? 'Развернуть' : 'Свернуть'}
+                                  title={isCollapsed ? '\u0420\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C' : '\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C'}
                                   style={{
-                                    flexShrink: 0,
-                                    width: 18, height: 18,
-                                    padding: 0,
+                                    flexShrink: 0, width: 18, height: 18, padding: 0,
                                     background: 'rgba(255,255,255,0.5)',
                                     border: '1px solid rgba(0,0,80,0.25)',
-                                    borderRadius: 3,
-                                    cursor: 'pointer',
-                                    fontSize: 11,
-                                    lineHeight: '16px',
-                                    textAlign: 'center',
-                                    color: '#1a3a5c',
-                                    fontWeight: 'bold',
+                                    borderRadius: 3, cursor: 'pointer', fontSize: 11,
+                                    lineHeight: '16px', textAlign: 'center',
+                                    color: '#1a3a5c', fontWeight: 'bold',
                                   }}
-                                >
-                                  {isCollapsed ? '+' : '−'}
-                                </button>
+                                >{isCollapsed ? '+' : '\u2212'}</button>
                               )}
-                              <span
-                                style={{
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  display: 'block',
-                                  flex: 1,
-                                  paddingLeft: hasChildren ? 0 : 22,
-                                }}
-                                title={nameText}
-                              >
-                                {nameText}
-                              </span>
+                              <span style={{
+                                overflow: 'hidden', textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap', display: 'block', flex: 1,
+                                paddingLeft: hasChildren ? 0 : 22,
+                              }} title={nameText}>{nameText}</span>
                             </div>
                           </td>
                         );
@@ -619,17 +635,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         return (
                           <td key={key} style={getCellStyle(task, key)}
                             onDoubleClick={() => handleCellDoubleClick(task, key)}>
-                            <span
-                              style={{
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                display: 'block',
-                              }}
-                              title={nameText}
-                            >
-                              {nameText}
-                            </span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                              title={nameText}>{nameText}</span>
                           </td>
                         );
                       }
@@ -637,7 +644,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                       return (
                         <td key={key} style={getCellStyle(task, key)}
                           onDoubleClick={() => handleCellDoubleClick(task, key)}
-                          title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? 'Двойной клик для редактирования' : ''}>
+                          title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? '\u0414\u0432\u043E\u0439\u043D\u043E\u0439 \u043A\u043B\u0438\u043A \u0434\u043B\u044F \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F' : ''}>
                           {getCellValue(task, key)}
                         </td>
                       );
