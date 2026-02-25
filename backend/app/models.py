@@ -66,6 +66,12 @@ class Task(Base):
     sort_order = Column(Integer, default=0, server_default='0', nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Чек-лист статусы (серый по умолчанию)
+    status_people = Column(String, default='gray', server_default='gray', nullable=False)
+    status_equipment = Column(String, default='gray', server_default='gray', nullable=False)
+    status_mtr = Column(String, default='gray', server_default='gray', nullable=False)
+    status_access = Column(String, default='gray', server_default='gray', nullable=False)
+
     project = relationship("Project", back_populates="tasks")
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
     daily_works = relationship("DailyWork", back_populates="task")

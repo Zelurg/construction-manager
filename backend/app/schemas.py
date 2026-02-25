@@ -49,6 +49,10 @@ class TaskBase(BaseModel):
     parent_code: Optional[str] = None
     is_custom: Optional[bool] = False
     sort_order: Optional[int] = 0
+    status_people: Optional[str] = 'gray'
+    status_equipment: Optional[str] = 'gray'
+    status_mtr: Optional[str] = 'gray'
+    status_access: Optional[str] = 'gray'
 
 class TaskCreate(TaskBase):
     pass
@@ -72,6 +76,10 @@ class TaskUpdate(BaseModel):
     parent_code: Optional[str] = None
     is_custom: Optional[bool] = None
     sort_order: Optional[int] = None
+    status_people: Optional[str] = None
+    status_equipment: Optional[str] = None
+    status_mtr: Optional[str] = None
+    status_access: Optional[str] = None
 
 class Task(TaskBase):
     id: int
