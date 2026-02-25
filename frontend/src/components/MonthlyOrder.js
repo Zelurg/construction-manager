@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { scheduleAPI, employeesAPI, headcountAPI } from '../services/api';
+import { scheduleAPI, employeesAPI, headcountAPI, importExportAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
@@ -29,7 +29,6 @@ const CHECKLIST_FIELDS = [
   { key: 'status_access',    colKey: 'cl_access',    label: 'Допуск' },
 ];
 const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
-// Маппинг colKey -> key для фильтрации
 const CHECKLIST_COL_TO_FIELD = Object.fromEntries(CHECKLIST_FIELDS.map(f => [f.colKey, f.key]));
 
 const DEFAULT_COL_WIDTHS = {
@@ -217,7 +216,7 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
   `;
 }
 
-function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPrint }) {
+function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPrint, onShowExportMSG, onShowImportMSG }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
@@ -248,6 +247,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
   const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
 
+  // ref для скрытого input загрузки МСГ
+  const msgFileInputRef = useRef(null);
+
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
   const [dragOverPos, setDragOverPos] = useState('before');
@@ -273,6 +275,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   useEffect(() => { editValueRef.current = editValue; }, [editValue]);
   const editingCellRef = useRef(null);
   useEffect(() => { editingCellRef.current = editingCell; }, [editingCell]);
+
+  // Хранит текущий selectedMonth для доступа из коллбэков без зависимости
+  const selectedMonthRef = useRef(selectedMonth);
+  useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
 
   const availableColumns = useMemo(() => [
     { key: 'code',                    label: 'Шифр' },
@@ -361,63 +367,48 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     } catch (e) { console.error(e); alert('Не удалось удалить'); }
   }, [selectedMonth]);
 
-  useEffect(() => {
-    if (!showGantt) return;
-    const timer = setTimeout(() => {
-      const tableEl = tableScrollRef.current;
-      const ganttEl = ganttBodyRef.current;
-      if (!tableEl || !ganttEl) return;
-      const onTable = () => {
-        if (syncingRef.current) return;
-        syncingRef.current = true;
-        requestAnimationFrame(() => { ganttEl.scrollTop = tableEl.scrollTop; syncingRef.current = false; });
-      };
-      const onGantt = () => {
-        if (syncingRef.current) return;
-        syncingRef.current = true;
-        requestAnimationFrame(() => { tableEl.scrollTop = ganttEl.scrollTop; syncingRef.current = false; });
-      };
-      tableEl.addEventListener('scroll', onTable, { passive: true });
-      ganttEl.addEventListener('scroll', onGantt, { passive: true });
-      return () => {
-        tableEl.removeEventListener('scroll', onTable);
-        ganttEl.removeEventListener('scroll', onGantt);
-      };
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [showGantt, filteredTasks]);
+  // ─── Экспорт МСГ ─────────────────────────────────────────────────────────────
+  const handleExportMSG = useCallback(async () => {
+    try {
+      const [year, month] = selectedMonthRef.current.split('-').map(Number);
+      const response = await importExportAPI.exportMSG(year, month);
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `msg_${year}_${String(month).padStart(2, '0')}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Ошибка скачивания МСГ: ' + (error.response?.data?.detail || error.message));
+    }
+  }, []);
 
-  const handleColResizeMouseDown = useCallback((e, colKey) => {
-    e.preventDefault(); e.stopPropagation();
-    colResizeRef.current = {
-      active: true, colKey,
-      startX: e.clientX,
-      startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100,
-      rafId: null,
-    };
-    const onMove = (ev) => {
-      if (!colResizeRef.current.active) return;
-      if (colResizeRef.current.rafId) return;
-      colResizeRef.current.rafId = requestAnimationFrame(() => {
-        const w = Math.max(40, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
-        setColWidths(prev => ({ ...prev, [colResizeRef.current.colKey]: w }));
-        colResizeRef.current.rafId = null;
-      });
-    };
-    const onUp = () => {
-      if (colResizeRef.current.rafId) { cancelAnimationFrame(colResizeRef.current.rafId); colResizeRef.current.rafId = null; }
-      colResizeRef.current.active = false;
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      setColWidths(prev => { localStorage.setItem('monthlyColWidths', JSON.stringify(prev)); return prev; });
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [colWidths]);
+  // ─── Импорт МСГ ──────────────────────────────────────────────────────────────
+  const handleImportMSG = useCallback(async (file) => {
+    try {
+      const [year, month] = selectedMonthRef.current.split('-').map(Number);
+      const response = await importExportAPI.uploadMSG(file, year, month);
+      const { records_created, records_updated, errors } = response.data;
+      let message = `МСГ обновлён:\nСоздано записей: ${records_created}\nОбновлено записей: ${records_updated}`;
+      if (errors && errors.length > 0) {
+        message += `\n\nОшибки:\n${errors.join('\n')}`;
+      }
+      alert(message);
+      // Перезагружаем headcount чтобы отразить изменения в Ганте
+      await loadHeadcount();
+    } catch (error) {
+      alert('Ошибка загрузки МСГ: ' + (error.response?.data?.detail || error.message));
+    }
+  }, [loadHeadcount]);
 
+  // Регистрируем обработчики в App.js через пропы
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
   useEffect(() => { if (onShowPrint) onShowPrint(() => setShowPrintDialog(true)); }, [onShowPrint]);
+  useEffect(() => { if (onShowExportMSG) onShowExportMSG(() => handleExportMSG); }, [onShowExportMSG, handleExportMSG]);
+  useEffect(() => { if (onShowImportMSG) onShowImportMSG(() => handleImportMSG); }, [onShowImportMSG, handleImportMSG]);
 
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
@@ -611,7 +602,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     }
   }, [calculateSectionSum]);
 
-  // Фильтрация: чек-лист фильтруется по значению поля (gray/red/yellow/green)
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
     if (activeFilters.length === 0) {
@@ -623,7 +613,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) => {
-        // Чек-лист: сравниваем значение поля напрямую
         if (CHECKLIST_COL_KEYS.has(k)) {
           const fieldKey = CHECKLIST_COL_TO_FIELD[k];
           return (t[fieldKey] || 'gray') === v;
@@ -776,6 +765,34 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setSelectedTaskId(prev => prev === task.id ? null : task.id);
   }, []);
 
+  const handleColResizeMouseDown = useCallback((e, colKey) => {
+    e.preventDefault(); e.stopPropagation();
+    colResizeRef.current = {
+      active: true, colKey,
+      startX: e.clientX,
+      startWidth: colWidths[colKey] || DEFAULT_COL_WIDTHS[colKey] || 100,
+      rafId: null,
+    };
+    const onMove = (ev) => {
+      if (!colResizeRef.current.active) return;
+      if (colResizeRef.current.rafId) return;
+      colResizeRef.current.rafId = requestAnimationFrame(() => {
+        const w = Math.max(40, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
+        setColWidths(prev => ({ ...prev, [colResizeRef.current.colKey]: w }));
+        colResizeRef.current.rafId = null;
+      });
+    };
+    const onUp = () => {
+      if (colResizeRef.current.rafId) { cancelAnimationFrame(colResizeRef.current.rafId); colResizeRef.current.rafId = null; }
+      colResizeRef.current.active = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setColWidths(prev => { localStorage.setItem('monthlyColWidths', JSON.stringify(prev)); return prev; });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [colWidths]);
+
   const handleMouseDown = (e) => { setIsResizing(true); e.preventDefault(); };
   useEffect(() => {
     const onMove = (e) => {
@@ -848,6 +865,20 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   return (
     <div className="monthly-order">
+      {/* Скрытый input для загрузки МСГ (на случай прямого вызова из компонента) */}
+      <input
+        ref={msgFileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          await handleImportMSG(file);
+          e.target.value = '';
+        }}
+      />
+
       <div className="month-selector">
         <label>Выберите месяц:</label>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
