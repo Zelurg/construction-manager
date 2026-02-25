@@ -30,8 +30,9 @@ function AppInner() {
 
   const columnSettingsHandlers = useRef({ schedule: null, monthly: null, daily: null });
   const filtersHandlers = useRef({ schedule: null, monthly: null });
-  // Храним каллбэк, который MonthlyOrder передаёт наружу через onShowPrint
   const printHandlers = useRef({ monthly: null });
+  // Храним каллбэки для экспорта/импорта МСГ из MonthlyOrder
+  const msgExportImportHandlers = useRef({ exportMSG: null, importMSG: null });
   const scheduleKey = useRef(0);
 
   useEffect(() => {
@@ -71,13 +72,13 @@ function AppInner() {
 
   const handleSwitchProject = () => { clearProject(); };
 
-  const handleDownloadTemplate = async () => {
+  const handleDownloadSchedule = async () => {
     try {
       const response = await importExportAPI.exportTasks();
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `export_${currentProject?.name || 'schedule'}.xlsx`);
+      link.setAttribute('download', `schedule_${currentProject?.name || 'export'}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -87,17 +88,31 @@ function AppInner() {
     }
   };
 
-  const handleUploadTemplate = async (file) => {
+  const handleUploadSchedule = async (file) => {
     try {
       const response = await importExportAPI.uploadTemplate(file);
-      alert(
-        `Успешно обработано задач: ${response.data.tasks_processed}\n` +
-        (response.data.errors.length > 0 ? `Ошибки:\n${response.data.errors.join('\n')}` : '')
-      );
+      const { tasks_created, tasks_updated, errors } = response.data;
+      let message = `Успешно:\n`;
+      message += `Создано задач: ${tasks_created}\n`;
+      message += `Обновлено задач: ${tasks_updated}`;
+      if (errors.length > 0) {
+        message += `\n\nОшибки:\n${errors.join('\n')}`;
+      }
+      alert(message);
       window.location.reload();
     } catch (error) {
       alert('Ошибка загрузки файла: ' + (error.response?.data?.detail || error.message));
     }
+  };
+
+  const handleDownloadMSG = () => {
+    const handler = msgExportImportHandlers.current.exportMSG;
+    if (handler) handler();
+  };
+
+  const handleUploadMSG = async (file) => {
+    const handler = msgExportImportHandlers.current.importMSG;
+    if (handler) await handler(file);
   };
 
   const handleShowColumnSettings = () => {
@@ -110,7 +125,6 @@ function AppInner() {
     if (handler) handler();
   };
 
-  // Кнопка Печать МСГ в Toolbar — вызываем каллбэк из MonthlyOrder
   const handleShowPrint = () => {
     const handler = printHandlers.current.monthly;
     if (handler) handler();
@@ -128,7 +142,7 @@ function AppInner() {
             <h1>Управление строительными проектами</h1>
             {currentProject && (
               <div className="current-project-badge">
-                <span className="project-badge-icon">🏗</span>
+                <span className="project-badge-icon">🏭</span>
                 <span className="project-badge-name">{currentProject.name}</span>
                 <button
                   className="btn-switch-project"
@@ -166,8 +180,10 @@ function AppInner() {
         onShowColumnSettings={handleShowColumnSettings}
         onShowFilters={handleShowFilters}
         onScheduleCleared={handleScheduleCleared}
-        onDownloadTemplate={handleDownloadTemplate}
-        onUploadTemplate={handleUploadTemplate}
+        onDownloadSchedule={handleDownloadSchedule}
+        onUploadSchedule={handleUploadSchedule}
+        onDownloadMSG={handleDownloadMSG}
+        onUploadMSG={handleUploadMSG}
         onPrint={handleShowPrint}
       />
 
@@ -186,6 +202,8 @@ function AppInner() {
             onShowColumnSettings={(h) => (columnSettingsHandlers.current.monthly = h)}
             onShowFilters={(h) => (filtersHandlers.current.monthly = h)}
             onShowPrint={(h) => (printHandlers.current.monthly = h)}
+            onShowExportMSG={(h) => (msgExportImportHandlers.current.exportMSG = h)}
+            onShowImportMSG={(h) => (msgExportImportHandlers.current.importMSG = h)}
           />
         )}
         {activeTab === 'daily' && (
