@@ -97,7 +97,6 @@ async def import_tasks(
                 return None
 
             def parse_status(v):
-                """Парсинг статуса чек-листа"""
                 if v is None or str(v).strip() == '':
                     return 'gray'
                 val = str(v).strip().lower()
@@ -120,7 +119,6 @@ async def import_tasks(
             if end_plan is None:
                 end_plan = end_contract
 
-            # Подготовка данных для обновления/создания
             update_data = {
                 "name": name.strip(),
                 "unit": str(unit).strip() if unit and str(unit).strip() else None,
@@ -141,7 +139,6 @@ async def import_tasks(
                 "status_access": parse_status(task_data.get('status_access')),
             }
 
-            # Обновляем существующую задачу или создаём новую
             if code in existing_tasks:
                 task = existing_tasks[code]
                 for key, value in update_data.items():
@@ -162,7 +159,6 @@ async def import_tasks(
         except Exception as e:
             errors.append(f"Строка {row_num}: {str(e)}")
 
-    # Обновляем parent_code после обработки всех задач
     stack = []
     for code in existing_tasks.keys():
         task = existing_tasks[code]
@@ -212,13 +208,7 @@ def export_tasks(
         cell.alignment = Alignment(horizontal='center')
 
     def status_to_text(status):
-        """Конвертация статуса в текст"""
-        mapping = {
-            'green': 'Зелёный',
-            'yellow': 'Жёлтый',
-            'red': 'Красный',
-            'gray': ''
-        }
+        mapping = {'green': 'Зелёный', 'yellow': 'Жёлтый', 'red': 'Красный', 'gray': ''}
         return mapping.get(status, '')
 
     for row_num, task in enumerate(tasks, 2):
@@ -261,43 +251,64 @@ def export_msg(
     month: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Экспорт месячно-суточного графика (МСГ) в Excel"""
-    
-    # Получаем задачи проекта
-    tasks = db.query(models.Task).filter(
+    """Экспорт МСГ: только работы выбранного месяца + их родительские секции, без колонок дней"""
+    from calendar import monthrange
+
+    # Начало и конец выбранного месяца
+    month_start = date(year, month, 1)
+    _, days_in_month = monthrange(year, month)
+    month_end = date(year, month, days_in_month)
+
+    # Все задачи проекта в порядке отображения
+    all_tasks = db.query(models.Task).filter(
         models.Task.project_id == project_id
     ).order_by(models.Task.sort_order, models.Task.code).all()
-    
-    if not tasks:
+
+    if not all_tasks:
         raise HTTPException(status_code=404, detail="Задачи не найдены")
-    
-    # Получаем все записи DailyHeadcount за указанный месяц
-    headcounts = db.query(models.DailyHeadcount).filter(
-        models.DailyHeadcount.project_id == project_id,
-        extract('year', models.DailyHeadcount.date) == year,
-        extract('month', models.DailyHeadcount.date) == month
-    ).all()
-    
-    # Индексируем по (task_id, date)
-    headcount_map = {}
-    for hc in headcounts:
-        key = (hc.task_id, hc.date)
-        headcount_map[key] = hc.headcount
-    
-    # Создаём Excel
+
+    # Фильтруем работы по попаданию в месяц: start_date_plan <= month_end AND end_date_plan >= month_start
+    # Кастомные без дат тоже включаем (как во фронтенде)
+    work_ids_in_month = set()
+    for task in all_tasks:
+        if task.is_section:
+            continue
+        s = task.start_date_plan
+        e = task.end_date_plan
+        if task.is_custom and not s and not e:
+            work_ids_in_month.add(task.id)
+            continue
+        if s and e and s <= month_end and e >= month_start:
+            work_ids_in_month.add(task.id)
+
+    # Секции-родители для попавших работ: проходимся через коды
+    task_by_code = {t.code: t for t in all_tasks}
+    section_codes_needed = set()
+    for task in all_tasks:
+        if task.id not in work_ids_in_month:
+            continue
+        # Вытащиваем все префиксы кода
+        parts = str(task.code).split('.')
+        for length in range(1, len(parts)):
+            section_codes_needed.add('.'.join(parts[:length]))
+
+    # Сборка итогового списка в порядке sort_order
+    visible_tasks = [
+        t for t in all_tasks
+        if t.id in work_ids_in_month or (t.is_section and t.code in section_codes_needed)
+    ]
+
+    # Строим Excel в том же формате, что экспорт графика
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = f"МСГ {year}-{month:02d}"
-    
-    # Определяем количество дней в месяце
-    from calendar import monthrange
-    _, days_in_month = monthrange(year, month)
-    
-    # Заголовки
-    headers = ['Код', 'Наименование работ']
-    for day in range(1, days_in_month + 1):
-        headers.append(str(day))
-    
+
+    headers = [
+        'Код', 'Наименование', 'Ед.изм.', 'Объём план',
+        'Нач.контракт', 'Оконч.контракт', 'Нач.план', 'Оконч.план',
+        'Цена за ед.', 'Трудозатраты/ед.', 'Машиночасы/ед.', 'Исполнитель',
+        'Люди', 'Техника', 'МТР', 'Допуск'
+    ]
     header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
     for col_num, header in enumerate(headers, 1):
@@ -305,24 +316,47 @@ def export_msg(
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal='center')
-    
-    # Данные
-    for row_num, task in enumerate(tasks, 2):
+
+    def status_to_text(status):
+        mapping = {'green': 'Зелёный', 'yellow': 'Жёлтый', 'red': 'Красный', 'gray': ''}
+        return mapping.get(status, '')
+
+    # Цветовые заливки для секций
+    SECTION_COLORS = ['B8D4E8', 'C8DFF0', 'D8EAF5', 'E4F1F8', 'EFF6FB']
+
+    for row_num, task in enumerate(visible_tasks, 2):
         indent = '  ' * task.level if task.level else ''
         ws.cell(row=row_num, column=1, value=task.code)
         ws.cell(row=row_num, column=2, value=f"{indent}{task.name}")
-        
-        # Заполняем дни
-        for day in range(1, days_in_month + 1):
-            current_date = date(year, month, day)
-            key = (task.id, current_date)
-            headcount = headcount_map.get(key, 0)
-            ws.cell(row=row_num, column=day + 2, value=headcount if headcount > 0 else None)
-        
+        ws.cell(row=row_num, column=3, value=task.unit)
+        ws.cell(row=row_num, column=4, value=task.volume_plan)
+        ws.cell(row=row_num, column=5, value=str(task.start_date_contract) if task.start_date_contract else None)
+        ws.cell(row=row_num, column=6, value=str(task.end_date_contract) if task.end_date_contract else None)
+        ws.cell(row=row_num, column=7, value=str(task.start_date_plan) if task.start_date_plan else None)
+        ws.cell(row=row_num, column=8, value=str(task.end_date_plan) if task.end_date_plan else None)
+        ws.cell(row=row_num, column=9, value=task.unit_price)
+        ws.cell(row=row_num, column=10, value=task.labor_per_unit)
+        ws.cell(row=row_num, column=11, value=task.machine_hours_per_unit)
+        ws.cell(row=row_num, column=12, value=task.executor)
+        ws.cell(row=row_num, column=13, value=status_to_text(task.status_people))
+        ws.cell(row=row_num, column=14, value=status_to_text(task.status_equipment))
+        ws.cell(row=row_num, column=15, value=status_to_text(task.status_mtr))
+        ws.cell(row=row_num, column=16, value=status_to_text(task.status_access))
+
         if task.is_section:
-            for col in range(1, days_in_month + 3):
-                ws.cell(row=row_num, column=col).font = Font(bold=True)
-    
+            level_idx = min(task.level or 0, len(SECTION_COLORS) - 1)
+            fill_color = SECTION_COLORS[level_idx]
+            section_fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+            for col in range(1, 17):
+                cell = ws.cell(row=row_num, column=col)
+                cell.font = Font(bold=True)
+                cell.fill = section_fill
+
+    # Автоширина колонок
+    col_widths = [12, 50, 8, 12, 14, 14, 12, 12, 12, 16, 16, 20, 10, 10, 8, 10]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
     output = BytesIO()
     wb.save(output)
     output.seek(0)
@@ -351,7 +385,6 @@ async def import_msg(
     wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
     ws = wb.active
     
-    # Получаем задачи проекта для сопоставления по коду
     tasks = db.query(models.Task).filter(
         models.Task.project_id == project_id
     ).all()
@@ -376,9 +409,8 @@ async def import_msg(
             
             task = task_map[code]
             
-            # Обрабатываем дни (колонки с 3-й)
             for day in range(1, days_in_month + 1):
-                col_index = day + 1  # +2 для смещения, -1 для индекса
+                col_index = day + 1
                 if col_index >= len(row):
                     continue
                 
@@ -393,7 +425,6 @@ async def import_msg(
                 
                 current_date = date(year, month, day)
                 
-                # Ищем существующую запись
                 existing = db.query(models.DailyHeadcount).filter(
                     models.DailyHeadcount.task_id == task.id,
                     models.DailyHeadcount.date == current_date
@@ -413,7 +444,6 @@ async def import_msg(
                         db.add(new_hc)
                         records_created += 1
                 elif existing:
-                    # Если значение 0 или пусто - удаляем запись
                     db.delete(existing)
                     records_updated += 1
         
