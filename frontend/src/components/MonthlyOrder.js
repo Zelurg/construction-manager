@@ -4,6 +4,7 @@ import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
+import ChecklistFilter from './ChecklistFilter';
 import FilterManager from './FilterManager';
 import PrintDialog from './PrintDialog';
 import ChecklistStatus from './ChecklistStatus';
@@ -21,7 +22,6 @@ function getLevelFromCode(code) {
   return String(code).split('.').length - 1;
 }
 
-// 4 отдельных колонки чек-листа
 const CHECKLIST_FIELDS = [
   { key: 'status_people',    colKey: 'cl_people',    label: 'Люди' },
   { key: 'status_equipment', colKey: 'cl_equipment', label: 'Техника' },
@@ -29,6 +29,8 @@ const CHECKLIST_FIELDS = [
   { key: 'status_access',    colKey: 'cl_access',    label: 'Допуск' },
 ];
 const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
+// Маппинг colKey -> key для фильтрации
+const CHECKLIST_COL_TO_FIELD = Object.fromEntries(CHECKLIST_FIELDS.map(f => [f.colKey, f.key]));
 
 const DEFAULT_COL_WIDTHS = {
   code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
@@ -313,7 +315,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       const s = localStorage.getItem('monthlyOrderVisibleColumns');
       if (s) {
         const parsed = JSON.parse(s);
-        // Миграция: заменяем старый 'checklist' на 4 отдельных колонки
         if (parsed.includes('checklist')) {
           const idx = parsed.indexOf('checklist');
           const migrated = [...parsed];
@@ -610,6 +611,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     }
   }, [calculateSectionSum]);
 
+  // Фильтрация: чек-лист фильтруется по значению поля (gray/red/yellow/green)
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
     if (activeFilters.length === 0) {
@@ -620,7 +622,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setHasActiveFilters(true);
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      return activeFilters.every(([k, v]) => String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase()));
+      return activeFilters.every(([k, v]) => {
+        // Чек-лист: сравниваем значение поля напрямую
+        if (CHECKLIST_COL_KEYS.has(k)) {
+          const fieldKey = CHECKLIST_COL_TO_FIELD[k];
+          return (t[fieldKey] || 'gray') === v;
+        }
+        return String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase());
+      });
     });
     const parentIds = new Set();
     matchedWorks.forEach(t => getParentIds(t, tasks).forEach(id => parentIds.add(id)));
@@ -641,7 +650,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
-    if (CHECKLIST_COL_KEYS.has(colKey)) return;
     setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
@@ -688,7 +696,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [handleCellBlur]);
 
   const getCellValue = useCallback((task, key) => {
-    // Отдельная колонка чек-листа
     const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
     if (clField) {
       if (task.is_section) return null;
@@ -889,26 +896,37 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                 <thead style={{ height: `${tableHeaderHeight}px` }}>
                   <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
                     {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
-                    {visibleColumns.map(key => (
-                      <th key={key}
-                        className={filters[key] ? 'has-filter' : ''}
-                        onContextMenu={e => handleThContextMenu(e, key)}
-                        title={!CHECKLIST_COL_KEYS.has(key) ? 'Правый клик — фильтр' : ''}
-                        style={{ verticalAlign: 'middle', textAlign: 'center' }}
-                      >
-                        <span className="th-label-text">{getColLabel(key)}</span>
-                        {!CHECKLIST_COL_KEYS.has(key) && (
-                          <ColumnFilter
-                            columnKey={key}
-                            allValues={getColumnValues(key)}
-                            currentFilter={filters[key] || ''}
-                            onApplyFilter={handleFilterApply}
-                            triggerEvent={filterTriggers[key]}
-                          />
-                        )}
-                        <div className="col-resize-handle" onMouseDown={e => handleColResizeMouseDown(e, key)} />
-                      </th>
-                    ))}
+                    {visibleColumns.map(key => {
+                      const isClCol = CHECKLIST_COL_KEYS.has(key);
+                      const hasFilter = !!filters[key];
+                      return (
+                        <th key={key}
+                          className={hasFilter ? 'has-filter' : ''}
+                          onContextMenu={e => handleThContextMenu(e, key)}
+                          title="Правый клик — фильтр"
+                          style={{ verticalAlign: 'middle', textAlign: 'center' }}
+                        >
+                          <span className="th-label-text">{getColLabel(key)}</span>
+                          {isClCol ? (
+                            <ChecklistFilter
+                              columnKey={key}
+                              currentFilter={filters[key] || ''}
+                              onApplyFilter={handleFilterApply}
+                              triggerEvent={filterTriggers[key]}
+                            />
+                          ) : (
+                            <ColumnFilter
+                              columnKey={key}
+                              allValues={getColumnValues(key)}
+                              currentFilter={filters[key] || ''}
+                              onApplyFilter={handleFilterApply}
+                              triggerEvent={filterTriggers[key]}
+                            />
+                          )}
+                          <div className="col-resize-handle" onMouseDown={e => handleColResizeMouseDown(e, key)} />
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
