@@ -247,9 +247,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
   const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
 
-  // ref для скрытого input загрузки МСГ
-  const msgFileInputRef = useRef(null);
-
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
   const [dragOverPos, setDragOverPos] = useState('before');
@@ -276,7 +273,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const editingCellRef = useRef(null);
   useEffect(() => { editingCellRef.current = editingCell; }, [editingCell]);
 
-  // Хранит текущий selectedMonth для доступа из коллбэков без зависимости
+  // Актуальный selectedMonth для коллбэков без зависимостей
   const selectedMonthRef = useRef(selectedMonth);
   useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
 
@@ -396,19 +393,20 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         message += `\n\nОшибки:\n${errors.join('\n')}`;
       }
       alert(message);
-      // Перезагружаем headcount чтобы отразить изменения в Ганте
       await loadHeadcount();
     } catch (error) {
       alert('Ошибка загрузки МСГ: ' + (error.response?.data?.detail || error.message));
     }
   }, [loadHeadcount]);
 
-  // Регистрируем обработчики в App.js через пропы
+  // ─── Регистрация обработчиков в App.js через пропы ───────────────────────────
+  // ВАЖНО: передаём саму функцию напрямую (не фабрику!),
+  // т.к. App.js сохраняет h и затем вызывает handler() / handler(file)
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
   useEffect(() => { if (onShowPrint) onShowPrint(() => setShowPrintDialog(true)); }, [onShowPrint]);
-  useEffect(() => { if (onShowExportMSG) onShowExportMSG(() => handleExportMSG); }, [onShowExportMSG, handleExportMSG]);
-  useEffect(() => { if (onShowImportMSG) onShowImportMSG(() => handleImportMSG); }, [onShowImportMSG, handleImportMSG]);
+  useEffect(() => { if (onShowExportMSG) onShowExportMSG(handleExportMSG); }, [onShowExportMSG, handleExportMSG]);
+  useEffect(() => { if (onShowImportMSG) onShowImportMSG(handleImportMSG); }, [onShowImportMSG, handleImportMSG]);
 
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();
@@ -865,20 +863,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   return (
     <div className="monthly-order">
-      {/* Скрытый input для загрузки МСГ (на случай прямого вызова из компонента) */}
-      <input
-        ref={msgFileInputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        style={{ display: 'none' }}
-        onChange={async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          await handleImportMSG(file);
-          e.target.value = '';
-        }}
-      />
-
       <div className="month-selector">
         <label>Выберите месяц:</label>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
