@@ -21,6 +21,15 @@ function getLevelFromCode(code) {
   return String(code).split('.').length - 1;
 }
 
+// 4 отдельных колонки чек-листа
+const CHECKLIST_FIELDS = [
+  { key: 'status_people',    colKey: 'cl_people',    label: 'Люди' },
+  { key: 'status_equipment', colKey: 'cl_equipment', label: 'Техника' },
+  { key: 'status_mtr',       colKey: 'cl_mtr',       label: 'МТР' },
+  { key: 'status_access',    colKey: 'cl_access',    label: 'Допуск' },
+];
+const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
+
 const DEFAULT_COL_WIDTHS = {
   code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
   volume_remaining: 90, start_date_contract: 110, end_date_contract: 110,
@@ -29,7 +38,7 @@ const DEFAULT_COL_WIDTHS = {
   labor_total: 100, labor_fact: 100, labor_remaining: 110,
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
-  checklist: 120,
+  cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
 };
 
 function getParentIds(task, allTasks) {
@@ -85,9 +94,9 @@ const TaskRow = React.memo(function TaskRow({
           {task.is_custom && (
             <button
               onClick={e => { e.stopPropagation(); onDeleteCustomRow(task.id); }}
-              title="\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0443"
+              title="Удалить строку"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14, lineHeight: 1, padding: 2 }}
-            >\u2715</button>
+            >✕</button>
           )}
         </td>
       )}
@@ -95,7 +104,7 @@ const TaskRow = React.memo(function TaskRow({
         <td key={key}
           style={getCellStyle(task, key)}
           onDoubleClick={() => onCellDoubleClick(task, key)}
-          title={isFieldEditable(task, key) ? '\u0414\u0432\u043E\u0439\u043D\u043E\u0439 \u043A\u043B\u0438\u043A \u0434\u043B\u044F \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F' : ''}
+          title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
         >
           {getCellValue(task, key)}
         </td>
@@ -109,7 +118,7 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
   const ppd = SCALE_PPD[ganttScale] || 5;
 
   const workTasks = tasks.filter(t => !t.is_section && (t.start_date_plan || t.start_date_contract));
-  if (workTasks.length === 0) return '<p style="color:#999;font-size:11px;">\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 \u0434\u043B\u044F \u0434\u0438\u0430\u0433\u0440\u0430\u043C\u043C\u044B</p>';
+  if (workTasks.length === 0) return '<p style="color:#999;font-size:11px;">Нет данных для диаграммы</p>';
 
   const allDates = [];
   workTasks.forEach(t => {
@@ -118,7 +127,7 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
     if (t.start_date_plan)     allDates.push(new Date(t.start_date_plan));
     if (t.end_date_plan)       allDates.push(new Date(t.end_date_plan));
   });
-  if (allDates.length === 0) return '<p style="color:#999">\u041D\u0435\u0442 \u0434\u0430\u0442</p>';
+  if (allDates.length === 0) return '<p style="color:#999">Нет дат</p>';
 
   const minDate = new Date(Math.min(...allDates)); minDate.setHours(0, 0, 0, 0);
   const maxDate = new Date(Math.max(...allDates)); maxDate.setHours(23, 59, 59, 999);
@@ -199,9 +208,9 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
       <tbody>${bodyRows}</tbody>
     </table>
     <div style="margin-top:6px;font-size:10px;color:#555;">
-      <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>\u041A\u043E\u043D\u0442\u0440\u0430\u043A\u0442
+      <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Контракт
       &nbsp;&nbsp;
-      <span style="display:inline-block;width:16px;height:8px;background:#4a90e2;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>\u041F\u043B\u0430\u043D
+      <span style="display:inline-block;width:16px;height:8px;background:#4a90e2;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>План
     </div>
   `;
 }
@@ -264,43 +273,56 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   useEffect(() => { editingCellRef.current = editingCell; }, [editingCell]);
 
   const availableColumns = useMemo(() => [
-    { key: 'code',                    label: '\u0428\u0438\u0444\u0440' },
-    { key: 'name',                    label: '\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435' },
-    { key: 'checklist',               label: '\u0427\u0435\u043A-\u043B\u0438\u0441\u0442', isCalculated: true },
-    { key: 'unit',                    label: '\u0415\u0434. \u0438\u0437\u043C.' },
-    { key: 'volume_plan',             label: '\u041E\u0431\u044A\u0451\u043C \u043F\u043B\u0430\u043D' },
-    { key: 'volume_fact',             label: '\u041E\u0431\u044A\u0451\u043C \u0444\u0430\u043A\u0442' },
-    { key: 'volume_remaining',        label: '\u041E\u0431\u044A\u0451\u043C \u043E\u0441\u0442\u0430\u0442\u043E\u043A',  isCalculated: true },
-    { key: 'start_date_contract',     label: '\u0421\u0442\u0430\u0440\u0442 \u043A\u043E\u043D\u0442\u0440\u0430\u043A\u0442' },
-    { key: 'end_date_contract',       label: '\u0424\u0438\u043D\u0438\u0448 \u043A\u043E\u043D\u0442\u0440\u0430\u043A\u0442' },
-    { key: 'start_date_plan',         label: '\u0421\u0442\u0430\u0440\u0442 \u043F\u043B\u0430\u043D',    editable: true },
-    { key: 'end_date_plan',           label: '\u0424\u0438\u043D\u0438\u0448 \u043F\u043B\u0430\u043D',    editable: true },
-    { key: 'unit_price',              label: '\u0426\u0435\u043D\u0430 \u0437\u0430 \u0435\u0434.' },
-    { key: 'labor_per_unit',          label: '\u0422\u0440\u0443\u0434\u043E\u0437\u0430\u0442\u0440\u0430\u0442\u044B/\u0435\u0434.' },
-    { key: 'machine_hours_per_unit',  label: '\u041C\u0430\u0448\u0438\u043D\u043E\u0447\u0430\u0441\u044B/\u0435\u0434.' },
-    { key: 'executor',                label: '\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C',           editable: true },
-    { key: 'labor_total',             label: '\u0412\u0441\u0435\u0433\u043E \u0442\u0440\u0443\u0434\u043E\u0437\u0430\u0442\u0440\u0430\u0442',   isCalculated: true },
-    { key: 'labor_fact',              label: '\u0422\u0440\u0443\u0434\u043E\u0437\u0430\u0442\u0440\u0430\u0442\u044B \u0444\u0430\u043A\u0442',   isCalculated: true },
-    { key: 'labor_remaining',         label: '\u041E\u0441\u0442\u0430\u0442\u043E\u043A \u0442\u0440\u0443\u0434\u043E\u0437\u0430\u0442\u0440\u0430\u0442', isCalculated: true },
-    { key: 'cost_total',              label: '\u0421\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C \u0432\u0441\u0435\u0433\u043E',       isCalculated: true },
-    { key: 'cost_fact',               label: '\u0421\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C \u0444\u0430\u043A\u0442',        isCalculated: true },
-    { key: 'cost_remaining',          label: '\u041E\u0441\u0442\u0430\u0442\u043E\u043A \u0441\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u0438',     isCalculated: true },
-    { key: 'machine_hours_total',     label: '\u0412\u0441\u0435\u0433\u043E \u043C\u0430\u0448\u0438\u043D\u043E\u0447\u0430\u0441\u043E\u0432',   isCalculated: true },
-    { key: 'machine_hours_fact',      label: '\u041C\u0430\u0448\u0438\u043D\u043E\u0447\u0430\u0441\u044B \u0444\u0430\u043A\u0442',       isCalculated: true },
-    { key: 'machine_hours_remaining', label: '\u041E\u0441\u0442\u0430\u0442\u043E\u043A \u043C\u0430\u0448\u0438\u043D\u043E\u0447\u0430\u0441\u043E\u0432', isCalculated: true },
+    { key: 'code',                    label: 'Шифр' },
+    { key: 'name',                    label: 'Наименование' },
+    { key: 'cl_people',               label: 'Люди',      isCalculated: true },
+    { key: 'cl_equipment',            label: 'Техника',  isCalculated: true },
+    { key: 'cl_mtr',                  label: 'МТР',        isCalculated: true },
+    { key: 'cl_access',               label: 'Допуск',    isCalculated: true },
+    { key: 'unit',                    label: 'Ед. изм.' },
+    { key: 'volume_plan',             label: 'Объём план' },
+    { key: 'volume_fact',             label: 'Объём факт' },
+    { key: 'volume_remaining',        label: 'Объём остаток',  isCalculated: true },
+    { key: 'start_date_contract',     label: 'Старт контракт' },
+    { key: 'end_date_contract',       label: 'Финиш контракт' },
+    { key: 'start_date_plan',         label: 'Старт план',    editable: true },
+    { key: 'end_date_plan',           label: 'Финиш план',    editable: true },
+    { key: 'unit_price',              label: 'Цена за ед.' },
+    { key: 'labor_per_unit',          label: 'Трудозатраты/ед.' },
+    { key: 'machine_hours_per_unit',  label: 'Машиночасы/ед.' },
+    { key: 'executor',                label: 'Исполнитель',           editable: true },
+    { key: 'labor_total',             label: 'Всего трудозатрат',   isCalculated: true },
+    { key: 'labor_fact',              label: 'Трудозатраты факт',   isCalculated: true },
+    { key: 'labor_remaining',         label: 'Остаток трудозатрат', isCalculated: true },
+    { key: 'cost_total',              label: 'Стоимость всего',       isCalculated: true },
+    { key: 'cost_fact',               label: 'Стоимость факт',        isCalculated: true },
+    { key: 'cost_remaining',          label: 'Остаток стоимости',     isCalculated: true },
+    { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
+    { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
+    { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
   ], []);
 
   const defaultColumns = [
-    'code', 'name', 'checklist', 'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
+    'code', 'name', 'cl_people', 'cl_equipment', 'cl_mtr', 'cl_access',
+    'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
     'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan',
   ];
+
   const [visibleColumns, setVisibleColumns] = useState(() => {
-    const s = localStorage.getItem('monthlyOrderVisibleColumns');
-    if (s) {
-      const parsed = JSON.parse(s);
-      if (!parsed.includes('checklist')) return ['code', 'name', 'checklist', ...parsed.filter(c => c !== 'code' && c !== 'name')];
-      return parsed;
-    }
+    try {
+      const s = localStorage.getItem('monthlyOrderVisibleColumns');
+      if (s) {
+        const parsed = JSON.parse(s);
+        // Миграция: заменяем старый 'checklist' на 4 отдельных колонки
+        if (parsed.includes('checklist')) {
+          const idx = parsed.indexOf('checklist');
+          const migrated = [...parsed];
+          migrated.splice(idx, 1, 'cl_people', 'cl_equipment', 'cl_mtr', 'cl_access');
+          return migrated;
+        }
+        return parsed;
+      }
+    } catch { /* ignore */ }
     return defaultColumns;
   });
 
@@ -326,16 +348,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         ...prev,
         [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
       }));
-    } catch (e) { console.error(e); alert('\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C'); }
+    } catch (e) { console.error(e); alert('Не удалось сохранить'); }
   }, []);
 
   const handleDeleteHeadcount = useCallback(async () => {
-    if (!window.confirm(`\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0432\u0441\u0435 \u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u043B\u044E\u0434\u0435\u0439 \u0437\u0430 ${selectedMonth}?`)) return;
+    if (!window.confirm(`Удалить все назначения людей за ${selectedMonth}?`)) return;
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
       await headcountAPI.deleteByMonth(year, month);
       setHeadcountData({});
-    } catch (e) { console.error(e); alert('\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0443\u0434\u0430\u043B\u0438\u0442\u044C'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить'); }
   }, [selectedMonth]);
 
   useEffect(() => {
@@ -376,7 +398,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       if (!colResizeRef.current.active) return;
       if (colResizeRef.current.rafId) return;
       colResizeRef.current.rafId = requestAnimationFrame(() => {
-        const w = Math.max(50, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
+        const w = Math.max(40, colResizeRef.current.startWidth + ev.clientX - colResizeRef.current.startX);
         setColWidths(prev => ({ ...prev, [colResizeRef.current.colKey]: w }));
         colResizeRef.current.rafId = null;
       });
@@ -441,18 +463,17 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     catch (e) { console.error(e); }
   };
 
-  // Сохранение статуса чек-листа
   const handleStatusChange = useCallback(async (taskId, field, value) => {
     try {
       await scheduleAPI.updateTask(taskId, { [field]: value });
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
-    } catch (e) { console.error('\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u0441\u0442\u0430\u0442\u0443\u0441\u0430:', e); }
+    } catch (e) { console.error('Ошибка сохранения статуса:', e); }
   }, []);
 
   const handleAddCustomRow = async () => {
     if (!isAdmin) return;
     try {
-      const payload = { name: '\u041D\u043E\u0432\u0430\u044F \u0440\u0430\u0431\u043E\u0442\u0430' };
+      const payload = { name: 'Новая работа' };
       if (selectedTaskId) payload.insert_before_task_id = selectedTaskId;
       const r = await scheduleAPI.createCustomTask(payload);
       const newTask = r.data;
@@ -465,27 +486,27 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       setSelectedTaskId(newTask.id);
       setEditingCell({ taskId: newTask.id, field: 'name' });
       setEditValue(newTask.name);
-    } catch (e) { console.error(e); alert('\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0443'); }
+    } catch (e) { console.error(e); alert('Не удалось создать строку'); }
   };
 
   const handleDeleteCustomRow = useCallback(async (taskId) => {
     if (!isAdmin) return;
-    if (!window.confirm('\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u044D\u0442\u0443 \u0441\u0442\u0440\u043E\u043A\u0443?')) return;
+    if (!window.confirm('Удалить эту строку?')) return;
     try {
       await scheduleAPI.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
-    } catch (e) { console.error(e); alert('\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0443'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить строку'); }
   }, [isAdmin, selectedTaskId]);
 
   const handleDeleteAllCustomRows = async () => {
     if (!isAdmin) return;
-    if (!window.confirm('\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0432\u0441\u0435 \u0440\u0443\u0447\u043D\u044B\u0435 \u0441\u0442\u0440\u043E\u043A\u0438 \u043F\u0440\u043E\u0435\u043A\u0442\u0430?')) return;
+    if (!window.confirm('Удалить все ручные строки проекта?')) return;
     try {
       await scheduleAPI.deleteAllCustomTasks();
       setTasks(prev => prev.filter(t => !t.is_custom));
       setSelectedTaskId(null);
-    } catch (e) { console.error(e); alert('\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0438'); }
+    } catch (e) { console.error(e); alert('Не удалось удалить строки'); }
   };
 
   const handleDragStart = useCallback((e, task) => {
@@ -565,7 +586,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [filteredTasks, getChildTasks]);
 
   const getDisplayValue = useCallback((task, key) => {
-    if (key === 'checklist') return null;
+    if (CHECKLIST_COL_KEYS.has(key)) return null;
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
@@ -611,7 +632,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const handleClearAllFilters = useCallback(() => { setFilters({}); setShowFilterManager(false); }, []);
 
   const getColumnValues = useCallback((key) => {
-    if (key === 'checklist') return [];
+    if (CHECKLIST_COL_KEYS.has(key)) return [];
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
     active.forEach(([k, v]) => { arr = arr.filter(t => String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase())); });
@@ -620,19 +641,19 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   const handleThContextMenu = useCallback((e, colKey) => {
     e.preventDefault();
-    if (colKey === 'checklist') return;
+    if (CHECKLIST_COL_KEYS.has(colKey)) return;
     setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
   const isFieldEditable = useCallback((task, key) => {
-    if (key === 'checklist') return false;
+    if (CHECKLIST_COL_KEYS.has(key)) return false;
     if (!isAdmin || task.is_section) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
     return STANDARD_EDITABLE.includes(key);
   }, [isAdmin]);
 
   const handleCellDoubleClick = useCallback((task, key) => {
-    if (key === 'checklist') return;
+    if (CHECKLIST_COL_KEYS.has(key)) return;
     if (!isFieldEditable(task, key)) return;
     setEditingCell({ taskId: task.id, field: key });
     let val = '';
@@ -667,26 +688,17 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [handleCellBlur]);
 
   const getCellValue = useCallback((task, key) => {
-    // Чек-лист: 4 кружка со статусами
-    if (key === 'checklist') {
+    // Отдельная колонка чек-листа
+    const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
+    if (clField) {
       if (task.is_section) return null;
-      const fields = [
-        { key: 'status_people',    label: '\u041B\u044E\u0434\u0438' },
-        { key: 'status_equipment', label: '\u0422\u0435\u0445\u043D\u0438\u043A\u0430' },
-        { key: 'status_mtr',       label: '\u041C\u0422\u0420' },
-        { key: 'status_access',    label: '\u0414\u043E\u043F\u0443\u0441\u043A' },
-      ];
       return (
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'flex-end' }}>
-          {fields.map(f => (
-            <ChecklistStatus
-              key={f.key}
-              value={task[f.key] || 'gray'}
-              label={f.label}
-              size={14}
-              onChange={isAdmin ? (val) => handleStatusChange(task.id, f.key, val) : undefined}
-            />
-          ))}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <ChecklistStatus
+            value={task[clField.key] || 'gray'}
+            size={16}
+            onChange={isAdmin ? (val) => handleStatusChange(task.id, clField.key, val) : undefined}
+          />
         </div>
       );
     }
@@ -694,7 +706,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }}>
-          <option value="">\u041D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D</option>
+          <option value="">Не выбран</option>
           {employees.map(emp => <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>)}
         </select>
       );
@@ -745,7 +757,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [selectedTaskId, dragOverTaskId, dragOverPos, isAdmin]);
 
   const getCellStyle = useCallback((task, key) => {
-    if (key === 'checklist') return { textAlign: 'center', padding: '2px 4px' };
+    if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
     if (!isAdmin || task.is_section) return {};
     if (isFieldEditable(task, key))
       return { cursor: 'pointer', backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit' };
@@ -773,13 +785,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const handlePrint = useCallback((selectedCols, ganttScale) => {
     setShowPrintDialog(false);
     localStorage.setItem('ganttScale', ganttScale);
-
     const project = JSON.parse(localStorage.getItem('currentProject') || 'null');
-    const projectName = project?.name || '\u041F\u0440\u043E\u0435\u043A\u0442';
+    const projectName = project?.name || 'Проект';
     const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
     const ROW_H = 24;
-    // И\u0441\u043A\u043B\u044E\u0447\u0430\u0435\u043C checklist \u0438\u0437 \u043F\u0435\u0447\u0430\u0442\u0438 (\u043D\u0435 \u043F\u043E\u0434\u0434\u0430\u0435\u0442\u0441\u044F)
-    const printCols = selectedCols.filter(k => k !== 'checklist');
+    const printCols = selectedCols.filter(k => !CHECKLIST_COL_KEYS.has(k));
     const colLabels = printCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
     const headerRow = colLabels.map(l => `<th>${l}</th>`).join('');
     const bodyRows = filteredTasks.map(task => {
@@ -790,7 +800,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     }).join('');
     const tableHtml = `<table id="main-table"><thead><tr class="header-row">${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
     const ganttHtml = showGantt ? buildGanttHtml(filteredTasks, ganttScale, ROW_H) : '';
-
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
     document.body.appendChild(iframe);
@@ -798,7 +807,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     doc.open();
     doc.write(`<!DOCTYPE html><html><head>
       <meta charset="utf-8" />
-      <title>\u041C\u0421\u0413 \u2014 ${projectName} \u2014 ${monthLabel}</title>
+      <title>МСГ — ${projectName} — ${monthLabel}</title>
       <style>
         @page { size: A3 landscape; margin: 8mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -817,8 +826,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         tr[style*="#fff9e6"] td { background: #fff9e6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       </style>
     </head><body>
-      <h2>\u041C\u0421\u0413 \u2014 ${projectName}</h2>
-      <p class="sub">\u041F\u0435\u0440\u0438\u043E\u0434: ${monthLabel} &nbsp;|&nbsp; \u0421\u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u043E: ${new Date().toLocaleDateString('ru-RU')}</p>
+      <h2>МСГ — ${projectName}</h2>
+      <p class="sub">Период: ${monthLabel} &nbsp;|&nbsp; Сформировано: ${new Date().toLocaleDateString('ru-RU')}</p>
       <div class="print-layout">
         <div>${tableHtml}</div>
         ${showGantt ? `<div>${ganttHtml}</div>` : ''}
@@ -833,33 +842,33 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   return (
     <div className="monthly-order">
       <div className="month-selector">
-        <label>\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0435\u0441\u044F\u0446:</label>
+        <label>Выберите месяц:</label>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
         <span style={{ fontSize: 13, color: '#666' }}>
-          \u041F\u043E\u043A\u0430\u0437\u0430\u043D\u044B \u0440\u0430\u0431\u043E\u0442\u044B \u0441 \u043F\u043B\u0430\u043D\u043E\u0432\u044B\u043C\u0438 \u0434\u0430\u0442\u0430\u043C\u0438, \u043F\u043E\u043F\u0430\u0434\u0430\u044E\u0449\u0438\u043C\u0438 \u0432 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u043C\u0435\u0441\u044F\u0446
+          Показаны работы с плановыми датами, попадающими в выбранный месяц
         </span>
         <button
           onClick={handleDeleteHeadcount}
-          title="\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0432\u0441\u0435 \u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u043B\u044E\u0434\u0435\u0439 \u0437\u0430 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u043C\u0435\u0441\u044F\u0446"
+          title="Удалить все назначения людей за выбранный месяц"
           style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 12 }}
         >
-          \u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F
+          Удалить назначения
         </button>
         {isAdmin && (
           <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
             <button
               onClick={handleAddCustomRow}
-              title={selectedTaskId ? '\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0443 \u0432\u044B\u0448\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u043D\u043E\u0439' : '\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0443 \u0432 \u043A\u043E\u043D\u0435\u0446'}
+              title={selectedTaskId ? 'Добавить строку выше выделенной' : 'Добавить строку в конец'}
               style={{ padding: '4px 12px', background: '#4a90e2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}
             >
-              + \u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0442\u0440\u043E\u043A\u0443
+              + Добавить строку
             </button>
             <button
               onClick={handleDeleteAllCustomRows}
-              title="\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0432\u0441\u0435 \u0440\u0443\u0447\u043D\u044B\u0435 \u0441\u0442\u0440\u043E\u043A\u0438"
+              title="Удалить все ручные строки"
               style={{ padding: '4px 12px', background: '#e55', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}
             >
-              \u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0432\u0441\u0435 \u0440\u0443\u0447\u043D\u044B\u0435
+              Удалить все ручные
             </button>
           </div>
         )}
@@ -875,20 +884,20 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
               <table className="tasks-table-integrated">
                 <colgroup>
                   {isAdmin && <col style={{ width: '32px' }} />}
-                  {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 100}px` }} />)}
+                  {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 60}px` }} />)}
                 </colgroup>
                 <thead style={{ height: `${tableHeaderHeight}px` }}>
                   <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
-                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F" />}
+                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
                     {visibleColumns.map(key => (
                       <th key={key}
                         className={filters[key] ? 'has-filter' : ''}
                         onContextMenu={e => handleThContextMenu(e, key)}
-                        title={key !== 'checklist' ? '\u041F\u0440\u0430\u0432\u044B\u0439 \u043A\u043B\u0438\u043A \u2014 \u0444\u0438\u043B\u044C\u0442\u0440' : ''}
+                        title={!CHECKLIST_COL_KEYS.has(key) ? 'Правый клик — фильтр' : ''}
                         style={{ verticalAlign: 'middle', textAlign: 'center' }}
                       >
                         <span className="th-label-text">{getColLabel(key)}</span>
-                        {key !== 'checklist' && (
+                        {!CHECKLIST_COL_KEYS.has(key) && (
                           <ColumnFilter
                             columnKey={key}
                             allValues={getColumnValues(key)}
