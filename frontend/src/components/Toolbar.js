@@ -9,16 +9,26 @@ function Toolbar({
   onShowColumnSettings,
   onShowFilters,
   onScheduleCleared,
-  onDownloadTemplate,
-  onUploadTemplate,
-  onPrint,           // новый проп — только для вкладки monthly
+  onDownloadSchedule,
+  onUploadSchedule,
+  onDownloadMSG,
+  onUploadMSG,
+  onPrint,
 }) {
-  const fileInputRef = useRef(null);
+  const scheduleFileInputRef = useRef(null);
+  const msgFileInputRef = useRef(null);
 
-  const handleFileChange = async (event) => {
+  const handleScheduleFileChange = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    if (onUploadTemplate) await onUploadTemplate(file);
+    if (onUploadSchedule) await onUploadSchedule(file);
+    event.target.value = '';
+  };
+
+  const handleMSGFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (onUploadMSG) await onUploadMSG(file);
     event.target.value = '';
   };
 
@@ -39,16 +49,27 @@ function Toolbar({
       <div className="toolbar-left">
         {activeTab === 'schedule' && (
           <>
-            <button onClick={onDownloadTemplate} className="toolbar-btn" title="Скачать / экспортировать график">
-              📥 Скачать шаблон
+            <button onClick={onDownloadSchedule} className="toolbar-btn" title="Скачать график со всеми атрибутами">
+              📥 Скачать график
             </button>
-            <button onClick={() => fileInputRef.current?.click()} className="toolbar-btn" title="Загрузить график">
+            <button onClick={() => scheduleFileInputRef.current?.click()} className="toolbar-btn" title="Загрузить график">
               📤 Загрузить график
             </button>
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} style={{ display: 'none' }} />
+            <input ref={scheduleFileInputRef} type="file" accept=".xlsx,.xls" onChange={handleScheduleFileChange} style={{ display: 'none' }} />
             <button onClick={handleClearSchedule} className="toolbar-btn toolbar-btn-danger" title="Очистить весь график">
               🗑️ Очистить график
             </button>
+          </>
+        )}
+        {activeTab === 'monthly' && (
+          <>
+            <button onClick={onDownloadMSG} className="toolbar-btn" title="Скачать МСГ в Excel">
+              📥 Скачать МСГ
+            </button>
+            <button onClick={() => msgFileInputRef.current?.click()} className="toolbar-btn" title="Загрузить МСГ из Excel">
+              📤 Загрузить МСГ
+            </button>
+            <input ref={msgFileInputRef} type="file" accept=".xlsx,.xls" onChange={handleMSGFileChange} style={{ display: 'none' }} />
           </>
         )}
       </div>
