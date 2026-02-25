@@ -61,6 +61,19 @@ export const importExportAPI = {
       params: projectParams(),
       responseType: 'blob',
     }),
+  exportMSG: (year, month) =>
+    api.get('/import-export/export-msg', {
+      params: projectParams({ year, month }),
+      responseType: 'blob',
+    }),
+  uploadMSG: (file, year, month) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/import-export/import-msg', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: projectParams({ year, month }),
+    });
+  },
 };
 
 // ─── Schedule ────────────────────────────────────────────────────────────────
