@@ -1,22 +1,19 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import authService from '../services/authService';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const currentUser = authService.getCurrentUser();
-    setUser(currentUser);
-    setLoading(false);
-  }, []);
+  // Читаем юзера синхронно при инициализации — без useEffect.
+  // Это гарантирует, что isAdmin будет корректным уже при первом рендере
+  // любого дочернего компонента (в т.ч. MonthlyOrder).
+  const [user, setUser] = useState(() => authService.getCurrentUser());
 
   const value = {
     user,
-    loading,
-    isAuthenticated: !!user
+    setUser,
+    loading: false,
+    isAuthenticated: !!user,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
