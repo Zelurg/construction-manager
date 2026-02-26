@@ -9,7 +9,6 @@ function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
 
-// То че самое, что и в MonthlyOrder/Schedule — уровень вложенности по количеству точек в шифре
 function getLevelFromCode(code) {
   if (!code) return 0;
   return String(code).split('.').length - 1;
@@ -18,33 +17,55 @@ function getLevelFromCode(code) {
 const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
 const GANTT_SCALE_KEY = 'ganttScale';
 
-function HeadcountModal({ task, date, current, onSave, onClose }) {
-  const [value, setValue] = useState(current ? String(current) : '');
+function HeadcountModal({ task, date, current, onSave, onClear, onClose }) {
+  const [value, setValue] = useState(current != null ? String(current) : '');
   const inputRef = useRef(null);
   useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
 
   const handleSave = () => {
-    const n = parseInt(value, 10);
-    if (!value || isNaN(n) || n <= 0) { alert('Введите целое число больше 0'); return; }
+    const n = parseFloat(value);
+    if (!value || isNaN(n) || n <= 0) { alert('Введите число больше 0'); return; }
     onSave(n);
   };
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); };
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const hasCurrent = current != null && current !== '';
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: '#fff', borderRadius: 8, padding: '24px 28px', minWidth: 320, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Назначение людей</div>
         <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}><b>Работа:</b> {task.name}</div>
         <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}><b>Дата:</b> {dateLabel}</div>
-        <input ref={inputRef} type="number" min="1" step="1" value={value}
-          onChange={e => setValue(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder="Кол-во людей"
-          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 16 }}
+        <input
+          ref={inputRef}
+          type="number"
+          min="0"
+          step="0.5"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Например: 0.5, 1, 2…"
+          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
         />
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
-          <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 5, border: 'none', background: '#4a90e2', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Сохранить</button>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+          Можно указывать дробные значения (0.5, 1.5, …)
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+          {hasCurrent ? (
+            <button
+              onClick={onClear}
+              title="Удалить назначение на эту дату"
+              style={{ padding: '7px 14px', borderRadius: 5, border: '1px solid #e0a0a0', background: '#fff0f0', color: '#c0392b', cursor: 'pointer', fontSize: 13 }}
+            >
+              Очистить
+            </button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
+            <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 5, border: 'none', background: '#4a90e2', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Сохранить</button>
+          </div>
         </div>
       </div>
     </div>
@@ -57,9 +78,6 @@ const GanttRow = React.memo(function GanttRow({
 }) {
   const isSection = task.is_section;
   const isClickable = headcountEnabled && scale === 'day' && !isSection;
-
-  // Цвет раздела всегда считается через getLevelFromCode —
-  // так же, как в основной таблице, чтобы оттенки совпадали.
   const sectionBg = isSection ? getSectionColor(getLevelFromCode(task.code)) : undefined;
 
   return (
@@ -69,7 +87,9 @@ const GanttRow = React.memo(function GanttRow({
     >
       {timeMarks.map((mark, idx) => {
         const ds = mark.dateStr;
-        const hc = isClickable ? (taskHeadcount?.[ds] || null) : null;
+        const hc = isClickable ? (taskHeadcount?.[ds] ?? null) : null;
+        // Отображаем дробные без лишних нулей (0.5 → 0.5, 1.0 → 1)
+        const hcLabel = hc != null ? (Number.isInteger(hc) ? String(hc) : String(hc)) : '';
         return (
           <div key={idx} className="gantt-grid-line"
             style={{
@@ -79,17 +99,17 @@ const GanttRow = React.memo(function GanttRow({
                 cursor: 'pointer',
                 zIndex: 1,
                 pointerEvents: 'auto',
-                ...(hc ? {
+                ...(hc != null ? {
                   background: 'rgba(74,144,226,0.18)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 11, fontWeight: 700, color: '#1a5fa8',
                 } : {}),
               } : { pointerEvents: 'none' }),
             }}
-            title={isClickable ? (hc ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей') : undefined}
+            title={isClickable ? (hc != null ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей') : undefined}
             onClick={isClickable ? () => onCellClick(task, ds) : undefined}
           >
-            {hc || ''}
+            {hcLabel}
           </div>
         );
       })}
@@ -218,11 +238,17 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
 
   const handleCellClick = useCallback((task, dateStr) => {
     if (!headcountEnabled || scale !== 'day' || task.is_section) return;
-    setModal({ task, dateStr, current: headcountData?.[task.id]?.[dateStr] });
+    setModal({ task, dateStr, current: headcountData?.[task.id]?.[dateStr] ?? null });
   }, [headcountEnabled, scale, headcountData]);
 
   const handleModalSave = (count) => {
     if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, count);
+    setModal(null);
+  };
+
+  // Очистить ячейку: передаём null, MonthlyOrder в handleHeadcountSave удалит запись
+  const handleModalClear = () => {
+    if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, null);
     setModal(null);
   };
 
@@ -296,6 +322,8 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                 <div style={{ position: 'relative', height: 24, borderTop: '1px solid #d0d9e8', background: '#eaf3fb' }}>
                   {chartData.timeMarks.map((mark, i) => {
                     const total = dailyTotals[mark.dateStr];
+                    // Дробные суммы тоже отображаемся корректно
+                    const label = total ? (Number.isInteger(total) ? total : +total.toFixed(2)) : '';
                     return (
                       <div key={i} style={{
                         position: 'absolute', left: `${mark.offset * ppd}px`, width: `${ppd}px`, height: '24px',
@@ -303,7 +331,7 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                         fontSize: 11, fontWeight: total ? 700 : 400, color: total ? '#1a5fa8' : '#aaa',
                         borderRight: '1px solid #d0d9e8', boxSizing: 'border-box',
                       }}>
-                        {total || ''}
+                        {label}
                       </div>
                     );
                   })}
@@ -333,8 +361,14 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
       </div>
 
       {modal && (
-        <HeadcountModal task={modal.task} date={modal.dateStr} current={modal.current}
-          onSave={handleModalSave} onClose={() => setModal(null)} />
+        <HeadcountModal
+          task={modal.task}
+          date={modal.dateStr}
+          current={modal.current}
+          onSave={handleModalSave}
+          onClear={handleModalClear}
+          onClose={() => setModal(null)}
+        />
       )}
     </>
   );
