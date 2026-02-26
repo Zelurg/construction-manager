@@ -22,7 +22,6 @@ function getLevelFromCode(code) {
   return String(code).split('.').length - 1;
 }
 
-// ── Группировка ─────────────────────────────────────────────────────────────
 const COLLAPSED_STORAGE_KEY = 'msgCollapsedSections';
 
 function loadCollapsedFromStorage() {
@@ -35,11 +34,6 @@ function saveCollapsedToStorage(set) {
   try { localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...set])); } catch { /* ignore */ }
 }
 
-/**
- * Позиционная логика: потомки — это все строки, которые идут после раздела
- * в массиве и не являются разделом того же или более высокого уровня.
- * Работает как для иерархичных шифров, так и для ручных строк (C-1, C-2 и т.п.).
- */
 function getPositionalDescendantIds(sectionIdx, allTasks) {
   const section = allTasks[sectionIdx];
   if (!section || !section.is_section) return new Set();
@@ -50,17 +44,11 @@ function getPositionalDescendantIds(sectionIdx, allTasks) {
     const t = allTasks[i];
     if (t.is_section) {
       const tLevel = getLevelFromCode(t.code);
-      // Если это раздел того же или выше уровня — потомки закончились
       if (tLevel <= sectionLevel) break;
-      // Дочерний подраздел — добавляем
       ids.add(t.id);
     } else {
-      // Для обычных работ: если код иерархический (1.1.2) — по префиксу
-      // Для ручных (C-1) — по позиции: все строки после раздела до следующего раздела
       const code = String(t.code);
       if (t.is_custom || !code.startsWith(sectionCodePrefix)) {
-        // Ручная строка или строка из другого раздела — останавливаемся
-        // Только если это ручная строка (C-X) — включаем в скрытые
         if (t.is_custom) ids.add(t.id);
         else break;
       } else {
@@ -70,7 +58,6 @@ function getPositionalDescendantIds(sectionIdx, allTasks) {
   }
   return ids;
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 const CHECKLIST_FIELDS = [
   { key: 'status_people',    colKey: 'cl_people',    label: 'Люди' },
@@ -90,9 +77,10 @@ const DEFAULT_COL_WIDTHS = {
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
   cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
+  notes: 200,
 };
 
-const LEFT_ALIGN_COLS = new Set(['code', 'name']);
+const LEFT_ALIGN_COLS = new Set(['code', 'name', 'notes']);
 
 function getParentIds(task, allTasks) {
   const ids = new Set();
@@ -105,11 +93,12 @@ function getParentIds(task, allTasks) {
   return ids;
 }
 
-const STANDARD_EDITABLE = ['start_date_plan', 'end_date_plan', 'executor'];
+// notes добавлено в оба массива редактируемых полей
+const STANDARD_EDITABLE = ['start_date_plan', 'end_date_plan', 'executor', 'notes'];
 const CUSTOM_EDITABLE = [
   'name', 'unit', 'volume_plan',
   'start_date_plan', 'end_date_plan',
-  'unit_price', 'labor_per_unit', 'machine_hours_per_unit', 'executor',
+  'unit_price', 'labor_per_unit', 'machine_hours_per_unit', 'executor', 'notes',
 ];
 const DATE_FIELDS = ['start_date_plan', 'end_date_plan', 'start_date_contract', 'end_date_contract'];
 const NUMBER_FIELDS = ['volume_plan', 'unit_price', 'labor_per_unit', 'machine_hours_per_unit'];
@@ -312,7 +301,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
 
-  // ── Группировка ────────────────────────────────────────────────────────────
   const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedFromStorage());
 
   const toggleSection = useCallback((sectionId) => {
@@ -324,7 +312,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     });
   }, []);
 
-  // visibleTasks — filteredTasks минус скрытые потомки (позиционная логика)
   const visibleTasks = useMemo(() => {
     if (collapsedSections.size === 0) return filteredTasks;
     const hiddenIds = new Set();
@@ -336,13 +323,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return filteredTasks.filter(t => !hiddenIds.has(t.id));
   }, [filteredTasks, collapsedSections]);
 
-  // Раздел считается имеющим детей, если есть хоть один потомок по позиции
   const sectionHasChildren = useCallback((section) => {
     const idx = filteredTasks.findIndex(t => t.id === section.id);
     if (idx === -1) return false;
     return getPositionalDescendantIds(idx, filteredTasks).size > 0;
   }, [filteredTasks]);
-  // ───────────────────────────────────────────────────────────────────────────
 
   const [selectedMonth, setSelectedMonthState] = useState(getInitialMonth);
 
@@ -451,6 +436,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
     { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
     { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
+    { key: 'notes',                   label: 'Примечание',           editable: true },
   ], []);
 
   const defaultColumns = [
@@ -491,12 +477,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   useEffect(() => { loadHeadcount(); }, [loadHeadcount]);
 
-  // ИСПРАВЛЕНИЕ: при count === null вызываем deleteOne (DELETE /headcount/one),
-  // а не upsert с null — иначе бэкенд возвращает 422 (схема требует число).
   const handleHeadcountSave = useCallback(async (taskId, dateStr, count) => {
     try {
       if (count === null) {
-        // Очистка ячейки — удаляем запись из БД
         await headcountAPI.deleteOne(taskId, dateStr);
         setHeadcountData(prev => {
           const taskData = { ...(prev[taskId] || {}) };
@@ -504,7 +487,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           return { ...prev, [taskId]: taskData };
         });
       } else {
-        // Сохранение / обновление числа
         await headcountAPI.upsert(taskId, dateStr, count);
         setHeadcountData(prev => ({
           ...prev,
@@ -734,7 +716,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
-      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor'].includes(key)) return '-';
+      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor','notes'].includes(key)) return '-';
     }
     switch (key) {
       case 'volume_remaining':         return (task.volume_plan - task.volume_fact).toFixed(2);
@@ -750,6 +732,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       case 'start_date_contract': case 'end_date_contract':
       case 'start_date_plan':     case 'end_date_plan':
         return task[key] ? new Date(task[key]).toLocaleDateString('ru-RU') : '-';
+      case 'notes': return task.notes || '';
       default: return task[key] !== undefined && task[key] !== null ? String(task[key]) : '-';
     }
   }, [calculateSectionSum]);
@@ -796,7 +779,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   const isFieldEditable = useCallback((task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return false;
-    if (!isAdmin || task.is_section) return false;
+    if (task.is_section) return false;
+    // notes редактируют все пользователи
+    if (key === 'notes') return true;
+    if (!isAdmin) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
     return STANDARD_EDITABLE.includes(key);
   }, [isAdmin]);
@@ -806,7 +792,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     if (!isFieldEditable(task, key)) return;
     setEditingCell({ taskId: task.id, field: key });
     let val = '';
-    if (DATE_FIELDS.includes(key)) val = task[key] ? new Date(task[key]).toISOString().split('T')[0] : '';
+    if (key === 'notes') val = task.notes || '';
+    else if (DATE_FIELDS.includes(key)) val = task[key] ? new Date(task[key]).toISOString().split('T')[0] : '';
     else val = task[key] !== null && task[key] !== undefined ? String(task[key]) : '';
     setEditValue(val);
   }, [isFieldEditable]);
@@ -818,9 +805,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setEditingCell(null);
     const task = allTasksRef.current.find(t => t.id === ec.taskId);
     if (!task) return;
-    let cur = task[ec.field];
-    if (DATE_FIELDS.includes(ec.field)) cur = cur ? new Date(cur).toISOString().split('T')[0] : '';
-    else cur = cur !== null && cur !== undefined ? String(cur) : '';
+    let cur;
+    if (ec.field === 'notes') cur = task.notes || '';
+    else if (DATE_FIELDS.includes(ec.field)) cur = task[ec.field] ? new Date(task[ec.field]).toISOString().split('T')[0] : '';
+    else cur = task[ec.field] !== null && task[ec.field] !== undefined ? String(task[ec.field]) : '';
     if (ev === cur) return;
     const updateVal = NUMBER_FIELDS.includes(ec.field)
       ? (ev === '' ? 0 : parseFloat(ev))
@@ -832,6 +820,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, []);
 
   const handleKeyDown = useCallback((e) => {
+    // Для notes: Escape отменяет, Enter — перенос строки в textarea
+    if (editingCellRef.current?.field === 'notes') {
+      if (e.key === 'Escape') setEditingCell(null);
+      return;
+    }
     if (e.key === 'Enter') handleCellBlur();
     else if (e.key === 'Escape') setEditingCell(null);
   }, [handleCellBlur]);
@@ -851,6 +844,17 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       );
     }
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
+      if (key === 'notes') return (
+        <textarea
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onBlur={handleCellBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          rows={3}
+          style={{ width: '100%', padding: '2px', resize: 'vertical', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
+        />
+      );
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }}>
@@ -869,6 +873,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       return (
         <input type="text" value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }} />
+      );
+    }
+    // Визуальное отображение notes
+    if (key === 'notes') {
+      const txt = task.notes || '';
+      return (
+        <span style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+          title={txt}>{txt || '—'}</span>
       );
     }
     return getDisplayValue(task, key);
@@ -908,7 +920,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
     const align = LEFT_ALIGN_COLS.has(key) ? 'left' : 'center';
     const base = { textAlign: align, padding: '2px 6px' };
-    if (!isAdmin || task.is_section) return base;
+    if (task.is_section) return base;
     if (isFieldEditable(task, key)) {
       return {
         ...base,
@@ -917,7 +929,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       };
     }
     return base;
-  }, [isAdmin, isFieldEditable, editingCell]);
+  }, [isFieldEditable, editingCell]);
 
   const handleRowClick = useCallback((task) => {
     if (editingCellRef.current) return;
