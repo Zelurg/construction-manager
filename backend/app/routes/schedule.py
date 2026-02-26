@@ -172,8 +172,39 @@ async def update_task(
     db.refresh(db_task)
     touch_project(db_task.project_id, db)
 
+    # Передаём полный объект задачи, чтобы все вкладки получили актуальные данные
     await manager.broadcast(
-        {"type": "task_updated", "event": "tasks", "data": {"id": db_task.id}},
+        {
+            "type": "task_updated",
+            "event": "tasks",
+            "data": {
+                "id": db_task.id,
+                "project_id": db_task.project_id,
+                "code": db_task.code,
+                "name": db_task.name,
+                "unit": db_task.unit,
+                "volume_plan": db_task.volume_plan,
+                "volume_fact": db_task.volume_fact,
+                "start_date_contract": str(db_task.start_date_contract) if db_task.start_date_contract else None,
+                "end_date_contract": str(db_task.end_date_contract) if db_task.end_date_contract else None,
+                "start_date_plan": str(db_task.start_date_plan) if db_task.start_date_plan else None,
+                "end_date_plan": str(db_task.end_date_plan) if db_task.end_date_plan else None,
+                "unit_price": db_task.unit_price,
+                "labor_per_unit": db_task.labor_per_unit,
+                "machine_hours_per_unit": db_task.machine_hours_per_unit,
+                "executor": db_task.executor,
+                "is_section": db_task.is_section,
+                "is_custom": db_task.is_custom,
+                "sort_order": db_task.sort_order,
+                "status_people": db_task.status_people,
+                "status_equipment": db_task.status_equipment,
+                "status_mtr": db_task.status_mtr,
+                "status_access": db_task.status_access,
+                "notes": db_task.notes,
+                "level": db_task.level,
+                "parent_code": db_task.parent_code,
+            }
+        },
         event_type="tasks"
     )
     return db_task
