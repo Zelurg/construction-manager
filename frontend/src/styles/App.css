@@ -2,10 +2,18 @@
    BASE
    ======================================== */
 
-* {
+html, body {
+  height: 100%;
+  overflow: hidden;
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
@@ -14,9 +22,10 @@ body {
 }
 
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* ========================================
@@ -26,7 +35,6 @@ body {
 .header {
   background: #1a2332;
   color: #fff;
-
   padding: 16px 32px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   flex-shrink: 0;
@@ -114,10 +122,31 @@ body {
 .tabs button:hover { background: #f8fafc; color: #1e293b; }
 .tabs button.active { color: #2563eb; border-bottom-color: #2563eb; }
 
+/* Основной контент — занимает всё свободное место, не даёт странице скроллиться */
 .content {
   flex: 1;
+  min-height: 0;
   padding: 1.5rem;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Для вкладок без фиксированной таблицы (Аналитика, Справочники, Админ) добавляем прокрутку */
+.content > .analytics,
+.content > .daily-orders,
+.content > .admin-panel,
+.content > .directories-container {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Вкладки График и МСГ — растягиваются на всю высоту без прокрутки страницы */
+.content > .schedule-container-integrated,
+.content > .monthly-order {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ========================================
@@ -157,9 +186,10 @@ body {
   padding: 2rem;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  max-height: calc(100vh - 200px);
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  /* max-height убран — высота теперь управляется flex родителем */
 }
 
 .month-selector {
@@ -230,7 +260,9 @@ body {
 
 .schedule-container-integrated {
   width: 100%;
-  height: calc(100vh - 180px);
+  /* height управляется flex родительской цепочкой, не жёстким значением */
+  flex: 1;
+  min-height: 0;
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -240,7 +272,6 @@ body {
 }
 
 .monthly-order .schedule-container-integrated {
-  height: calc(100vh - 280px);
   box-shadow: none;
   border-radius: 4px;
   border: 1px solid #e0e0e0;
@@ -323,11 +354,6 @@ body {
   background-color: #d4edda;
 }
 
-/*
-  Текст заголовка:
-  - Переносится по словам (word-break: break-word)
-  - Если текст не умещается по высоте — уходит за край (overflow: hidden)
-*/
 .th-label-text {
   display: block;
   overflow: hidden;
