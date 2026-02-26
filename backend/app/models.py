@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, Boolean, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -71,6 +71,9 @@ class Task(Base):
     status_equipment = Column(String, default='gray', server_default='gray', nullable=False)
     status_mtr = Column(String, default='gray', server_default='gray', nullable=False)
     status_access = Column(String, default='gray', server_default='gray', nullable=False)
+
+    # Примечание — произвольный текст, доступный всем пользователям
+    notes = Column(Text, nullable=True)
 
     project = relationship("Project", back_populates="tasks")
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
