@@ -56,7 +56,6 @@ const DEFAULT_COL_WIDTHS = {
 };
 
 const LEFT_ALIGN_COLS = new Set(['code', 'name', 'notes']);
-const NOTES_EDITABLE_COLS = new Set(['start_date_plan', 'end_date_plan', 'executor', 'notes']);
 const COLLAPSED_STORAGE_KEY = 'scheduleCollapsedSections';
 
 function loadCollapsedFromStorage() {
@@ -132,12 +131,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [employees,          setEmployees]          = useState([]);
   const [filterTriggers,     setFilterTriggers]     = useState({});
 
-  const [colWidths, setColWidths] = useState(() => {
-    try {
-      const s = localStorage.getItem('scheduleColWidths');
-      return s ? { ...DEFAULT_COL_WIDTHS, ...JSON.parse(s) } : { ...DEFAULT_COL_WIDTHS };
-    } catch { return { ...DEFAULT_COL_WIDTHS }; }
-  });
+  // --- рефы для надёжного чтения в handleCellBlur (onBlur срабатывает до ререндера) ---
+  const editValueRef   = useRef('');
+  const editingCellRef = useRef(null);
+  useEffect(() => { editValueRef.current   = editValue; },   [editValue]);
+  useEffect(() => { editingCellRef.current = editingCell; }, [editingCell]);
 
   const allTasksRef    = useRef([]);
   const containerRef   = useRef(null);
@@ -147,6 +145,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const colResizeRef   = useRef({ active: false, colKey: null, startX: 0, startWidth: 0 });
 
   useEffect(() => { allTasksRef.current = tasks; }, [tasks]);
+
+  const [colWidths, setColWidths] = useState(() => {
+    try {
+      const s = localStorage.getItem('scheduleColWidths');
+      return s ? { ...DEFAULT_COL_WIDTHS, ...JSON.parse(s) } : { ...DEFAULT_COL_WIDTHS };
+    } catch { return { ...DEFAULT_COL_WIDTHS }; }
+  });
 
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
@@ -256,7 +261,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     const onCreated  = (msg) => { if (!msg.data.is_custom) setTasks(prev => [...prev, msg.data].sort(compareCode)); };
     const onUpdated  = (msg) => setTasks(prev => prev.map(t => t.id === msg.data.id ? { ...t, ...msg.data } : t));
     const onDeleted  = (msg) => setTasks(prev => prev.filter(t => t.id !== msg.data.id));
-    const onCleared  = ()   => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
+    const onCleared  = ()    => { setTasks([]); setFilteredTasks([]); setTimeout(loadTasks, 100); };
     websocketService.on('task_created', onCreated);
     websocketService.on('task_updated', onUpdated);
     websocketService.on('task_deleted', onDeleted);
@@ -408,47 +413,50 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
-  // notes редактируют все пользователи (не только admin)
   const isNotesEditable = (task, key) => key === 'notes' && !task.is_section;
   const isAdminEditable = (task, key) => isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key);
 
-  const handleCellDoubleClick = (task, key) => {
+  const handleCellDoubleClick = useCallback((task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return;
     if (task.is_section) return;
     if (!isNotesEditable(task, key) && !isAdminEditable(task, key)) return;
+    let val = '';
+    if (key === 'notes') val = task.notes || '';
+    else if (key === 'executor') val = task[key] || '';
+    else val = task[key] ? new Date(task[key]).toISOString().split('T')[0] : '';
+    setEditValue(val);
     setEditingCell({ taskId: task.id, field: key });
-    if (key === 'notes') setEditValue(task.notes || '');
-    else if (key === 'executor') setEditValue(task[key] || '');
-    else setEditValue(task[key] ? new Date(task[key]).toISOString().split('T')[0] : '');
-  };
+  }, [isAdmin]);
 
-  const handleCellBlur = async () => {
-    if (!editingCell) return;
-    const task = tasks.find(t => t.id === editingCell.taskId);
+  // Читаем через ref — onBlur срабатывает до обновления state в React
+  const handleCellBlur = useCallback(async () => {
+    const ec = editingCellRef.current;
+    const ev = editValueRef.current;
+    if (!ec) return;
+    setEditingCell(null);
+    const task = allTasksRef.current.find(t => t.id === ec.taskId);
     if (!task) return;
     let cur;
-    if (editingCell.field === 'notes') cur = task.notes || '';
-    else if (['start_date_plan','end_date_plan'].includes(editingCell.field))
-      cur = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
-    else cur = task[editingCell.field] || '';
-    if (editValue === cur) { setEditingCell(null); return; }
+    if (ec.field === 'notes') cur = task.notes || '';
+    else if (['start_date_plan','end_date_plan'].includes(ec.field))
+      cur = task[ec.field] ? new Date(task[ec.field]).toISOString().split('T')[0] : '';
+    else cur = task[ec.field] || '';
+    if (ev === cur) return;
+    const updateVal = ev || null;
     try {
-      await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: editValue || null });
-      setTasks(prev => prev.map(t => t.id === editingCell.taskId ? { ...t, [editingCell.field]: editValue || null } : t));
+      await scheduleAPI.updateTask(ec.taskId, { [ec.field]: updateVal });
+      setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [ec.field]: updateVal } : t));
     } catch (e) { console.error('Ошибка обновления:', e); }
-    finally { setEditingCell(null); }
-  };
+  }, []);
 
-  const handleKeyDown = (e) => {
-    // Для notes: Enter добавляет перенос строки, Ctrl+Enter или Escape сохраняет/отменяет
-    if (editingCell?.field === 'notes') {
-      if (e.key === 'Escape') { setEditingCell(null); }
-      // обычный Enter пропускаем — textarea сам добавит перенос
+  const handleKeyDown = useCallback((e) => {
+    if (editingCellRef.current?.field === 'notes') {
+      if (e.key === 'Escape') setEditingCell(null);
       return;
     }
     if (e.key === 'Enter') handleCellBlur();
     else if (e.key === 'Escape') setEditingCell(null);
-  };
+  }, [handleCellBlur]);
 
   const getCellValue = (task, key) => {
     const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
