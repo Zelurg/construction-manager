@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Schedule from './components/Schedule';
 import MonthlyOrder from './components/MonthlyOrder';
@@ -10,6 +10,7 @@ import AdminPanel from './components/AdminPanel';
 import Toolbar from './components/Toolbar';
 import ProjectSelect from './components/ProjectSelect';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import authService from './services/authService';
 import { importExportAPI } from './services/api';
 import './styles/Toolbar.css';
@@ -18,32 +19,24 @@ import './styles/GanttChart.css';
 const VALID_TABS = ['schedule', 'monthly', 'daily', 'analytics', 'directories', 'admin'];
 
 function AppInner() {
+  // Единственный источник user — AuthContext.
+  // setUser вызывается при логине/логауте, все дочерние компоненты
+  // сразу получают актуальный user без перезагрузки страницы.
+  const { user, setUser } = useAuth();
+  const isAuthenticated = !!user;
+
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem('activeTab');
     return saved && VALID_TABS.includes(saved) ? saved : 'schedule';
   });
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [showGantt, setShowGantt] = useState(true);
   const { currentProject, setCurrentProject, clearProject } = useProject();
 
   const columnSettingsHandlers = useRef({ schedule: null, monthly: null, daily: null });
   const filtersHandlers = useRef({ schedule: null, monthly: null });
   const printHandlers = useRef({ monthly: null });
-  // Храним каллбэки для экспорта/импорта МСГ из MonthlyOrder
   const msgExportImportHandlers = useRef({ exportMSG: null, importMSG: null });
   const scheduleKey = useRef(0);
-
-  useEffect(() => {
-    const token = authService.getToken();
-    const currentUser = authService.getCurrentUser();
-    if (token && currentUser) {
-      setIsAuthenticated(true);
-      setUser(currentUser);
-    }
-    setLoading(false);
-  }, []);
 
   const handleSetActiveTab = (tab) => {
     setActiveTab(tab);
@@ -51,8 +44,9 @@ function AppInner() {
   };
 
   const handleLoginSuccess = () => {
+    // authService уже сохранил user в localStorage при логине,
+    // обновляем AuthContext — все компоненты сразу видят нового user
     const currentUser = authService.getCurrentUser();
-    setIsAuthenticated(true);
     setUser(currentUser);
     clearProject();
   };
@@ -60,7 +54,6 @@ function AppInner() {
   const handleLogout = () => {
     authService.logout();
     clearProject();
-    setIsAuthenticated(false);
     setUser(null);
   };
 
@@ -131,8 +124,6 @@ function AppInner() {
   };
 
   const handleScheduleCleared = () => { scheduleKey.current += 1; };
-
-  if (loading) return <div>Загрузка...</div>;
 
   const WorkspaceApp = () => (
     <div className="app">
@@ -246,9 +237,11 @@ function AppInner() {
 
 function App() {
   return (
-    <ProjectProvider>
-      <AppInner />
-    </ProjectProvider>
+    <AuthProvider>
+      <ProjectProvider>
+        <AppInner />
+      </ProjectProvider>
+    </AuthProvider>
   );
 }
 
