@@ -42,6 +42,9 @@ const DEFAULT_COL_WIDTHS = {
   cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
 };
 
+// Колонки, которые выравниваются по левому краю (текстовые)
+const LEFT_ALIGN_COLS = new Set(['code', 'name']);
+
 function getParentIds(task, allTasks) {
   const ids = new Set();
   const parts = String(task.code).split('.');
@@ -776,11 +779,24 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [selectedTaskId, dragOverTaskId, dragOverPos, isAdmin]);
 
   const getCellStyle = useCallback((task, key) => {
+    // Чеклист-иконки всегда по центру
     if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
-    if (!isAdmin || task.is_section) return {};
-    if (isFieldEditable(task, key))
-      return { cursor: 'pointer', backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit' };
-    return {};
+
+    // Шифр и наименование — по левому краю
+    const align = LEFT_ALIGN_COLS.has(key) ? 'left' : 'center';
+
+    // Базовый стиль с выравниванием
+    const base = { textAlign: align, padding: '2px 6px' };
+
+    if (!isAdmin || task.is_section) return base;
+    if (isFieldEditable(task, key)) {
+      return {
+        ...base,
+        cursor: 'pointer',
+        backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit',
+      };
+    }
+    return base;
   }, [isAdmin, isFieldEditable, editingCell]);
 
   const handleRowClick = useCallback((task) => {
