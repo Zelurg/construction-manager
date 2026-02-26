@@ -35,12 +35,39 @@ function saveCollapsedToStorage(set) {
   try { localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...set])); } catch { /* ignore */ }
 }
 
-function getDescendantIds(sectionId, allTasks) {
-  const section = allTasks.find(t => t.id === sectionId);
-  if (!section) return new Set();
-  const prefix = section.code + '.';
+/**
+ * Позиционная логика: потомки — это все строки, которые идут после раздела
+ * в массиве и не являются разделом того же или более высокого уровня.
+ * Работает как для иерархичных шифров, так и для ручных строк (C-1, C-2 и т.п.).
+ */
+function getPositionalDescendantIds(sectionIdx, allTasks) {
+  const section = allTasks[sectionIdx];
+  if (!section || !section.is_section) return new Set();
+  const sectionLevel = getLevelFromCode(section.code);
+  const sectionCodePrefix = section.code + '.';
   const ids = new Set();
-  allTasks.forEach(t => { if (t.id !== sectionId && String(t.code).startsWith(prefix)) ids.add(t.id); });
+  for (let i = sectionIdx + 1; i < allTasks.length; i++) {
+    const t = allTasks[i];
+    if (t.is_section) {
+      const tLevel = getLevelFromCode(t.code);
+      // Если это раздел того же или выше уровня — потомки закончились
+      if (tLevel <= sectionLevel) break;
+      // Дочерний подраздел — добавляем
+      ids.add(t.id);
+    } else {
+      // Для обычных работ: если код иерархический (1.1.2) — по префиксу
+      // Для ручных (C-1) — по позиции: все строки после раздела до следующего раздела
+      const code = String(t.code);
+      if (t.is_custom || !code.startsWith(sectionCodePrefix)) {
+        // Ручная строка или строка из другого раздела — останавливаемся
+        // Только если это ручная строка (C-X) — включаем в скрытые
+        if (t.is_custom) ids.add(t.id);
+        else break;
+      } else {
+        ids.add(t.id);
+      }
+    }
+  }
   return ids;
 }
 // ────────────────────────────────────────────────────────────────────────────
@@ -65,7 +92,6 @@ const DEFAULT_COL_WIDTHS = {
   cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
 };
 
-// Колонки, которые выравниваются по левому краю (текстовые)
 const LEFT_ALIGN_COLS = new Set(['code', 'name']);
 
 function getParentIds(task, allTasks) {
@@ -129,7 +155,6 @@ const TaskRow = React.memo(function TaskRow({
         </td>
       )}
       {visibleColumns.map(key => {
-        // Ячейка «Наименование» раздела — со стрелкой +/−
         if (key === 'name' && task.is_section) {
           const nameText = typeof getCellValue(task, key) === 'string'
             ? getCellValue(task, key)
@@ -299,17 +324,23 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     });
   }, []);
 
-  // visibleTasks — filteredTasks минус скрытые потомки свёрнутых разделов
+  // visibleTasks — filteredTasks минус скрытые потомки (позиционная логика)
   const visibleTasks = useMemo(() => {
     if (collapsedSections.size === 0) return filteredTasks;
     const hiddenIds = new Set();
-    collapsedSections.forEach(secId => getDescendantIds(secId, filteredTasks).forEach(id => hiddenIds.add(id)));
+    filteredTasks.forEach((task, idx) => {
+      if (task.is_section && collapsedSections.has(task.id)) {
+        getPositionalDescendantIds(idx, filteredTasks).forEach(id => hiddenIds.add(id));
+      }
+    });
     return filteredTasks.filter(t => !hiddenIds.has(t.id));
   }, [filteredTasks, collapsedSections]);
 
+  // Раздел считается имеющим детей, если есть хоть один потомок по позиции
   const sectionHasChildren = useCallback((section) => {
-    const prefix = section.code + '.';
-    return filteredTasks.some(t => t.id !== section.id && String(t.code).startsWith(prefix));
+    const idx = filteredTasks.findIndex(t => t.id === section.id);
+    if (idx === -1) return false;
+    return getPositionalDescendantIds(idx, filteredTasks).size > 0;
   }, [filteredTasks]);
   // ───────────────────────────────────────────────────────────────────────────
 
