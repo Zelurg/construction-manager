@@ -180,6 +180,9 @@ export const headcountAPI = {
   },
   upsert: (taskId, date, headcount) =>
     api.post('/headcount/upsert', { task_id: taskId, date, headcount }),
+  // Удалить назначение для конкретной задачи и даты (очистка одной ячейки)
+  deleteOne: (taskId, date) =>
+    api.delete('/headcount/one', { params: { task_id: taskId, date } }),
   deleteByMonth: (year, month) => {
     const p = JSON.parse(localStorage.getItem('currentProject') || 'null');
     return api.delete('/headcount/by-month', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });

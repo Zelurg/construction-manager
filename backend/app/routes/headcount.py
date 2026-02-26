@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, extract, text
+from sqlalchemy import and_, extract
 from datetime import date
 from typing import Optional, List
 import logging
@@ -87,6 +87,30 @@ def upsert_headcount(
     except Exception as e:
         db.rollback()
         logger.error(f"Ошибка upsert headcount: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка БД: {str(e)}")
+
+
+@router.delete("/one")
+def delete_headcount_one(
+    task_id: int,
+    date: date,
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Удалить назначение для конкретной задачи и даты (очистка одной ячейки)."""
+    ensure_table()
+    try:
+        deleted = db.query(DailyHeadcount).filter(
+            and_(
+                DailyHeadcount.task_id == task_id,
+                DailyHeadcount.date == date,
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+        return {"deleted": deleted}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка удаления одной ячейки headcount: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка БД: {str(e)}")
 
 

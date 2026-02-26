@@ -366,13 +366,14 @@ class BrigadeStats(BaseModel):
 class DailyHeadcountUpsert(BaseModel):
     task_id: int
     date: date
-    headcount: int = Field(..., gt=0)
+    # float позволяет вводить 0.5, 1.5 и т.д. (полчеловека на нескольких работах)
+    headcount: float = Field(..., gt=0)
 
 class DailyHeadcountRead(BaseModel):
     id: int
     task_id: int
     date: date
-    headcount: int
+    headcount: float
     project_id: Optional[int] = None
     class Config:
         from_attributes = True
