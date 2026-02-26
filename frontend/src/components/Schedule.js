@@ -34,7 +34,6 @@ function compareCode(a, b) {
   return 0;
 }
 
-// 4 отдельных колонки чек-листа (те же что в MonthlyOrder)
 const CHECKLIST_FIELDS = [
   { key: 'status_people',    colKey: 'cl_people',    label: 'Люди' },
   { key: 'status_equipment', colKey: 'cl_equipment', label: 'Техника' },
@@ -53,9 +52,11 @@ const DEFAULT_COL_WIDTHS = {
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
   cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
+  notes: 200,
 };
 
-const LEFT_ALIGN_COLS = new Set(['code', 'name']);
+const LEFT_ALIGN_COLS = new Set(['code', 'name', 'notes']);
+const NOTES_EDITABLE_COLS = new Set(['start_date_plan', 'end_date_plan', 'executor', 'notes']);
 const COLLAPSED_STORAGE_KEY = 'scheduleCollapsedSections';
 
 function loadCollapsedFromStorage() {
@@ -175,6 +176,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     { key: 'machine_hours_total',     label: 'Всего машиночасов',   isCalculated: true },
     { key: 'machine_hours_fact',      label: 'Машиночасы факт',       isCalculated: true },
     { key: 'machine_hours_remaining', label: 'Остаток машиночасов', isCalculated: true },
+    { key: 'notes',                   label: 'Примечание',           editable: true },
   ];
 
   const defaultColumns = [
@@ -188,7 +190,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       const s = localStorage.getItem('scheduleVisibleColumns');
       if (s) {
         const parsed = JSON.parse(s);
-        // Миграция: заменяем старый 'checklist' на 4 отдельных
         if (parsed.includes('checklist')) {
           const idx = parsed.indexOf('checklist');
           const migrated = [...parsed];
@@ -317,7 +318,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
-      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor'].includes(key)) return '-';
+      if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor','notes'].includes(key)) return '-';
     }
     switch (key) {
       case 'volume_remaining':         return (task.volume_plan-task.volume_fact).toFixed(2);
@@ -333,6 +334,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       case 'start_date_contract': case 'end_date_contract':
       case 'start_date_plan':     case 'end_date_plan':
         return task[key] ? new Date(task[key]).toLocaleDateString('ru-RU') : '-';
+      case 'notes': return task.notes || '';
       default: return task[key] !== undefined && task[key] !== null ? String(task[key]) : '-';
     }
   };
@@ -348,7 +350,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setHasActiveFilters(true);
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
-      // Обычные колонки — текстовая фильтрация; чек-лист — сравнение по значению
       if (!activeFilters.every(([k, v]) => {
         if (CHECKLIST_COL_KEYS.has(k)) return (t[CHECKLIST_COL_TO_FIELD[k]] || 'gray') === v;
         return String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase());
@@ -407,22 +408,29 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     setFilterTriggers(prev => ({ ...prev, [colKey]: { clientX: e.clientX, clientY: e.clientY, _id: Date.now() } }));
   }, []);
 
+  // notes редактируют все пользователи (не только admin)
+  const isNotesEditable = (task, key) => key === 'notes' && !task.is_section;
+  const isAdminEditable = (task, key) => isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key);
+
   const handleCellDoubleClick = (task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return;
-    if (!isAdmin || task.is_section) return;
-    if (!['start_date_plan','end_date_plan','executor'].includes(key)) return;
+    if (task.is_section) return;
+    if (!isNotesEditable(task, key) && !isAdminEditable(task, key)) return;
     setEditingCell({ taskId: task.id, field: key });
-    setEditValue(key === 'executor' ? (task[key] || '') : (task[key] ? new Date(task[key]).toISOString().split('T')[0] : ''));
+    if (key === 'notes') setEditValue(task.notes || '');
+    else if (key === 'executor') setEditValue(task[key] || '');
+    else setEditValue(task[key] ? new Date(task[key]).toISOString().split('T')[0] : '');
   };
 
   const handleCellBlur = async () => {
     if (!editingCell) return;
     const task = tasks.find(t => t.id === editingCell.taskId);
     if (!task) return;
-    let cur = task[editingCell.field];
-    if (['start_date_plan','end_date_plan'].includes(editingCell.field))
-      cur = cur ? new Date(cur).toISOString().split('T')[0] : '';
-    else cur = cur || '';
+    let cur;
+    if (editingCell.field === 'notes') cur = task.notes || '';
+    else if (['start_date_plan','end_date_plan'].includes(editingCell.field))
+      cur = task[editingCell.field] ? new Date(task[editingCell.field]).toISOString().split('T')[0] : '';
+    else cur = task[editingCell.field] || '';
     if (editValue === cur) { setEditingCell(null); return; }
     try {
       await scheduleAPI.updateTask(editingCell.taskId, { [editingCell.field]: editValue || null });
@@ -432,6 +440,12 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const handleKeyDown = (e) => {
+    // Для notes: Enter добавляет перенос строки, Ctrl+Enter или Escape сохраняет/отменяет
+    if (editingCell?.field === 'notes') {
+      if (e.key === 'Escape') { setEditingCell(null); }
+      // обычный Enter пропускаем — textarea сам добавит перенос
+      return;
+    }
     if (e.key === 'Enter') handleCellBlur();
     else if (e.key === 'Escape') setEditingCell(null);
   };
@@ -451,6 +465,17 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       );
     }
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
+      if (key === 'notes') return (
+        <textarea
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onBlur={handleCellBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          rows={3}
+          style={{ width: '100%', padding: '2px', resize: 'vertical', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
+        />
+      );
       if (key === 'executor') return (
         <select value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }}>
@@ -460,6 +485,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       );
       return <input type="date" value={editValue} onChange={e => setEditValue(e.target.value)}
         onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width:'100%', padding:'2px' }} />;
+    }
+    if (key === 'notes') {
+      const txt = task.notes || '';
+      return (
+        <span style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+          title={txt}>{txt || '—'}</span>
+      );
     }
     return getDisplayValue(task, key);
   };
@@ -482,9 +514,9 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const getCellStyle = (task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
-    const base = LEFT_ALIGN_COLS.has(key) ? { textAlign: 'left' } : { textAlign: 'center' };
-    if (!isAdmin || task.is_section) return base;
-    if (['start_date_plan','end_date_plan','executor'].includes(key))
+    const base = LEFT_ALIGN_COLS.has(key) ? { textAlign: 'left', padding: '2px 6px' } : { textAlign: 'center', padding: '2px 6px' };
+    if (task.is_section) return base;
+    if (isNotesEditable(task, key) || isAdminEditable(task, key))
       return { ...base, cursor: 'pointer', backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit' };
     return base;
   };
@@ -619,10 +651,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                           </td>
                         );
                       }
+                      const editable = isNotesEditable(task, key) || isAdminEditable(task, key);
                       return (
                         <td key={key} style={getCellStyle(task, key)}
                           onDoubleClick={() => handleCellDoubleClick(task, key)}
-                          title={isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key) ? 'Двойной клик для редактирования' : ''}>
+                          title={editable ? 'Двойной клик для редактирования' : ''}>
                           {getCellValue(task, key)}
                         </td>
                       );
