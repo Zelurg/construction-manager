@@ -9,6 +9,12 @@ function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
 
+// То че самое, что и в MonthlyOrder/Schedule — уровень вложенности по количеству точек в шифре
+function getLevelFromCode(code) {
+  if (!code) return 0;
+  return String(code).split('.').length - 1;
+}
+
 const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
 const GANTT_SCALE_KEY = 'ganttScale';
 
@@ -45,9 +51,6 @@ function HeadcountModal({ task, date, current, onSave, onClose }) {
   );
 }
 
-// ─── Мемоизированная строка Gantt ─────────────────────────────────────────────
-// Принимает headcount только своей задачи (не весь объект headcountData),
-// поэтому не перерисовывается при изменении headcount другой строки.
 const GanttRow = React.memo(function GanttRow({
   task, timeMarks, ppd, headcountEnabled, scale,
   taskHeadcount, getBarStyle, onCellClick,
@@ -55,10 +58,14 @@ const GanttRow = React.memo(function GanttRow({
   const isSection = task.is_section;
   const isClickable = headcountEnabled && scale === 'day' && !isSection;
 
+  // Цвет раздела всегда считается через getLevelFromCode —
+  // так же, как в основной таблице, чтобы оттенки совпадали.
+  const sectionBg = isSection ? getSectionColor(getLevelFromCode(task.code)) : undefined;
+
   return (
     <div
       className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`}
-      style={!isSection ? {} : { backgroundColor: getSectionColor(task.level) }}
+      style={isSection ? { backgroundColor: sectionBg } : {}}
     >
       {timeMarks.map((mark, idx) => {
         const ds = mark.dateStr;
