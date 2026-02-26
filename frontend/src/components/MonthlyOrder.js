@@ -491,13 +491,26 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   useEffect(() => { loadHeadcount(); }, [loadHeadcount]);
 
+  // ИСПРАВЛЕНИЕ: при count === null вызываем deleteOne (DELETE /headcount/one),
+  // а не upsert с null — иначе бэкенд возвращает 422 (схема требует число).
   const handleHeadcountSave = useCallback(async (taskId, dateStr, count) => {
     try {
-      await headcountAPI.upsert(taskId, dateStr, count);
-      setHeadcountData(prev => ({
-        ...prev,
-        [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
-      }));
+      if (count === null) {
+        // Очистка ячейки — удаляем запись из БД
+        await headcountAPI.deleteOne(taskId, dateStr);
+        setHeadcountData(prev => {
+          const taskData = { ...(prev[taskId] || {}) };
+          delete taskData[dateStr];
+          return { ...prev, [taskId]: taskData };
+        });
+      } else {
+        // Сохранение / обновление числа
+        await headcountAPI.upsert(taskId, dateStr, count);
+        setHeadcountData(prev => ({
+          ...prev,
+          [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
+        }));
+      }
     } catch (e) { console.error(e); alert('Не удалось сохранить'); }
   }, []);
 
