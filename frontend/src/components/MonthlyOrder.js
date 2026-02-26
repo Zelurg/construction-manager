@@ -22,6 +22,29 @@ function getLevelFromCode(code) {
   return String(code).split('.').length - 1;
 }
 
+// ── Группировка ─────────────────────────────────────────────────────────────
+const COLLAPSED_STORAGE_KEY = 'msgCollapsedSections';
+
+function loadCollapsedFromStorage() {
+  try {
+    const s = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    return s ? new Set(JSON.parse(s)) : new Set();
+  } catch { return new Set(); }
+}
+function saveCollapsedToStorage(set) {
+  try { localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...set])); } catch { /* ignore */ }
+}
+
+function getDescendantIds(sectionId, allTasks) {
+  const section = allTasks.find(t => t.id === sectionId);
+  if (!section) return new Set();
+  const prefix = section.code + '.';
+  const ids = new Set();
+  allTasks.forEach(t => { if (t.id !== sectionId && String(t.code).startsWith(prefix)) ids.add(t.id); });
+  return ids;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 const CHECKLIST_FIELDS = [
   { key: 'status_people',    colKey: 'cl_people',    label: 'Люди' },
   { key: 'status_equipment', colKey: 'cl_equipment', label: 'Техника' },
@@ -77,10 +100,11 @@ function getInitialMonth() {
 
 const TaskRow = React.memo(function TaskRow({
   task, visibleColumns, isAdmin, isEditing, isSelected, isDragOver, dragOverPos,
+  hasChildren, isCollapsed,
   getRowStyle, getCellStyle, getCellValue, isFieldEditable,
   onRowClick, onCellDoubleClick,
   onDragStart, onDragOver, onDragLeave, onDragEnd, onDrop,
-  onDeleteCustomRow,
+  onDeleteCustomRow, onToggleSection,
 }) {
   return (
     <tr
@@ -104,15 +128,50 @@ const TaskRow = React.memo(function TaskRow({
           )}
         </td>
       )}
-      {visibleColumns.map(key => (
-        <td key={key}
-          style={getCellStyle(task, key)}
-          onDoubleClick={() => onCellDoubleClick(task, key)}
-          title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
-        >
-          {getCellValue(task, key)}
-        </td>
-      ))}
+      {visibleColumns.map(key => {
+        // Ячейка «Наименование» раздела — со стрелкой +/−
+        if (key === 'name' && task.is_section) {
+          const nameText = typeof getCellValue(task, key) === 'string'
+            ? getCellValue(task, key)
+            : task.name;
+          return (
+            <td key={key} style={getCellStyle(task, key)}
+              onDoubleClick={() => onCellDoubleClick(task, key)}
+              title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {hasChildren && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onToggleSection(task.id); }}
+                    title={isCollapsed ? 'Развернуть' : 'Свернуть'}
+                    style={{
+                      flexShrink: 0, width: 18, height: 18, padding: 0,
+                      background: 'rgba(255,255,255,0.5)',
+                      border: '1px solid rgba(0,0,80,0.25)',
+                      borderRadius: 3, cursor: 'pointer', fontSize: 11,
+                      lineHeight: '16px', textAlign: 'center',
+                      color: '#1a3a5c', fontWeight: 'bold',
+                    }}
+                  >{isCollapsed ? '+' : '−'}</button>
+                )}
+                <span style={{
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap', display: 'block', flex: 1,
+                  paddingLeft: hasChildren ? 0 : 22,
+                }} title={nameText}>{nameText}</span>
+              </div>
+            </td>
+          );
+        }
+        return (
+          <td key={key}
+            style={getCellStyle(task, key)}
+            onDoubleClick={() => onCellDoubleClick(task, key)}
+            title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
+          >
+            {getCellValue(task, key)}
+          </td>
+        );
+      })}
     </tr>
   );
 });
@@ -228,6 +287,32 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [filters, setFilters] = useState({});
 
+  // ── Группировка ────────────────────────────────────────────────────────────
+  const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedFromStorage());
+
+  const toggleSection = useCallback((sectionId) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId); else next.add(sectionId);
+      saveCollapsedToStorage(next);
+      return next;
+    });
+  }, []);
+
+  // visibleTasks — filteredTasks минус скрытые потомки свёрнутых разделов
+  const visibleTasks = useMemo(() => {
+    if (collapsedSections.size === 0) return filteredTasks;
+    const hiddenIds = new Set();
+    collapsedSections.forEach(secId => getDescendantIds(secId, filteredTasks).forEach(id => hiddenIds.add(id)));
+    return filteredTasks.filter(t => !hiddenIds.has(t.id));
+  }, [filteredTasks, collapsedSections]);
+
+  const sectionHasChildren = useCallback((section) => {
+    const prefix = section.code + '.';
+    return filteredTasks.some(t => t.id !== section.id && String(t.code).startsWith(prefix));
+  }, [filteredTasks]);
+  // ───────────────────────────────────────────────────────────────────────────
+
   const [selectedMonth, setSelectedMonthState] = useState(getInitialMonth);
 
   const setSelectedMonth = useCallback((month) => {
@@ -279,9 +364,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const selectedMonthRef = useRef(selectedMonth);
   useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
 
-  // ─── Синхронизация вертикальной прокрутки таблицы и Ганта ───────────────────
-  // Аналогично Schedule.js: слушаем оба элемента, syncingRef предотвращает
-  // бесконечный цикл (A→B→A→...). setTimeout(50) даёт время на маунт DOM.
   useEffect(() => {
     if (!showGantt) return;
     const timer = setTimeout(() => {
@@ -779,15 +861,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [selectedTaskId, dragOverTaskId, dragOverPos, isAdmin]);
 
   const getCellStyle = useCallback((task, key) => {
-    // Чеклист-иконки всегда по центру
     if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
-
-    // Шифр и наименование — по левому краю
     const align = LEFT_ALIGN_COLS.has(key) ? 'left' : 'center';
-
-    // Базовый стиль с выравниванием
     const base = { textAlign: align, padding: '2px 6px' };
-
     if (!isAdmin || task.is_section) return base;
     if (isFieldEditable(task, key)) {
       return {
@@ -986,7 +1062,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTasks.map(task => (
+                  {visibleTasks.map(task => (
                     <TaskRow
                       key={task.id}
                       task={task}
@@ -996,6 +1072,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                       isSelected={selectedTaskId === task.id}
                       isDragOver={dragOverTaskId === task.id}
                       dragOverPos={dragOverPos}
+                      hasChildren={task.is_section ? sectionHasChildren(task) : false}
+                      isCollapsed={collapsedSections.has(task.id)}
                       getRowStyle={getRowStyle}
                       getCellStyle={getCellStyle}
                       getCellValue={getCellValue}
@@ -1008,6 +1086,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                       onDragEnd={handleDragEnd}
                       onDrop={handleDrop}
                       onDeleteCustomRow={handleDeleteCustomRow}
+                      onToggleSection={toggleSection}
                     />
                   ))}
                 </tbody>
@@ -1024,7 +1103,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           {showGantt && (
             <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
               <GanttChart
-                tasks={filteredTasks}
+                tasks={visibleTasks}
                 externalScrollRef={ganttBodyRef}
                 headcountEnabled={true}
                 headcountData={headcountData}
