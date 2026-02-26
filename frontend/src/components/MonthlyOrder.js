@@ -273,9 +273,39 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const editingCellRef = useRef(null);
   useEffect(() => { editingCellRef.current = editingCell; }, [editingCell]);
 
-  // Актуальный selectedMonth для коллбэков без зависимостей
   const selectedMonthRef = useRef(selectedMonth);
   useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
+
+  // ─── Синхронизация вертикальной прокрутки таблицы и Ганта ───────────────────
+  // Аналогично Schedule.js: слушаем оба элемента, syncingRef предотвращает
+  // бесконечный цикл (A→B→A→...). setTimeout(50) даёт время на маунт DOM.
+  useEffect(() => {
+    if (!showGantt) return;
+    const timer = setTimeout(() => {
+      const tableEl = tableScrollRef.current;
+      const ganttEl = ganttBodyRef.current;
+      if (!tableEl || !ganttEl) return;
+      const onTableScroll = () => {
+        if (syncingRef.current) return;
+        syncingRef.current = true;
+        ganttEl.scrollTop = tableEl.scrollTop;
+        requestAnimationFrame(() => { syncingRef.current = false; });
+      };
+      const onGanttScroll = () => {
+        if (syncingRef.current) return;
+        syncingRef.current = true;
+        tableEl.scrollTop = ganttEl.scrollTop;
+        requestAnimationFrame(() => { syncingRef.current = false; });
+      };
+      tableEl.addEventListener('scroll', onTableScroll, { passive: true });
+      ganttEl.addEventListener('scroll', onGanttScroll, { passive: true });
+      return () => {
+        tableEl.removeEventListener('scroll', onTableScroll);
+        ganttEl.removeEventListener('scroll', onGanttScroll);
+      };
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [showGantt, filteredTasks]);
 
   const availableColumns = useMemo(() => [
     { key: 'code',                    label: 'Шифр' },
@@ -364,7 +394,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     } catch (e) { console.error(e); alert('Не удалось удалить'); }
   }, [selectedMonth]);
 
-  // ─── Экспорт МСГ ─────────────────────────────────────────────────────────────
   const handleExportMSG = useCallback(async () => {
     try {
       const [year, month] = selectedMonthRef.current.split('-').map(Number);
@@ -382,7 +411,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     }
   }, []);
 
-  // ─── Импорт МСГ ──────────────────────────────────────────────────────────────
   const handleImportMSG = useCallback(async (file) => {
     try {
       const [year, month] = selectedMonthRef.current.split('-').map(Number);
@@ -399,9 +427,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     }
   }, [loadHeadcount]);
 
-  // ─── Регистрация обработчиков в App.js через пропы ───────────────────────────
-  // ВАЖНО: передаём саму функцию напрямую (не фабрику!),
-  // т.к. App.js сохраняет h и затем вызывает handler() / handler(file)
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
   useEffect(() => { if (onShowPrint) onShowPrint(() => setShowPrintDialog(true)); }, [onShowPrint]);
