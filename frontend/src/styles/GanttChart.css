@@ -59,7 +59,6 @@
 .gantt-timeline-row {
   overflow-x: hidden;
   overflow-y: hidden;
-  /* Высота управляется через style в JS (24px или 48px) */
   box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
@@ -102,19 +101,21 @@
   height: 32px;
   border-bottom: 1px solid #f0f0f0;
   box-sizing: border-box;
+  /* Вертикальная сетка теперь задаётся через background (repeating-linear-gradient) в JS */
 }
 
 .gantt-row-section {
   border-bottom: 1px solid #e0e0e0;
 }
 
-/* Вертикальные линии сетки.
-   pointer-events: none УБРАН — теперь клики управляются через JS (headcountEnabled). */
-.gantt-grid-line {
+/* Кликабельные ячейки headcount (только в режиме «день») */
+.gantt-headcount-cell {
   position: absolute;
   top: 0;
   height: 100%;
-  border-left: 1px solid #f0f0f0;
+  cursor: pointer;
+  box-sizing: border-box;
+  border-right: 1px solid #e8f0f8;
 }
 
 .gantt-body-scroll::-webkit-scrollbar { width: 8px; height: 8px; }

@@ -72,42 +72,71 @@ function HeadcountModal({ task, date, current, onSave, onClear, onClose }) {
   );
 }
 
+// Вычисляем barStyle прямо внутри GanttRow, чтобы не передавать getBarStyle снаружи
+// (передача функции снаружи каждый раз создавала новую ссылку и ломала React.memo)
+function computeBarStyle(task, type, minDate, ppd) {
+  const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
+  const endKey   = type === 'contract' ? 'end_date_contract'   : 'end_date_plan';
+  if (!task[startKey] || !task[endKey]) return null;
+  const start = new Date(task[startKey]); start.setHours(0,0,0,0);
+  const end   = new Date(task[endKey]);   end.setHours(0,0,0,0);
+  const startOffset = Math.floor((start - minDate) / (1000*60*60*24));
+  const duration    = Math.floor((end - start) / (1000*60*60*24)) + 1;
+  return {
+    left: `${startOffset * ppd}px`,
+    width: `${Math.max(duration * ppd, 6)}px`,
+    top: type === 'contract' ? '4px' : '16px',
+    height: '10px',
+    backgroundColor: type === 'contract' ? '#aaa' : '#4a90e2',
+    position: 'absolute',
+    borderRadius: '3px',
+    pointerEvents: 'none',
+  };
+}
+
+// GanttRow больше не рендерит grid-линии через DOM.
+// Вертикальная сетка задаётся через CSS background (repeating-linear-gradient) на уровне строки.
+// Это убирает тысячи div-ов из DOM при 1500+ строках.
 const GanttRow = React.memo(function GanttRow({
-  task, timeMarks, ppd, headcountEnabled, scale,
-  taskHeadcount, getBarStyle, onCellClick,
+  task, ppd, colWidth, headcountEnabled, scale,
+  taskHeadcount, minDate, timeMarks, onCellClick,
 }) {
   const isSection = task.is_section;
   const isClickable = headcountEnabled && scale === 'day' && !isSection;
   const sectionBg = isSection ? getSectionColor(getLevelFromCode(task.code)) : undefined;
 
+  const contractStyle = !isSection ? computeBarStyle(task, 'contract', minDate, ppd) : null;
+  const planStyle     = !isSection ? computeBarStyle(task, 'plan',     minDate, ppd) : null;
+
+  // Фон строки: цвет секции ИЛИ CSS-сетка вертикальных линий через repeating-linear-gradient
+  // colWidth — ширина одной колонки в px (ppd * шаг меток)
+  const rowBg = isSection
+    ? sectionBg
+    : `repeating-linear-gradient(to right, transparent, transparent ${colWidth - 1}px, #f0f0f0 ${colWidth - 1}px, #f0f0f0 ${colWidth}px)`;
+
   return (
     <div
       className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`}
-      style={isSection ? { backgroundColor: sectionBg } : {}}
+      style={{ background: rowBg }}
     >
-      {timeMarks.map((mark, idx) => {
-        const ds = mark.dateStr;
-        const hc = isClickable ? (taskHeadcount?.[ds] ?? null) : null;
-        // Отображаем дробные без лишних нулей (0.5 → 0.5, 1.0 → 1)
-        const hcLabel = hc != null ? (Number.isInteger(hc) ? String(hc) : String(hc)) : '';
+      {/* Режим headcount (день): кликабельные ячейки поверх фона */}
+      {isClickable && timeMarks.map((mark, idx) => {
+        const hc = taskHeadcount?.[mark.dateStr] ?? null;
+        const hcLabel = hc != null ? String(hc) : '';
         return (
-          <div key={idx} className="gantt-grid-line"
+          <div key={idx}
+            className="gantt-headcount-cell"
             style={{
               left: `${mark.offset * ppd}px`,
-              ...(isClickable ? {
-                width: `${ppd}px`,
-                cursor: 'pointer',
-                zIndex: 1,
-                pointerEvents: 'auto',
-                ...(hc != null ? {
-                  background: 'rgba(74,144,226,0.18)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 700, color: '#1a5fa8',
-                } : {}),
-              } : { pointerEvents: 'none' }),
+              width: `${ppd}px`,
+              ...(hc != null ? {
+                background: 'rgba(74,144,226,0.18)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, color: '#1a5fa8',
+              } : {}),
             }}
-            title={isClickable ? (hc != null ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей') : undefined}
-            onClick={isClickable ? () => onCellClick(task, ds) : undefined}
+            title={hc != null ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей'}
+            onClick={() => onCellClick(task, mark.dateStr)}
           >
             {hcLabel}
           </div>
@@ -115,12 +144,12 @@ const GanttRow = React.memo(function GanttRow({
       })}
       {!isSection && (
         <>
-          {getBarStyle(task, 'contract') && (
-            <div className="gantt-bar-contract" style={getBarStyle(task, 'contract')}
+          {contractStyle && (
+            <div className="gantt-bar-contract" style={contractStyle}
               title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />
           )}
-          {getBarStyle(task, 'plan') && (
-            <div className="gantt-bar-plan" style={getBarStyle(task, 'plan')}
+          {planStyle && (
+            <div className="gantt-bar-plan" style={planStyle}
               title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />
           )}
         </>
@@ -131,10 +160,12 @@ const GanttRow = React.memo(function GanttRow({
   return (
     prev.task === next.task &&
     prev.taskHeadcount === next.taskHeadcount &&
-    prev.timeMarks === next.timeMarks &&
     prev.ppd === next.ppd &&
+    prev.colWidth === next.colWidth &&
     prev.scale === next.scale &&
-    prev.headcountEnabled === next.headcountEnabled
+    prev.headcountEnabled === next.headcountEnabled &&
+    prev.minDate === next.minDate &&
+    prev.timeMarks === next.timeMarks
   );
 });
 
@@ -185,8 +216,11 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
       const day = String(d.getDate()).padStart(2,'0');
       return `${y}-${m}-${day}`;
     };
+    // colWidth — ширина одной «колонки» сетки в px для CSS-градиента
+    let colWidth = cfg.pixelsPerDay;
     if (scale === 'day' || scale === 'week') {
       const step = scale === 'week' ? 7 : 1;
+      colWidth = step * cfg.pixelsPerDay;
       for (let day = 0; day <= totalDays; day += step) {
         const md = new Date(minDate); md.setDate(md.getDate() + day);
         if (md <= maxDate) timeMarks.push({ date: new Date(md), dateStr: toDateStr(md), offset: day, label: cfg.format(md) });
@@ -195,13 +229,21 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
       let cur = new Date(minDate);
       while (cur <= maxDate) {
         const offset = Math.ceil((cur - minDate) / (1000*60*60*24));
-        timeMarks.push({ date: new Date(cur), dateStr: toDateStr(cur), offset, label: cfg.format(cur) });
-        if (scale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
-        else if (scale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth()+3, 1);
-        else                          cur = new Date(cur.getFullYear()+1, 0, 1);
+        // вычисляем ширину этого периода в пикселях для первой итерации (используем как colWidth)
+        let nextCur;
+        if (scale === 'month')        nextCur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+        else if (scale === 'quarter') nextCur = new Date(cur.getFullYear(), cur.getMonth()+3, 1);
+        else                          nextCur = new Date(cur.getFullYear()+1, 0, 1);
+        const days = Math.ceil((nextCur - cur) / (1000*60*60*24));
+        colWidth = days * cfg.pixelsPerDay;
+        timeMarks.push({ date: new Date(cur), dateStr: toDateStr(cur), offset, label: cfg.format(cur), colWidth });
+        cur = nextCur;
       }
+      // Для year/quarter/month колонки разного размера — используем среднее
+      // Но для градиента нам нужна средняя ширина первой метки
+      if (timeMarks.length > 0) colWidth = timeMarks[0].colWidth || colWidth;
     }
-    return { minDate, maxDate, totalDays, timeMarks };
+    return { minDate, maxDate, totalDays, timeMarks, colWidth };
   }, [tasks, scale]);
 
   const showTotalsRow = Boolean(headcountEnabled && scale === 'day');
@@ -246,34 +288,10 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     setModal(null);
   };
 
-  // Очистить ячейку: передаём null, MonthlyOrder в handleHeadcountSave удалит запись
   const handleModalClear = () => {
     if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, null);
     setModal(null);
   };
-
-  const getBarStyle = useCallback((task, type) => {
-    if (!chartData) return null;
-    const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
-    const endKey   = type === 'contract' ? 'end_date_contract'   : 'end_date_plan';
-    if (!task[startKey] || !task[endKey]) return null;
-    const cfg = scaleConfig[scale];
-    const ppd = cfg.pixelsPerDay;
-    const start = new Date(task[startKey]); start.setHours(0,0,0,0);
-    const end   = new Date(task[endKey]);   end.setHours(0,0,0,0);
-    const startOffset = Math.floor((start - chartData.minDate) / (1000*60*60*24));
-    const duration    = Math.floor((end - start) / (1000*60*60*24)) + 1;
-    return {
-      left: `${startOffset * ppd}px`,
-      width: `${Math.max(duration * ppd, 6)}px`,
-      top: type === 'contract' ? '4px' : '16px',
-      height: '10px',
-      backgroundColor: type === 'contract' ? '#aaa' : '#4a90e2',
-      position: 'absolute',
-      borderRadius: '3px',
-      pointerEvents: 'none',
-    };
-  }, [chartData, scale]);
 
   const timelineRowHeight = showTotalsRow ? 48 : 24;
 
@@ -297,6 +315,7 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   const cfg = scaleConfig[scale];
   const ppd = cfg.pixelsPerDay;
   const totalWidth = chartData.totalDays * ppd;
+  const colWidth = chartData.colWidth;
 
   return (
     <>
@@ -322,7 +341,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
                 <div style={{ position: 'relative', height: 24, borderTop: '1px solid #d0d9e8', background: '#eaf3fb' }}>
                   {chartData.timeMarks.map((mark, i) => {
                     const total = dailyTotals[mark.dateStr];
-                    // Дробные суммы тоже отображаемся корректно
                     const label = total ? (Number.isInteger(total) ? total : +total.toFixed(2)) : '';
                     return (
                       <div key={i} style={{
@@ -347,12 +365,13 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
               <GanttRow
                 key={task.id || task.task_id}
                 task={task}
-                timeMarks={chartData.timeMarks}
                 ppd={ppd}
+                colWidth={colWidth}
                 headcountEnabled={headcountEnabled}
                 scale={scale}
                 taskHeadcount={headcountData?.[task.id]}
-                getBarStyle={getBarStyle}
+                minDate={chartData.minDate}
+                timeMarks={chartData.timeMarks}
                 onCellClick={handleCellClick}
               />
             ))}
