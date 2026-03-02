@@ -53,8 +53,7 @@ function ColumnFilter({ columnKey, allValues, currentFilter, onApplyFilter, trig
 
   const uniqueValues = useMemo(() => {
     return [...new Set(allValues.filter(v => v !== null && v !== undefined && v !== '' && v !== '-'))]
-      .sort()
-      .slice(0, 100);
+      .sort();
   }, [allValues]);
 
   const filteredValues = useMemo(() => {
