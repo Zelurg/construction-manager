@@ -1,4 +1,4 @@
-"""Миграция: заменить статус 'gray'/'NULL' -> 'white' для всех записей в schedule_tasks.
+"""Миграция: заменить статус 'gray'/'NULL' -> 'white' для всех записей в tasks.
 Запускать один раз на VPS после деплоя.
 """
 import os
@@ -16,7 +16,7 @@ def migrate():
         total = 0
         for field in FIELDS:
             result = conn.execute(
-                text(f"UPDATE schedule_tasks SET {field} = 'white' WHERE {field} = 'gray' OR {field} IS NULL")
+                text(f"UPDATE tasks SET {field} = 'white' WHERE {field} = 'gray' OR {field} IS NULL")
             )
             n = result.rowcount
             total += n
