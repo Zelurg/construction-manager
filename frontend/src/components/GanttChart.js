@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { FixedSizeList } from 'react-window';
 import '../styles/GanttChart.css';
 
 const SECTION_COLORS = [
@@ -9,6 +8,7 @@ const SECTION_COLORS = [
 function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
 }
+
 function getLevelFromCode(code) {
   if (!code) return 0;
   return String(code).split('.').length - 1;
@@ -16,7 +16,6 @@ function getLevelFromCode(code) {
 
 const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
 const GANTT_SCALE_KEY = 'ganttScale';
-const ROW_HEIGHT = 32;
 
 function HeadcountModal({ task, date, current, onSave, onClear, onClose }) {
   const [value, setValue] = useState(current != null ? String(current) : '');
@@ -39,14 +38,25 @@ function HeadcountModal({ task, date, current, onSave, onClear, onClose }) {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Назначение людей</div>
         <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}><b>Работа:</b> {task.name}</div>
         <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}><b>Дата:</b> {dateLabel}</div>
-        <input ref={inputRef} type="number" min="0" step="0.5" value={value}
-          onChange={e => setValue(e.target.value)} onKeyDown={handleKeyDown}
+        <input
+          ref={inputRef}
+          type="number"
+          min="0"
+          step="0.5"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Например: 0.5, 1, 2…"
-          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
+          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
+        />
         <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>Можно указывать дробные значения (0.5, 1.5, …)</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
           {hasCurrent ? (
-            <button onClick={onClear} style={{ padding: '7px 14px', borderRadius: 5, border: '1px solid #e0a0a0', background: '#fff0f0', color: '#c0392b', cursor: 'pointer', fontSize: 13 }}>Очистить</button>
+            <button
+              onClick={onClear}
+              title="Удалить назначение на эту дату"
+              style={{ padding: '7px 14px', borderRadius: 5, border: '1px solid #e0a0a0', background: '#fff0f0', color: '#c0392b', cursor: 'pointer', fontSize: 13 }}
+            >Очистить</button>
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
@@ -134,16 +144,9 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
   });
   const [modal, setModal] = useState(null);
-  const [listHeight, setListHeight] = useState(400);
-
+  const internalScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);
-  const listOuterRef      = useRef(null);
-  // containerRef — обёрточный div (.gantt-body-container).
-  // На нём вешаем ResizeObserver — этот div всегда есть в DOM сразу при монтировании,
-  // в отличие от outerRef который заполняется react-window асинхронно.
-  const containerRef      = useRef(null);
-
-  const bodyScrollRef = externalScrollRef || listOuterRef;
+  const bodyScrollRef = externalScrollRef || internalScrollRef;
 
   const handleScaleChange = (newScale) => {
     setScale(newScale);
@@ -157,21 +160,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     week:    { pixelsPerDay: 15, label: 'Неделя',  format: (d) => `${d.getDate()}.${String(d.getMonth()+1).padStart(2,'0')}` },
     day:     { pixelsPerDay: 60, label: 'День',    format: (d) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) },
   };
-
-  // ResizeObserver вешаем на containerRef (обёрточный div, а не outerRef react-window).
-  // Так мы всегда получаем точную высоту сразу при монтировании.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setListHeight(entry.contentRect.height);
-      }
-    });
-    ro.observe(el);
-    setListHeight(el.getBoundingClientRect().height);
-    return () => ro.disconnect();
-  }, []);
 
   const chartData = useMemo(() => {
     if (tasks.length === 0) return null;
@@ -264,22 +252,11 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, count);
     setModal(null);
   };
+
   const handleModalClear = () => {
     if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, null);
     setModal(null);
   };
-
-  const itemData = useMemo(() => ({
-    tasks,
-    ppd: scaleConfig[scale].pixelsPerDay,
-    colWidth: chartData?.colWidth ?? 5,
-    headcountEnabled,
-    scale,
-    headcountData,
-    minDate: chartData?.minDate,
-    timeMarks: chartData?.timeMarks,
-    onCellClick: handleCellClick,
-  }), [tasks, chartData, scale, headcountEnabled, headcountData, handleCellClick]);
 
   const timelineRowHeight = showTotalsRow ? 48 : 24;
 
@@ -344,25 +321,19 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
           </div>
         </div>
 
-        {/* containerRef — этот div сразу есть в DOM. ResizeObserver читает его высоту и передаёт в FixedSizeList.
-             outerRef (bodyScrollRef) — отдельный ref, только для синхронизации скролла с таблицей. */}
-        <div className="gantt-body-container" ref={containerRef}>
-          <FixedSizeList
-            height={listHeight}
-            itemCount={tasks.length}
-            itemSize={ROW_HEIGHT}
-            itemData={itemData}
-            width="100%"
-            outerRef={bodyScrollRef}
-            style={{ overflowX: 'auto', overflowY: 'auto' }}
-            innerElementType={({ children, style, ...rest }) => (
-              <div style={{ ...style, minWidth: `${totalWidth}px`, position: 'relative' }} {...rest}>
-                {children}
-              </div>
-            )}
-          >
-            {RowRenderer}
-          </FixedSizeList>
+        <div className="gantt-body-scroll" ref={bodyScrollRef}>
+          <div className="gantt-body-content" style={{ width: `${totalWidth}px` }}>
+            {tasks.map(task => (
+              <GanttRow
+                key={task.id || task.task_id}
+                task={task} ppd={ppd} colWidth={colWidth}
+                headcountEnabled={headcountEnabled} scale={scale}
+                taskHeadcount={headcountData?.[task.id]}
+                minDate={chartData.minDate} timeMarks={chartData.timeMarks}
+                onCellClick={handleCellClick}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -375,20 +346,5 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     </>
   );
 }
-
-const RowRenderer = React.memo(function RowRenderer({ index, style, data }) {
-  const { tasks, ppd, colWidth, headcountEnabled, scale, headcountData, minDate, timeMarks, onCellClick } = data;
-  const task = tasks[index];
-  return (
-    <div style={{ ...style, width: '100%' }}>
-      <GanttRow
-        task={task} ppd={ppd} colWidth={colWidth}
-        headcountEnabled={headcountEnabled} scale={scale}
-        taskHeadcount={headcountData?.[task.id]}
-        minDate={minDate} timeMarks={timeMarks} onCellClick={onCellClick}
-      />
-    </div>
-  );
-});
 
 export default GanttChart;
