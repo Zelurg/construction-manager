@@ -244,7 +244,7 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
     `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;">${m.label}</div>`
   ).join('');
 
-  // Заголовок Ганта — отдельная строка в tbody, чтобы не повторялся на каждой странице
+  // Заголовок ганта — строка 1 в tbody (row index = 0)
   const headerRow = `<tr style="height:${ROW_H}px;">
     <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
       <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${headerMarks}</div>
@@ -279,7 +279,6 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
     </tr>`;
   }).join('');
 
-  // Используем только tbody (без thead) — заголовок встроен первой строкой tbody
   return `
     <table style="border-collapse:collapse;table-layout:fixed;">
       <tbody>${headerRow}${bodyRows}</tbody>
@@ -984,8 +983,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const printCols = selectedCols.filter(k => !CHECKLIST_COL_KEYS.has(k));
     const colLabels = printCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
     const printTasks = filteredTasks;
+    const colCount = printCols.length;
 
-    // Заголовок таблицы — отдельная строка в tbody (не thead), чтобы не повторялся на каждой странице
+    // Заголовок таблицы — строка в tbody
     const headerRow = colLabels.map(l =>
       `<td style="background:#d0dff0;font-weight:700;text-align:center;border:1px solid #bbb;padding:0 4px;white-space:nowrap;font-size:9px;height:${ROW_H}px;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${l}</td>`
     ).join('');
@@ -994,12 +994,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       const bgColor = task.is_section ? getSectionColor(getLevelFromCode(task.code)) : (task.is_custom ? '#fff9e6' : '#fff');
       const fw = task.is_section ? 'bold' : 'normal';
       const cells = printCols.map(key => `<td style="font-weight:${fw};">${getDisplayValue(task, key) || ''}</td>`).join('');
-      return `<tr style="background:${bgColor};">${cells}</tr>`;
+      return `<tr style="background:${bgColor};-webkit-print-color-adjust:exact;print-color-adjust:exact;page-break-inside:avoid;">${cells}</tr>`;
     }).join('');
+
+    // Если печатаем с Гантом — добавляем строку-заглушку в начало таблицы под заголовок ганта
+    const ganttHeaderPlaceholder = showGantt
+      ? `<tr style="height:${ROW_H}px;"><td colspan="${colCount}" style="border:none;background:#e0e8f5;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></td></tr>`
+      : '';
 
     const tableHtml = `
       <table id="main-table">
         <tbody>
+          ${ganttHeaderPlaceholder}
           <tr class="header-row">${headerRow}</tr>
           ${bodyRows}
         </tbody>
@@ -1029,8 +1035,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           font-size: 9px;
           vertical-align: middle;
           height: ${ROW_H}px;
+          max-height: ${ROW_H}px;
           overflow: hidden;
         }
+        tr { page-break-inside: avoid; }
         tr[style*="#B8D4E8"] td { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#C8DFF0"] td { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#D8EAF5"] td { background: #D8EAF5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
