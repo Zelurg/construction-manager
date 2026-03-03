@@ -190,7 +190,7 @@ const TaskRow = React.memo(function TaskRow({
   );
 });
 
-function buildGanttHtml(tasks, ganttScale, ROW_H) {
+function buildGanttHtml(tasks, ganttScale, ROW_H, HEADER_H) {
   const SCALE_PPD = { year: 1, quarter: 3, month: 5, week: 15, day: 60 };
   const ppd = SCALE_PPD[ganttScale] || 5;
 
@@ -245,9 +245,9 @@ function buildGanttHtml(tasks, ganttScale, ROW_H) {
     `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;">${m.label}</div>`
   ).join('');
 
-  const headerTr = `<tr style="height:${ROW_H}px;">
+  const headerTr = `<tr style="height:${HEADER_H}px;">
     <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;">
-      <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${headerMarks}</div>
+      <div style="position:relative;width:${totalWidth}px;height:${HEADER_H}px;">${headerMarks}</div>
     </td>
   </tr>`;
 
@@ -984,17 +984,21 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const projectName = project?.name || 'Проект';
     const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
     const ROW_H = 24;
+    // Высота заголовка фиксирована — одна строка 24px, чтобы совпасть с Гант
+    const HEADER_H = ROW_H;
     const printCols = selectedCols.filter(k => !CHECKLIST_COL_KEYS.has(k));
     const colLabels = printCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
+    // Используем filteredTasks — тот же массив что и для Ганта
+    const printTasks = filteredTasks;
     const headerRow = colLabels.map(l => `<th>${l}</th>`).join('');
-    const bodyRows = filteredTasks.map(task => {
+    const bodyRows = printTasks.map(task => {
       const bgColor = task.is_section ? getSectionColor(getLevelFromCode(task.code)) : (task.is_custom ? '#fff9e6' : '#fff');
       const fw = task.is_section ? 'bold' : 'normal';
       const cells = printCols.map(key => `<td style="font-weight:${fw};">${getDisplayValue(task, key) || ''}</td>`).join('');
       return `<tr style="background:${bgColor};" class="data-row">${cells}</tr>`;
     }).join('');
     const tableHtml = `<table id="main-table"><thead><tr class="header-row">${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-    const ganttHtml = showGantt ? buildGanttHtml(filteredTasks, ganttScale, ROW_H) : '';
+    const ganttHtml = showGantt ? buildGanttHtml(printTasks, ganttScale, ROW_H, HEADER_H) : '';
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
     document.body.appendChild(iframe);
@@ -1011,8 +1015,23 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         p.sub { font-size: 10px; color: #555; margin-bottom: 6px; }
         .print-layout { display: flex; align-items: flex-start; gap: 4px; }
         #main-table { border-collapse: collapse; table-layout: auto; }
-        #main-table th, #main-table td { border: 1px solid #bbb; padding: 0 4px; white-space: nowrap; font-size: 9px; vertical-align: middle; height: ${ROW_H}px; overflow: hidden; }
-        #main-table th { background: #d0dff0 !important; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        #main-table th, #main-table td {
+          border: 1px solid #bbb;
+          padding: 0 4px;
+          white-space: nowrap;
+          font-size: 9px;
+          vertical-align: middle;
+          height: ${ROW_H}px;
+          max-height: ${ROW_H}px;
+          overflow: hidden;
+        }
+        #main-table th {
+          background: #d0dff0 !important;
+          font-weight: 700;
+          line-height: ${ROW_H}px;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
         tr[style*="#B8D4E8"] td { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#C8DFF0"] td { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#D8EAF5"] td { background: #D8EAF5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
