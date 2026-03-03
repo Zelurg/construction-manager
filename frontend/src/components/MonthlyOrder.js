@@ -189,108 +189,6 @@ const TaskRow = React.memo(function TaskRow({
   );
 });
 
-function buildGanttHtml(tasks, ganttScale, ROW_H) {
-  const SCALE_PPD = { year: 1, quarter: 3, month: 5, week: 15, day: 60 };
-  const ppd = SCALE_PPD[ganttScale] || 5;
-
-  const workTasks = tasks.filter(t => !t.is_section && (t.start_date_plan || t.start_date_contract));
-  if (workTasks.length === 0) return '<p style="color:#999;font-size:11px;">Нет данных для диаграммы</p>';
-
-  const allDates = [];
-  workTasks.forEach(t => {
-    if (t.start_date_contract) allDates.push(new Date(t.start_date_contract));
-    if (t.end_date_contract)   allDates.push(new Date(t.end_date_contract));
-    if (t.start_date_plan)     allDates.push(new Date(t.start_date_plan));
-    if (t.end_date_plan)       allDates.push(new Date(t.end_date_plan));
-  });
-  if (allDates.length === 0) return '<p style="color:#999">Нет дат</p>';
-
-  const minDate = new Date(Math.min(...allDates)); minDate.setHours(0, 0, 0, 0);
-  const maxDate = new Date(Math.max(...allDates)); maxDate.setHours(23, 59, 59, 999);
-  const totalDays = Math.ceil((maxDate - minDate) / 864e5) + 1;
-  const totalWidth = totalDays * ppd;
-
-  const timeMarks = [];
-  if (ganttScale === 'day' || ganttScale === 'week') {
-    const step = ganttScale === 'week' ? 7 : 1;
-    for (let d = 0; d <= totalDays; d += step) {
-      const md = new Date(minDate); md.setDate(md.getDate() + d);
-      if (md <= maxDate) {
-        const label = ganttScale === 'week'
-          ? `${md.getDate()}.${String(md.getMonth() + 1).padStart(2, '0')}`
-          : md.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-        timeMarks.push({ offset: d, label });
-      }
-    }
-  } else {
-    let cur = new Date(minDate);
-    while (cur <= maxDate) {
-      const offset = Math.ceil((cur - minDate) / 864e5);
-      let label = '';
-      if (ganttScale === 'year')    label = cur.getFullYear().toString();
-      if (ganttScale === 'quarter') label = `Q${Math.floor(cur.getMonth() / 3) + 1} ${cur.getFullYear()}`;
-      if (ganttScale === 'month')   label = cur.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' });
-      timeMarks.push({ offset, label });
-      if (ganttScale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-      else if (ganttScale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
-      else                               cur = new Date(cur.getFullYear() + 1, 0, 1);
-    }
-  }
-
-  const gridLines = timeMarks.map(m =>
-    `<div style="position:absolute;left:${m.offset * ppd}px;top:0;bottom:0;border-left:1px solid #e0e0e0;pointer-events:none;"></div>`
-  ).join('');
-  const headerMarks = timeMarks.map(m =>
-    `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;">${m.label}</div>`
-  ).join('');
-
-  // Заголовок ганта — строка 1 в tbody (row index = 0)
-  const headerRow = `<tr style="height:${ROW_H}px;">
-    <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
-      <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${headerMarks}</div>
-    </td>
-  </tr>`;
-
-  const bodyRows = tasks.map(task => {
-    const bgColor = task.is_section
-      ? getSectionColor(getLevelFromCode(task.code))
-      : (task.is_custom ? '#fff9e6' : '#fff');
-    let bars = '';
-    if (!task.is_section) {
-      if (task.start_date_contract && task.end_date_contract) {
-        const s = new Date(task.start_date_contract); s.setHours(0, 0, 0, 0);
-        const e = new Date(task.end_date_contract);   e.setHours(0, 0, 0, 0);
-        const left = Math.floor((s - minDate) / 864e5) * ppd;
-        const w    = Math.max((Math.floor((e - s) / 864e5) + 1) * ppd, 4);
-        bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H * 0.15)}px;width:${w}px;height:${Math.round(ROW_H * 0.28)}px;background:#aaa;border-radius:2px;"></div>`;
-      }
-      if (task.start_date_plan && task.end_date_plan) {
-        const s = new Date(task.start_date_plan); s.setHours(0, 0, 0, 0);
-        const e = new Date(task.end_date_plan);   e.setHours(0, 0, 0, 0);
-        const left = Math.floor((s - minDate) / 864e5) * ppd;
-        const w    = Math.max((Math.floor((e - s) / 864e5) + 1) * ppd, 4);
-        bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H * 0.55)}px;width:${w}px;height:${Math.round(ROW_H * 0.28)}px;background:#4a90e2;border-radius:2px;"></div>`;
-      }
-    }
-    return `<tr style="height:${ROW_H}px;">
-      <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:${bgColor};border-bottom:1px solid #e8e8e8;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
-        <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${gridLines}${bars}</div>
-      </td>
-    </tr>`;
-  }).join('');
-
-  return `
-    <table style="border-collapse:collapse;table-layout:fixed;">
-      <tbody>${headerRow}${bodyRows}</tbody>
-    </table>
-    <div style="margin-top:6px;font-size:10px;color:#555;">
-      <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Контракт
-      &nbsp;&nbsp;
-      <span style="display:inline-block;width:16px;height:8px;background:#4a90e2;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>План
-    </div>
-  `;
-}
-
 function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPrint, onShowExportMSG, onShowImportMSG }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
@@ -983,35 +881,123 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const printCols = selectedCols.filter(k => !CHECKLIST_COL_KEYS.has(k));
     const colLabels = printCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
     const printTasks = filteredTasks;
-    const colCount = printCols.length;
 
-    // Заголовок таблицы — строка в tbody
-    const headerRow = colLabels.map(l =>
+    // ===== Гант-контекст: вычисляем один раз =====
+    const SCALE_PPD = { year: 1, quarter: 3, month: 5, week: 15, day: 60 };
+    const ppd = SCALE_PPD[ganttScale] || 5;
+    let minDate = null, maxDate = null, totalDays = 0, totalWidth = 0;
+    let timeMarks = [];
+    let gridLines = '';
+    let headerMarks = '';
+
+    if (showGantt) {
+      const workTasks = printTasks.filter(t => !t.is_section && (t.start_date_plan || t.start_date_contract));
+      if (workTasks.length > 0) {
+        const allDates = [];
+        workTasks.forEach(t => {
+          if (t.start_date_contract) allDates.push(new Date(t.start_date_contract));
+          if (t.end_date_contract)   allDates.push(new Date(t.end_date_contract));
+          if (t.start_date_plan)     allDates.push(new Date(t.start_date_plan));
+          if (t.end_date_plan)       allDates.push(new Date(t.end_date_plan));
+        });
+        minDate = new Date(Math.min(...allDates)); minDate.setHours(0, 0, 0, 0);
+        maxDate = new Date(Math.max(...allDates)); maxDate.setHours(23, 59, 59, 999);
+        totalDays = Math.ceil((maxDate - minDate) / 864e5) + 1;
+        totalWidth = totalDays * ppd;
+
+        if (ganttScale === 'day' || ganttScale === 'week') {
+          const step = ganttScale === 'week' ? 7 : 1;
+          for (let d = 0; d <= totalDays; d += step) {
+            const md = new Date(minDate); md.setDate(md.getDate() + d);
+            if (md <= maxDate) {
+              const label = ganttScale === 'week'
+                ? `${md.getDate()}.${String(md.getMonth() + 1).padStart(2, '0')}`
+                : md.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+              timeMarks.push({ offset: d, label });
+            }
+          }
+        } else {
+          let cur = new Date(minDate);
+          while (cur <= maxDate) {
+            const offset = Math.ceil((cur - minDate) / 864e5);
+            let label = '';
+            if (ganttScale === 'year')    label = cur.getFullYear().toString();
+            if (ganttScale === 'quarter') label = `Q${Math.floor(cur.getMonth() / 3) + 1} ${cur.getFullYear()}`;
+            if (ganttScale === 'month')   label = cur.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' });
+            timeMarks.push({ offset, label });
+            if (ganttScale === 'month')        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+            else if (ganttScale === 'quarter') cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+            else                               cur = new Date(cur.getFullYear() + 1, 0, 1);
+          }
+        }
+
+        gridLines = timeMarks.map(m =>
+          `<div style="position:absolute;left:${m.offset * ppd}px;top:0;bottom:0;width:1px;background:#e0e0e0;"></div>`
+        ).join('');
+        headerMarks = timeMarks.map(m =>
+          `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;overflow:hidden;">${m.label}</div>`
+        ).join('');
+      }
+    }
+
+    // ===== Строим единую таблицу: каждая <tr> = данные + гант =====
+    const ganttTd = (content, bg) => showGantt && totalWidth > 0
+      ? `<td class="gantt-cell" style="background:${bg};-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+           <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;overflow:hidden;">${gridLines}${content}</div>
+         </td>`
+      : '';
+
+    // Строка заголовка: названия колонок слева + заголовок ганта справа
+    const headerCells = colLabels.map(l =>
       `<td style="background:#d0dff0;font-weight:700;text-align:center;border:1px solid #bbb;padding:0 4px;white-space:nowrap;font-size:9px;height:${ROW_H}px;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${l}</td>`
     ).join('');
+    const ganttHeaderTd = showGantt && totalWidth > 0
+      ? `<td class="gantt-cell" style="background:#e0e8f5;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+           <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;overflow:hidden;">${headerMarks}</div>
+         </td>`
+      : '';
+    const headerRow = `<tr style="height:${ROW_H}px;page-break-inside:avoid;">${headerCells}${ganttHeaderTd}</tr>`;
 
+    // Строки данных
     const bodyRows = printTasks.map(task => {
       const bgColor = task.is_section ? getSectionColor(getLevelFromCode(task.code)) : (task.is_custom ? '#fff9e6' : '#fff');
       const fw = task.is_section ? 'bold' : 'normal';
-      const cells = printCols.map(key => `<td style="font-weight:${fw};">${getDisplayValue(task, key) || ''}</td>`).join('');
-      return `<tr style="background:${bgColor};-webkit-print-color-adjust:exact;print-color-adjust:exact;page-break-inside:avoid;">${cells}</tr>`;
+      const dataCells = printCols.map(key =>
+        `<td style="font-weight:${fw};">${getDisplayValue(task, key) || ''}</td>`
+      ).join('');
+
+      // Гант-бары для этой строки
+      let bars = '';
+      if (showGantt && totalWidth > 0 && !task.is_section && minDate) {
+        if (task.start_date_contract && task.end_date_contract) {
+          const s = new Date(task.start_date_contract); s.setHours(0,0,0,0);
+          const e = new Date(task.end_date_contract);   e.setHours(0,0,0,0);
+          const left = Math.floor((s - minDate) / 864e5) * ppd;
+          const w = Math.max((Math.floor((e - s) / 864e5) + 1) * ppd, 4);
+          bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H*0.15)}px;width:${w}px;height:${Math.round(ROW_H*0.28)}px;background:#aaa;border-radius:2px;"></div>`;
+        }
+        if (task.start_date_plan && task.end_date_plan) {
+          const s = new Date(task.start_date_plan); s.setHours(0,0,0,0);
+          const e = new Date(task.end_date_plan);   e.setHours(0,0,0,0);
+          const left = Math.floor((s - minDate) / 864e5) * ppd;
+          const w = Math.max((Math.floor((e - s) / 864e5) + 1) * ppd, 4);
+          bars += `<div style="position:absolute;left:${left}px;top:${Math.round(ROW_H*0.55)}px;width:${w}px;height:${Math.round(ROW_H*0.28)}px;background:#4a90e2;border-radius:2px;"></div>`;
+        }
+      }
+
+      return `<tr style="height:${ROW_H}px;background:${bgColor};page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        ${dataCells}
+        ${ganttTd(bars, bgColor)}
+      </tr>`;
     }).join('');
 
-    // Если печатаем с Гантом — добавляем строку-заглушку в начало таблицы под заголовок ганта
-    const ganttHeaderPlaceholder = showGantt
-      ? `<tr style="height:${ROW_H}px;"><td colspan="${colCount}" style="border:none;background:#e0e8f5;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></td></tr>`
-      : '';
+    const legendHtml = showGantt && totalWidth > 0 ? `
+      <div style="margin-top:6px;font-size:10px;color:#555;">
+        <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Контракт
+        &nbsp;&nbsp;
+        <span style="display:inline-block;width:16px;height:8px;background:#4a90e2;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>План
+      </div>` : '';
 
-    const tableHtml = `
-      <table id="main-table">
-        <tbody>
-          ${ganttHeaderPlaceholder}
-          <tr class="header-row">${headerRow}</tr>
-          ${bodyRows}
-        </tbody>
-      </table>`;
-
-    const ganttHtml = showGantt ? buildGanttHtml(printTasks, ganttScale, ROW_H) : '';
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
     document.body.appendChild(iframe);
@@ -1026,34 +1012,35 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         body { font-family: Arial, sans-serif; font-size: 9px; }
         h2 { font-size: 13px; margin-bottom: 2px; }
         p.sub { font-size: 10px; color: #555; margin-bottom: 6px; }
-        .print-layout { display: flex; align-items: flex-start; gap: 4px; }
-        #main-table { border-collapse: collapse; table-layout: auto; }
-        #main-table td {
+        table { border-collapse: collapse; table-layout: fixed; }
+        td {
           border: 1px solid #bbb;
           padding: 0 4px;
           white-space: nowrap;
           font-size: 9px;
           vertical-align: middle;
           height: ${ROW_H}px;
-          max-height: ${ROW_H}px;
           overflow: hidden;
         }
+        td.gantt-cell { border: none; border-left: 1px solid #bbb; padding: 0; width: ${totalWidth}px; min-width: ${totalWidth}px; }
         tr { page-break-inside: avoid; }
-        tr[style*="#B8D4E8"] td { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        tr[style*="#C8DFF0"] td { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        tr[style*="#D8EAF5"] td { background: #D8EAF5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        tr[style*="#E4F1F8"] td { background: #E4F1F8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        tr[style*="#EFF6FB"] td { background: #EFF6FB !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        tr[style*="#fff9e6"] td { background: #fff9e6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        table { border-collapse: collapse; table-layout: fixed; }
+        tr[style*="#B8D4E8"] td:not(.gantt-cell) { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#C8DFF0"] td:not(.gantt-cell) { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#D8EAF5"] td:not(.gantt-cell) { background: #D8EAF5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#E4F1F8"] td:not(.gantt-cell) { background: #E4F1F8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#EFF6FB"] td:not(.gantt-cell) { background: #EFF6FB !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        tr[style*="#fff9e6"] td:not(.gantt-cell) { background: #fff9e6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       </style>
     </head><body>
       <h2>МСГ — ${projectName}</h2>
       <p class="sub">Период: ${monthLabel} &nbsp;|&nbsp; Сформировано: ${new Date().toLocaleDateString('ru-RU')}</p>
-      <div class="print-layout">
-        <div>${tableHtml}</div>
-        ${showGantt ? `<div>${ganttHtml}</div>` : ''}
-      </div>
+      <table>
+        <tbody>
+          ${headerRow}
+          ${bodyRows}
+        </tbody>
+      </table>
+      ${legendHtml}
     </body></html>`);
     doc.close();
     iframe.contentWindow.focus();
