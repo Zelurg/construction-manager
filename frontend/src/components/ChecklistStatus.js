@@ -2,31 +2,31 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
 const STATUS_OPTIONS = [
-  { value: 'gray',   label: '\u2014 \u041d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043e', color: '#9e9e9e' },
-  { value: 'red',    label: '\u2718 \u041d\u0435 \u0433\u043e\u0442\u043e\u0432\u043e',         color: '#e53935' },
-  { value: 'yellow', label: '\u26a0 \u0412 \u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0435',   color: '#f9a825' },
-  { value: 'green',  label: '\u2714 \u0413\u043e\u0442\u043e\u0432\u043e',            color: '#43a047' },
+  { value: 'white',  label: '\u2014 \u041d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043e', color: '#ffffff', border: '1.5px solid #bbb' },
+  { value: 'gray',   label: '\u2014 \u041d\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f',       color: '#9e9e9e', border: null },
+  { value: 'red',    label: '\u2718 \u041d\u0435 \u0433\u043e\u0442\u043e\u0432\u043e',                         color: '#e53935', border: null },
+  { value: 'yellow', label: '\u26a0 \u0412 \u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0435',                   color: '#f9a825', border: null },
+  { value: 'green',  label: '\u2714 \u0413\u043e\u0442\u043e\u0432\u043e',                                      color: '#43a047', border: null },
 ];
 
 export const STATUS_COLOR = {
+  white:  '#ffffff',
   gray:   '#9e9e9e',
   red:    '#e53935',
   yellow: '#f9a825',
   green:  '#43a047',
 };
 
-/**
- * \u041a\u0440\u0443\u0436\u043e\u043a \u0441\u0442\u0430\u0442\u0443\u0441\u0430 \u0441 \u0432\u044b\u043f\u0430\u0434\u0430\u044e\u0449\u0438\u043c \u0441\u043f\u0438\u0441\u043a\u043e\u043c (portal \u2014 \u0440\u0435\u043d\u0434\u0435\u0440\u0438\u0442\u0441\u044f \u043d\u0430 document.body \u043f\u043e\u0432\u0435\u0440\u0445 \u0432\u0441\u0435\u0433\u043e).
- */
-export default function ChecklistStatus({ value = 'gray', onChange, label, size = 16 }) {
+export default function ChecklistStatus({ value = 'white', onChange, label, size = 16 }) {
   const [open, setOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const circleRef = useRef(null);
 
-  const color = STATUS_COLOR[value] || STATUS_COLOR.gray;
+  const opt = STATUS_OPTIONS.find(o => o.value === value) || STATUS_OPTIONS[0];
+  const color = opt.color;
+  const circleBorder = opt.border || '1.5px solid rgba(0,0,0,0.18)';
   const canEdit = typeof onChange === 'function';
 
-  // \u0412\u044b\u0447\u0438\u0441\u043b\u044f\u0435\u043c \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u043f\u043e\u043f\u0430\u043f\u0430 \u0440\u0435\u043b\u0430\u0442\u0438\u0432\u043d\u043e \u0432\u044c\u044e\u043f\u043e\u0440\u0442\u0430 (viewport)
   const handleCircleClick = (e) => {
     if (!canEdit) return;
     e.stopPropagation();
@@ -38,7 +38,6 @@ export default function ChecklistStatus({ value = 'gray', onChange, label, size 
     setOpen(o => !o);
   };
 
-  // \u0417\u0430\u043a\u0440\u044b\u0432\u0430\u0435\u043c \u043f\u043e \u043a\u043b\u0438\u043a\u0443 \u0432\u043d\u0435
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -55,42 +54,36 @@ export default function ChecklistStatus({ value = 'gray', onChange, label, size 
   };
 
   const dropdown = open ? ReactDOM.createPortal(
-    <div
-      style={{
-        position: 'absolute',
-        top: dropdownPos.top,
-        left: dropdownPos.left,
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: 6,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-        zIndex: 99999,
-        minWidth: 170,
-        padding: '4px 0',
-      }}
-    >
-      {STATUS_OPTIONS.map(opt => (
+    <div style={{
+      position: 'absolute',
+      top: dropdownPos.top,
+      left: dropdownPos.left,
+      background: '#fff',
+      border: '1px solid #ddd',
+      borderRadius: 6,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+      zIndex: 99999,
+      minWidth: 175,
+      padding: '4px 0',
+    }}>
+      {STATUS_OPTIONS.map(o => (
         <div
-          key={opt.value}
-          onMouseDown={(e) => { e.preventDefault(); handleSelect(opt.value); }}
+          key={o.value}
+          onMouseDown={(e) => { e.preventDefault(); handleSelect(o.value); }}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '7px 14px',
-            cursor: 'pointer',
-            background: opt.value === value ? '#f0f4ff' : 'transparent',
-            fontWeight: opt.value === value ? 600 : 400,
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 14px', cursor: 'pointer',
+            background: o.value === value ? '#f0f4ff' : 'transparent',
+            fontWeight: o.value === value ? 600 : 400,
           }}
         >
           <div style={{
-            width: 13, height: 13,
-            borderRadius: '50%',
-            backgroundColor: opt.color,
-            border: '1px solid rgba(0,0,0,0.15)',
+            width: 13, height: 13, borderRadius: '50%',
+            backgroundColor: o.color,
+            border: o.border || '1px solid rgba(0,0,0,0.15)',
             flexShrink: 0,
           }} />
-          <span style={{ fontSize: 12, color: '#333' }}>{opt.label}</span>
+          <span style={{ fontSize: 12, color: '#333' }}>{o.label}</span>
         </div>
       ))}
     </div>,
@@ -105,16 +98,13 @@ export default function ChecklistStatus({ value = 'gray', onChange, label, size 
       <div
         ref={circleRef}
         onClick={handleCircleClick}
-        title={canEdit ? '\u041a\u043b\u0438\u043a \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441' : STATUS_OPTIONS.find(o => o.value === value)?.label}
+        title={canEdit ? '\u041a\u043b\u0438\u043a \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441' : opt.label}
         style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
+          width: size, height: size, borderRadius: '50%',
           backgroundColor: color,
           cursor: canEdit ? 'pointer' : 'default',
-          border: '1.5px solid rgba(0,0,0,0.18)',
-          flexShrink: 0,
-          boxSizing: 'border-box',
+          border: circleBorder,
+          flexShrink: 0, boxSizing: 'border-box',
           transition: 'transform 0.1s',
         }}
       />
