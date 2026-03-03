@@ -39,21 +39,14 @@ function HeadcountModal({ task, date, current, onSave, onClear, onClose }) {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Назначение людей</div>
         <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}><b>Работа:</b> {task.name}</div>
         <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}><b>Дата:</b> {dateLabel}</div>
-        <input
-          ref={inputRef}
-          type="number" min="0" step="0.5" value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
+        <input ref={inputRef} type="number" min="0" step="0.5" value={value}
+          onChange={e => setValue(e.target.value)} onKeyDown={handleKeyDown}
           placeholder="Например: 0.5, 1, 2…"
-          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
-        />
+          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
         <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>Можно указывать дробные значения (0.5, 1.5, …)</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
           {hasCurrent ? (
-            <button onClick={onClear} title="Удалить назначение"
-              style={{ padding: '7px 14px', borderRadius: 5, border: '1px solid #e0a0a0', background: '#fff0f0', color: '#c0392b', cursor: 'pointer', fontSize: 13 }}>
-              Очистить
-            </button>
+            <button onClick={onClear} style={{ padding: '7px 14px', borderRadius: 5, border: '1px solid #e0a0a0', background: '#fff0f0', color: '#c0392b', cursor: 'pointer', fontSize: 13 }}>Очистить</button>
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
@@ -92,66 +85,48 @@ const GanttRow = React.memo(function GanttRow({
   const isSection = task.is_section;
   const isClickable = headcountEnabled && scale === 'day' && !isSection;
   const sectionBg = isSection ? getSectionColor(getLevelFromCode(task.code)) : undefined;
-
   const contractStyle = !isSection ? computeBarStyle(task, 'contract', minDate, ppd) : null;
   const planStyle     = !isSection ? computeBarStyle(task, 'plan',     minDate, ppd) : null;
-
   const rowBg = isSection
     ? sectionBg
     : `repeating-linear-gradient(to right, transparent, transparent ${colWidth - 1}px, #f0f0f0 ${colWidth - 1}px, #f0f0f0 ${colWidth}px)`;
 
   return (
-    <div
-      className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`}
-      style={{ background: rowBg }}
-    >
+    <div className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`} style={{ background: rowBg }}>
       {isClickable && timeMarks.map((mark, idx) => {
         const hc = taskHeadcount?.[mark.dateStr] ?? null;
         return (
-          <div key={idx}
-            className="gantt-headcount-cell"
+          <div key={idx} className="gantt-headcount-cell"
             style={{
-              left: `${mark.offset * ppd}px`,
-              width: `${ppd}px`,
-              ...(hc != null ? {
-                background: 'rgba(74,144,226,0.18)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11, fontWeight: 700, color: '#1a5fa8',
-              } : {}),
+              left: `${mark.offset * ppd}px`, width: `${ppd}px`,
+              ...(hc != null ? { background: 'rgba(74,144,226,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#1a5fa8' } : {}),
             }}
             title={hc != null ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей'}
-            onClick={() => onCellClick(task, mark.dateStr)}
-          >
+            onClick={() => onCellClick(task, mark.dateStr)}>
             {hc != null ? String(hc) : ''}
           </div>
         );
       })}
       {!isSection && (
         <>
-          {contractStyle && (
-            <div className="gantt-bar-contract" style={contractStyle}
-              title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />
-          )}
-          {planStyle && (
-            <div className="gantt-bar-plan" style={planStyle}
-              title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />
-          )}
+          {contractStyle && <div className="gantt-bar-contract" style={contractStyle}
+            title={`Контракт: ${new Date(task.start_date_contract).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_contract).toLocaleDateString('ru-RU')}`} />}
+          {planStyle && <div className="gantt-bar-plan" style={planStyle}
+            title={`План: ${new Date(task.start_date_plan).toLocaleDateString('ru-RU')} — ${new Date(task.end_date_plan).toLocaleDateString('ru-RU')}`} />}
         </>
       )}
     </div>
   );
-}, (prev, next) => {
-  return (
-    prev.task === next.task &&
-    prev.taskHeadcount === next.taskHeadcount &&
-    prev.ppd === next.ppd &&
-    prev.colWidth === next.colWidth &&
-    prev.scale === next.scale &&
-    prev.headcountEnabled === next.headcountEnabled &&
-    prev.minDate === next.minDate &&
-    prev.timeMarks === next.timeMarks
-  );
-});
+}, (prev, next) => (
+  prev.task === next.task &&
+  prev.taskHeadcount === next.taskHeadcount &&
+  prev.ppd === next.ppd &&
+  prev.colWidth === next.colWidth &&
+  prev.scale === next.scale &&
+  prev.headcountEnabled === next.headcountEnabled &&
+  prev.minDate === next.minDate &&
+  prev.timeMarks === next.timeMarks
+));
 
 function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, headcountEnabled, onTotalsRowChange }) {
   const [scale, setScale] = useState(() => {
@@ -162,11 +137,12 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   const [listHeight, setListHeight] = useState(400);
 
   const timelineScrollRef = useRef(null);
-  const listOuterRef = useRef(null);
+  const listOuterRef      = useRef(null);
+  // containerRef — обёрточный div (.gantt-body-container).
+  // На нём вешаем ResizeObserver — этот div всегда есть в DOM сразу при монтировании,
+  // в отличие от outerRef который заполняется react-window асинхронно.
+  const containerRef      = useRef(null);
 
-  // bodyScrollRef — это outerRef для FixedSizeList (сам скролл-контейнер списка).
-  // Если передан externalScrollRef из Schedule.js — используем его (для синхронизации scrollTop).
-  // Иначе — наш внутренний listOuterRef.
   const bodyScrollRef = externalScrollRef || listOuterRef;
 
   const handleScaleChange = (newScale) => {
@@ -182,26 +158,19 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     day:     { pixelsPerDay: 60, label: 'День',    format: (d) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) },
   };
 
-  // ResizeObserver вешается прямо на outerRef (скролл-контейнер FixedSizeList).
-  // Это единственный div — нет вложенности, высота точная.
-  // Срабатывает сразу при монтировании и при resize окна/панели.
+  // ResizeObserver вешаем на containerRef (обёрточный div, а не outerRef react-window).
+  // Так мы всегда получаем точную высоту сразу при монтировании.
   useEffect(() => {
-    // outerRef заполняется react-window после первого рендера,
-    // поэтому вешаем observer в следующем тике
-    const timer = setTimeout(() => {
-      const el = bodyScrollRef.current;
-      if (!el) return;
-      const ro = new ResizeObserver(entries => {
-        for (const entry of entries) {
-          setListHeight(entry.contentRect.height);
-        }
-      });
-      ro.observe(el);
-      // Сразу задаём текущую высоту не дожидаясь события
-      setListHeight(el.getBoundingClientRect().height);
-      return () => ro.disconnect();
-    }, 0);
-    return () => clearTimeout(timer);
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setListHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(el);
+    setListHeight(el.getBoundingClientRect().height);
+    return () => ro.disconnect();
   }, []);
 
   const chartData = useMemo(() => {
@@ -375,8 +344,9 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
           </div>
         </div>
 
-        {/* gantt-body-container — flex:1, именно его высоту измеряем через ResizeObserver */}
-        <div className="gantt-body-container">
+        {/* containerRef — этот div сразу есть в DOM. ResizeObserver читает его высоту и передаёт в FixedSizeList.
+             outerRef (bodyScrollRef) — отдельный ref, только для синхронизации скролла с таблицей. */}
+        <div className="gantt-body-container" ref={containerRef}>
           <FixedSizeList
             height={listHeight}
             itemCount={tasks.length}
@@ -398,12 +368,8 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
 
       {modal && (
         <HeadcountModal
-          task={modal.task}
-          date={modal.dateStr}
-          current={modal.current}
-          onSave={handleModalSave}
-          onClear={handleModalClear}
-          onClose={() => setModal(null)}
+          task={modal.task} date={modal.dateStr} current={modal.current}
+          onSave={handleModalSave} onClear={handleModalClear} onClose={() => setModal(null)}
         />
       )}
     </>
@@ -416,15 +382,10 @@ const RowRenderer = React.memo(function RowRenderer({ index, style, data }) {
   return (
     <div style={{ ...style, width: '100%' }}>
       <GanttRow
-        task={task}
-        ppd={ppd}
-        colWidth={colWidth}
-        headcountEnabled={headcountEnabled}
-        scale={scale}
+        task={task} ppd={ppd} colWidth={colWidth}
+        headcountEnabled={headcountEnabled} scale={scale}
         taskHeadcount={headcountData?.[task.id]}
-        minDate={minDate}
-        timeMarks={timeMarks}
-        onCellClick={onCellClick}
+        minDate={minDate} timeMarks={timeMarks} onCellClick={onCellClick}
       />
     </div>
   );
