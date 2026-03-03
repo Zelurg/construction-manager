@@ -161,13 +161,12 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   const [modal, setModal] = useState(null);
   const [listHeight, setListHeight] = useState(400);
 
-  const internalScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);
-  const listOuterRef = useRef(null); // outer div FixedSizeList — используем как bodyScrollRef
-  const containerRef = useRef(null);
+  const listOuterRef = useRef(null);
 
-  // externalScrollRef — это ref из Schedule.js для синхронизации scrollTop.
-  // Передаём его в outerRef чтобы Schedule мог читать/писать scrollTop.
+  // bodyScrollRef — это outerRef для FixedSizeList (сам скролл-контейнер списка).
+  // Если передан externalScrollRef из Schedule.js — используем его (для синхронизации scrollTop).
+  // Иначе — наш внутренний listOuterRef.
   const bodyScrollRef = externalScrollRef || listOuterRef;
 
   const handleScaleChange = (newScale) => {
@@ -183,16 +182,26 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     day:     { pixelsPerDay: 60, label: 'День',    format: (d) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) },
   };
 
-  // Отслеживаем высоту контейнера чтобы FixedSizeList знал свою высоту
+  // ResizeObserver вешается прямо на outerRef (скролл-контейнер FixedSizeList).
+  // Это единственный div — нет вложенности, высота точная.
+  // Срабатывает сразу при монтировании и при resize окна/панели.
   useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setListHeight(entry.contentRect.height);
-      }
-    });
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
+    // outerRef заполняется react-window после первого рендера,
+    // поэтому вешаем observer в следующем тике
+    const timer = setTimeout(() => {
+      const el = bodyScrollRef.current;
+      if (!el) return;
+      const ro = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          setListHeight(entry.contentRect.height);
+        }
+      });
+      ro.observe(el);
+      // Сразу задаём текущую высоту не дожидаясь события
+      setListHeight(el.getBoundingClientRect().height);
+      return () => ro.disconnect();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const chartData = useMemo(() => {
@@ -262,7 +271,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return totals;
   }, [headcountData, showTotalsRow]);
 
-  // Синхронизация горизонтального скролла timeline с телом ганта
   useEffect(() => {
     const bodyEl = bodyScrollRef.current;
     const timeEl = timelineScrollRef.current;
@@ -292,11 +300,9 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     setModal(null);
   };
 
-  // itemData — объект который передаётся в каждую строку через react-window.
-  // Важно: мемоизируем чтобы не сбрасывать React.memo в GanttRow
   const itemData = useMemo(() => ({
     tasks,
-    ppd: chartData?.colWidth ? scaleConfig[scale].pixelsPerDay : (scaleConfig[scale]?.pixelsPerDay ?? 5),
+    ppd: scaleConfig[scale].pixelsPerDay,
     colWidth: chartData?.colWidth ?? 5,
     headcountEnabled,
     scale,
@@ -369,8 +375,8 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
           </div>
         </div>
 
-        {/* Контейнер для измерения высоты и передачи в FixedSizeList */}
-        <div className="gantt-body-scroll" ref={containerRef} style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {/* gantt-body-container — flex:1, именно его высоту измеряем через ResizeObserver */}
+        <div className="gantt-body-container">
           <FixedSizeList
             height={listHeight}
             itemCount={tasks.length}
@@ -378,11 +384,8 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
             itemData={itemData}
             width="100%"
             outerRef={bodyScrollRef}
-            outerElementType="div"
             style={{ overflowX: 'auto', overflowY: 'auto' }}
             innerElementType={({ children, style, ...rest }) => (
-              // innerElement — внутренний div со всеми строками.
-              // задаём минимальную ширину = totalWidth чтобы горизонтальный скролл работал
               <div style={{ ...style, minWidth: `${totalWidth}px`, position: 'relative' }} {...rest}>
                 {children}
               </div>
@@ -407,13 +410,10 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   );
 }
 
-// RowRenderer вынесен за пределы GanttChart чтобы не пересоздаваться при каждом рендере.
-// react-window передаёт { index, style, data } в каждую строку.
 const RowRenderer = React.memo(function RowRenderer({ index, style, data }) {
   const { tasks, ppd, colWidth, headcountEnabled, scale, headcountData, minDate, timeMarks, onCellClick } = data;
   const task = tasks[index];
   return (
-    // style от react-window задаёт position:absolute + top для виртуального позиционирования
     <div style={{ ...style, width: '100%' }}>
       <GanttRow
         task={task}
