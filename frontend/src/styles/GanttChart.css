@@ -85,6 +85,18 @@
   line-height: 16px;
 }
 
+/* Обёртка вокруг FixedSizeList.
+   flex:1 занимает всё доступное пространство после хедера.
+   overflow:hidden — чтобы скролл выполнял сам контейнер FixedSizeList (outerRef).
+   ResizeObserver наблюдает за этим элементом и передаёт его высоту в FixedSizeList. */
+.gantt-body-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0; /* важно для flex: без этого flex-child не сжимается ниже своего контента */
+}
+
+/* Оставляем для совместимости (используется в пустом состоянии) */
 .gantt-body-scroll {
   flex: 1;
   overflow: auto;
@@ -101,7 +113,6 @@
   height: 32px;
   border-bottom: 1px solid #f0f0f0;
   box-sizing: border-box;
-  /* Вертикальная сетка теперь задаётся через background (repeating-linear-gradient) в JS */
 }
 
 .gantt-row-section {
