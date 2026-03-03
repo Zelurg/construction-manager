@@ -93,7 +93,6 @@ function getParentIds(task, allTasks) {
   return ids;
 }
 
-// notes добавлено в оба массива редактируемых полей
 const STANDARD_EDITABLE = ['start_date_plan', 'end_date_plan', 'executor', 'notes'];
 const CUSTOM_EDITABLE = [
   'name', 'unit', 'volume_plan',
@@ -190,7 +189,7 @@ const TaskRow = React.memo(function TaskRow({
   );
 });
 
-function buildGanttHtml(tasks, ganttScale, ROW_H, HEADER_H) {
+function buildGanttHtml(tasks, ganttScale, ROW_H) {
   const SCALE_PPD = { year: 1, quarter: 3, month: 5, week: 15, day: 60 };
   const ppd = SCALE_PPD[ganttScale] || 5;
 
@@ -245,9 +244,10 @@ function buildGanttHtml(tasks, ganttScale, ROW_H, HEADER_H) {
     `<div style="position:absolute;left:${m.offset * ppd}px;top:0;height:100%;border-left:1px solid #ccc;font-size:8px;padding-left:2px;white-space:nowrap;color:#333;">${m.label}</div>`
   ).join('');
 
-  const headerTr = `<tr style="height:${HEADER_H}px;">
-    <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;">
-      <div style="position:relative;width:${totalWidth}px;height:${HEADER_H}px;">${headerMarks}</div>
+  // Заголовок Ганта — отдельная строка в tbody, чтобы не повторялся на каждой странице
+  const headerRow = `<tr style="height:${ROW_H}px;">
+    <td style="width:${totalWidth}px;min-width:${totalWidth}px;padding:0;background:#e0e8f5;border-bottom:1px solid #bbb;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+      <div style="position:relative;width:${totalWidth}px;height:${ROW_H}px;">${headerMarks}</div>
     </td>
   </tr>`;
 
@@ -279,10 +279,10 @@ function buildGanttHtml(tasks, ganttScale, ROW_H, HEADER_H) {
     </tr>`;
   }).join('');
 
+  // Используем только tbody (без thead) — заголовок встроен первой строкой tbody
   return `
     <table style="border-collapse:collapse;table-layout:fixed;">
-      <thead>${headerTr}</thead>
-      <tbody>${bodyRows}</tbody>
+      <tbody>${headerRow}${bodyRows}</tbody>
     </table>
     <div style="margin-top:6px;font-size:10px;color:#555;">
       <span style="display:inline-block;width:16px;height:8px;background:#aaa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Контракт
@@ -780,7 +780,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const isFieldEditable = useCallback((task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return false;
     if (task.is_section) return false;
-    // notes редактируют все пользователи
     if (key === 'notes') return true;
     if (!isAdmin) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
@@ -820,7 +819,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, []);
 
   const handleKeyDown = useCallback((e) => {
-    // Для notes: Escape отменяет, Enter — перенос строки в textarea
     if (editingCellRef.current?.field === 'notes') {
       if (e.key === 'Escape') setEditingCell(null);
       return;
@@ -875,7 +873,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus style={{ width: '100%', padding: '2px' }} />
       );
     }
-    // Визуальное отображение notes
     if (key === 'notes') {
       const txt = task.notes || '';
       return (
@@ -984,21 +981,31 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const projectName = project?.name || 'Проект';
     const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
     const ROW_H = 24;
-    // Высота заголовка фиксирована — одна строка 24px, чтобы совпасть с Гант
-    const HEADER_H = ROW_H;
     const printCols = selectedCols.filter(k => !CHECKLIST_COL_KEYS.has(k));
     const colLabels = printCols.map(k => availableColumns.find(c => c.key === k)?.label ?? k);
-    // Используем filteredTasks — тот же массив что и для Ганта
     const printTasks = filteredTasks;
-    const headerRow = colLabels.map(l => `<th>${l}</th>`).join('');
+
+    // Заголовок таблицы — отдельная строка в tbody (не thead), чтобы не повторялся на каждой странице
+    const headerRow = colLabels.map(l =>
+      `<td style="background:#d0dff0;font-weight:700;text-align:center;border:1px solid #bbb;padding:0 4px;white-space:nowrap;font-size:9px;height:${ROW_H}px;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${l}</td>`
+    ).join('');
+
     const bodyRows = printTasks.map(task => {
       const bgColor = task.is_section ? getSectionColor(getLevelFromCode(task.code)) : (task.is_custom ? '#fff9e6' : '#fff');
       const fw = task.is_section ? 'bold' : 'normal';
       const cells = printCols.map(key => `<td style="font-weight:${fw};">${getDisplayValue(task, key) || ''}</td>`).join('');
-      return `<tr style="background:${bgColor};" class="data-row">${cells}</tr>`;
+      return `<tr style="background:${bgColor};">${cells}</tr>`;
     }).join('');
-    const tableHtml = `<table id="main-table"><thead><tr class="header-row">${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-    const ganttHtml = showGantt ? buildGanttHtml(printTasks, ganttScale, ROW_H, HEADER_H) : '';
+
+    const tableHtml = `
+      <table id="main-table">
+        <tbody>
+          <tr class="header-row">${headerRow}</tr>
+          ${bodyRows}
+        </tbody>
+      </table>`;
+
+    const ganttHtml = showGantt ? buildGanttHtml(printTasks, ganttScale, ROW_H) : '';
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
     document.body.appendChild(iframe);
@@ -1015,22 +1022,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         p.sub { font-size: 10px; color: #555; margin-bottom: 6px; }
         .print-layout { display: flex; align-items: flex-start; gap: 4px; }
         #main-table { border-collapse: collapse; table-layout: auto; }
-        #main-table th, #main-table td {
+        #main-table td {
           border: 1px solid #bbb;
           padding: 0 4px;
           white-space: nowrap;
           font-size: 9px;
           vertical-align: middle;
           height: ${ROW_H}px;
-          max-height: ${ROW_H}px;
           overflow: hidden;
-        }
-        #main-table th {
-          background: #d0dff0 !important;
-          font-weight: 700;
-          line-height: ${ROW_H}px;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
         }
         tr[style*="#B8D4E8"] td { background: #B8D4E8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#C8DFF0"] td { background: #C8DFF0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -1038,6 +1037,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         tr[style*="#E4F1F8"] td { background: #E4F1F8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#EFF6FB"] td { background: #EFF6FB !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         tr[style*="#fff9e6"] td { background: #fff9e6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        table { border-collapse: collapse; table-layout: fixed; }
       </style>
     </head><body>
       <h2>МСГ — ${projectName}</h2>
