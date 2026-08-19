@@ -87,7 +87,7 @@ function Toolbar({
             🔍 Фильтры
           </button>
         )}
-        {(activeTab === 'schedule' || activeTab === 'monthly' || activeTab === 'daily') && (
+        {(activeTab === 'schedule' || activeTab === 'monthly') && (
           <button onClick={onShowColumnSettings} className="toolbar-btn" title="Настройка колонок">
             ⚙️ Колонки
           </button>

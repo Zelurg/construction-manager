@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Schedule from './components/Schedule';
 import MonthlyOrder from './components/MonthlyOrder';
-import DailyOrders from './components/DailyOrders';
 import Analytics from './components/Analytics';
 import Directories from './components/Directories';
 import Login from './components/Login';
@@ -16,7 +15,7 @@ import { importExportAPI } from './services/api';
 import './styles/Toolbar.css';
 import './styles/GanttChart.css';
 
-const VALID_TABS = ['schedule', 'monthly', 'daily', 'analytics', 'directories', 'admin'];
+const VALID_TABS = ['schedule', 'monthly', 'analytics', 'directories', 'admin'];
 
 function AppInner() {
   // Единственный источник user — AuthContext.
@@ -32,7 +31,7 @@ function AppInner() {
   const [showGantt, setShowGantt] = useState(true);
   const { currentProject, setCurrentProject, clearProject } = useProject();
 
-  const columnSettingsHandlers = useRef({ schedule: null, monthly: null, daily: null });
+  const columnSettingsHandlers = useRef({ schedule: null, monthly: null });
   const filtersHandlers = useRef({ schedule: null, monthly: null });
   const printHandlers = useRef({ monthly: null });
   const msgExportImportHandlers = useRef({ exportMSG: null, importMSG: null });
@@ -156,7 +155,6 @@ function AppInner() {
       <nav className="tabs">
         <button className={activeTab === 'schedule'    ? 'active' : ''} onClick={() => handleSetActiveTab('schedule')}>График</button>
         <button className={activeTab === 'monthly'     ? 'active' : ''} onClick={() => handleSetActiveTab('monthly')}>МСГ</button>
-        <button className={activeTab === 'daily'       ? 'active' : ''} onClick={() => handleSetActiveTab('daily')}>Ежедневные наряды</button>
         <button className={activeTab === 'analytics'   ? 'active' : ''} onClick={() => handleSetActiveTab('analytics')}>Аналитика</button>
         <button className={activeTab === 'directories' ? 'active' : ''} onClick={() => handleSetActiveTab('directories')}>Справочники</button>
         {user?.role === 'admin' && (
@@ -195,11 +193,6 @@ function AppInner() {
             onShowPrint={(h) => (printHandlers.current.monthly = h)}
             onShowExportMSG={(h) => (msgExportImportHandlers.current.exportMSG = h)}
             onShowImportMSG={(h) => (msgExportImportHandlers.current.importMSG = h)}
-          />
-        )}
-        {activeTab === 'daily' && (
-          <DailyOrders
-            onShowColumnSettings={(h) => (columnSettingsHandlers.current.daily = h)}
           />
         )}
         {activeTab === 'analytics' && <Analytics />}
