@@ -183,6 +183,11 @@ export const dailyVolumeAPI = {
   // Удалить объём для конкретной задачи и даты (очистка одной ячейки)
   deleteOne: (taskId, date) =>
     api.delete('/daily/volumes/one', { params: { task_id: taskId, date } }),
+  // Удалить все объёмы, выпавшие из диапазона плановых дат (после изменения «Старт план/Финиш план»)
+  deleteOrphaned: (year, month) => {
+    const p = JSON.parse(localStorage.getItem('currentProject') || 'null');
+    return api.delete('/daily/volumes/orphaned', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });
+  },
 };
 
 export default api;

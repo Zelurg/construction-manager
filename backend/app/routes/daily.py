@@ -319,3 +319,61 @@ async def delete_daily_volume(
         }, event_type="tasks")
 
     return {"deleted": 1}
+
+
+@router.delete("/volumes/orphaned")
+async def delete_orphaned_volumes(
+    project_id: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Удалить ручные объёмы, чьи даты не попадают в текущий диапазон плановых дат
+    задачи (start_date_plan..end_date_plan) или у задачи нет плановых дат.
+    Используется, когда после изменения дат «Старт план/Финиш план» на диаграмме
+    ранее введённые ячейки выпали из диапазона.
+    """
+    q = db.query(models.DailyWork).join(models.Task).filter(
+        models.DailyWork.brigade_id.is_(None),
+        models.DailyWork.is_ancillary == False,
+        models.DailyWork.task_id.isnot(None),
+    )
+    if project_id is not None:
+        q = q.filter(models.Task.project_id == project_id)
+    if year is not None:
+        q = q.filter(extract('year', models.DailyWork.date) == int(year))
+    if month is not None:
+        q = q.filter(extract('month', models.DailyWork.date) == int(month))
+
+    works = q.all()
+    orphaned = []
+    affected = set()
+    for w in works:
+        s = w.task.start_date_plan
+        e = w.task.end_date_plan
+        if not s or not e or w.date < s or w.date > e:
+            orphaned.append(w)
+            affected.add(w.task_id)
+
+    for w in orphaned:
+        db.delete(w)
+    db.commit()
+
+    touched_projects = set()
+    for task_id in affected:
+        task = _recalc_volume_fact(task_id, db)
+        if task:
+            if task.project_id:
+                touched_projects.add(task.project_id)
+            await manager.broadcast({
+                "type": "task_updated",
+                "event": "tasks",
+                "data": _broadcast_task_volume(task),
+            }, event_type="tasks")
+
+    for pid in touched_projects:
+        touch_project(pid, db)
+
+    return {"deleted": len(orphaned)}
