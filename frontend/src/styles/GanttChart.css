@@ -149,3 +149,81 @@
   font-size: 12px;
   line-height: 16px;
 }
+
+/* ─── Режим объёмов (вкладка МСГ): две полосы на одну задачу ─────────────── */
+
+.gantt-task-block {
+  position: relative;
+  width: 100%;
+  border-bottom: 1px solid #f0f0f0;
+  box-sizing: border-box;
+}
+
+.gantt-band {
+  position: relative;
+  height: 24px;
+  width: 100%;
+}
+
+.gantt-band-contract { background: #fafafa; }
+.gantt-band-plan     { background: #fbfcff; }
+
+.gantt-band-block {
+  position: absolute;
+  top: 3px;
+  height: 18px;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+.gantt-band-cell {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.gantt-distributed-value {
+  display: block;
+  font-size: 9px;
+  color: #555;
+  line-height: 24px;
+  text-align: center;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+.gantt-volume-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 11px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  color: #1c3d63;
+  outline: none;
+  cursor: text;
+}
+
+.gantt-volume-input:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.gantt-volume-input:focus {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #4a90e2;
+}
+
+/* убрать стрелки у number-input для компактности */
+.gantt-volume-input::-webkit-inner-spin-button,
+.gantt-volume-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.gantt-volume-input::-moz-selection { background: #cfe3fb; }
+.gantt-volume-input::selection { background: #cfe3fb; }

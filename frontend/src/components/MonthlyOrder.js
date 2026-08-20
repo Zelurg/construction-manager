@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { scheduleAPI, employeesAPI, headcountAPI, importExportAPI } from '../services/api';
+import { scheduleAPI, employeesAPI, dailyVolumeAPI, importExportAPI } from '../services/api';
 import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
@@ -244,9 +244,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [filterTriggers, setFilterTriggers] = useState({});
 
-  const [headcountData, setHeadcountData] = useState({});
-  const [ganttShowsTotals, setGanttShowsTotals] = useState(false);
-  const tableHeaderHeight = ganttShowsTotals ? 84 : 60;
+  const [volumeData, setVolumeData] = useState({});
+  const tableHeaderHeight = 60;
 
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
@@ -359,48 +358,39 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return defaultColumns;
   });
 
-  const loadHeadcount = useCallback(async () => {
+  const loadVolumes = useCallback(async () => {
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
-      const r = await headcountAPI.getByMonth(year, month);
+      const r = await dailyVolumeAPI.getByMonth(year, month);
       const map = {};
       r.data.forEach(item => {
         if (!map[item.task_id]) map[item.task_id] = {};
-        map[item.task_id][item.date] = item.headcount;
+        map[item.task_id][item.date] = item.volume;
       });
-      setHeadcountData(map);
+      setVolumeData(map);
     } catch (e) { console.error(e); }
   }, [selectedMonth]);
 
-  useEffect(() => { loadHeadcount(); }, [loadHeadcount]);
+  useEffect(() => { loadVolumes(); }, [loadVolumes]);
 
-  const handleHeadcountSave = useCallback(async (taskId, dateStr, count) => {
+  const handleVolumeCommit = useCallback(async (taskId, dateStr, value) => {
     try {
-      if (count === null) {
-        await headcountAPI.deleteOne(taskId, dateStr);
-        setHeadcountData(prev => {
+      if (value === null) {
+        await dailyVolumeAPI.deleteOne(taskId, dateStr);
+        setVolumeData(prev => {
           const taskData = { ...(prev[taskId] || {}) };
           delete taskData[dateStr];
           return { ...prev, [taskId]: taskData };
         });
       } else {
-        await headcountAPI.upsert(taskId, dateStr, count);
-        setHeadcountData(prev => ({
+        await dailyVolumeAPI.upsert(taskId, dateStr, value);
+        setVolumeData(prev => ({
           ...prev,
-          [taskId]: { ...(prev[taskId] || {}), [dateStr]: count },
+          [taskId]: { ...(prev[taskId] || {}), [dateStr]: value },
         }));
       }
-    } catch (e) { console.error(e); alert('Не удалось сохранить'); }
+    } catch (e) { console.error(e); alert('Не удалось сохранить объём'); }
   }, []);
-
-  const handleDeleteHeadcount = useCallback(async () => {
-    if (!window.confirm(`Удалить все назначения людей за ${selectedMonth}?`)) return;
-    try {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      await headcountAPI.deleteByMonth(year, month);
-      setHeadcountData({});
-    } catch (e) { console.error(e); alert('Не удалось удалить'); }
-  }, [selectedMonth]);
 
   const handleExportMSG = useCallback(async () => {
     try {
@@ -429,11 +419,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         message += `\n\nОшибки:\n${errors.join('\n')}`;
       }
       alert(message);
-      await loadHeadcount();
+      await loadVolumes();
     } catch (error) {
       alert('Ошибка загрузки МСГ: ' + (error.response?.data?.detail || error.message));
     }
-  }, [loadHeadcount]);
+  }, [loadVolumes]);
 
   useEffect(() => { if (onShowColumnSettings) onShowColumnSettings(() => setShowColumnSettings(true)); }, [onShowColumnSettings]);
   useEffect(() => { if (onShowFilters) onShowFilters(() => setShowFilterManager(true)); }, [onShowFilters]);
@@ -1056,13 +1046,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         <span style={{ fontSize: 13, color: '#666' }}>
           Показаны работы с плановыми датами, попадающими в выбранный месяц
         </span>
-        <button
-          onClick={handleDeleteHeadcount}
-          title="Удалить все назначения людей за выбранный месяц"
-          style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 12 }}
-        >
-          Удалить назначения
-        </button>
         {isAdmin && (
           <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
             <button
@@ -1175,10 +1158,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
               <GanttChart
                 tasks={visibleTasks}
                 externalScrollRef={ganttBodyRef}
-                headcountEnabled={true}
-                headcountData={headcountData}
-                onHeadcountSave={handleHeadcountSave}
-                onTotalsRowChange={setGanttShowsTotals}
+                volumeEnabled={true}
+                volumeData={volumeData}
+                onVolumeCommit={handleVolumeCommit}
               />
             </div>
           )}

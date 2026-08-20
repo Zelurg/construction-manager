@@ -679,7 +679,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
         {showGantt && (
           <div className="schedule-gantt-section" style={{ width: `${100 - tableWidth}%` }}>
-            <GanttChart tasks={visibleTasks} externalScrollRef={ganttBodyRef} headcountEnabled={false} />
+            <GanttChart tasks={visibleTasks} externalScrollRef={ganttBodyRef} />
           </div>
         )}
       </div>

@@ -172,21 +172,17 @@ export const brigadesAPI = {
   delete: (id) => api.delete(`/brigades/${id}`),
 };
 
-// ─── Daily Headcount ─────────────────────────────────────────────────────────
-export const headcountAPI = {
+// ─── Daily Volumes (ручные объёмы по датам в Ганте МСГ) ─────────────────────
+export const dailyVolumeAPI = {
   getByMonth: (year, month) => {
     const p = JSON.parse(localStorage.getItem('currentProject') || 'null');
-    return api.get('/headcount/', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });
+    return api.get('/daily/volumes', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });
   },
-  upsert: (taskId, date, headcount) =>
-    api.post('/headcount/upsert', { task_id: taskId, date, headcount }),
-  // Удалить назначение для конкретной задачи и даты (очистка одной ячейки)
+  upsert: (taskId, date, volume) =>
+    api.post('/daily/volumes/upsert', { task_id: taskId, date, volume }),
+  // Удалить объём для конкретной задачи и даты (очистка одной ячейки)
   deleteOne: (taskId, date) =>
-    api.delete('/headcount/one', { params: { task_id: taskId, date } }),
-  deleteByMonth: (year, month) => {
-    const p = JSON.parse(localStorage.getItem('currentProject') || 'null');
-    return api.delete('/headcount/by-month', { params: { year, month, ...(p ? { project_id: p.id } : {}) } });
-  },
+    api.delete('/daily/volumes/one', { params: { task_id: taskId, date } }),
 };
 
 export default api;

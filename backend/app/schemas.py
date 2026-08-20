@@ -379,3 +379,11 @@ class DailyHeadcountRead(BaseModel):
     project_id: Optional[int] = None
     class Config:
         from_attributes = True
+
+
+# ─── DailyVolume ─────────────────────────────────────────────────────────────
+
+class DailyVolumeUpsert(BaseModel):
+    task_id: int
+    date: date
+    volume: float = Field(..., gt=0)

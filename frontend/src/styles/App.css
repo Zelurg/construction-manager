@@ -381,6 +381,8 @@ body {
 
 /* Компактные строки tbody */
 .tasks-table-integrated tbody tr { height: 32px; }
+/* Вкладка МСГ: каждая строка соответствует двум полосам Ганта (48px) */
+.monthly-order .tasks-table-integrated tbody tr { height: 48px; }
 .tasks-table-integrated td {
   padding: 4px 8px;
   text-align: left;

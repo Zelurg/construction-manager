@@ -14,56 +14,132 @@ function getLevelFromCode(code) {
   return String(code).split('.').length - 1;
 }
 
+function toDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function trimNum(n) {
+  return String(+n.toFixed(2));
+}
+
 const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
 const GANTT_SCALE_KEY = 'ganttScale';
 
-function HeadcountModal({ task, date, current, onSave, onClear, onClose }) {
-  const [value, setValue] = useState(current != null ? String(current) : '');
-  const inputRef = useRef(null);
-  useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+// Ячейка ручного ввода объёма (вторая строка Ганта, масштаб «день»)
+function VolumeCellInput({ value, onCommit }) {
+  const [draft, setDraft] = useState(value != null ? String(value) : '');
+  const [focused, setFocused] = useState(false);
 
-  const handleSave = () => {
-    const n = parseFloat(value);
-    if (!value || isNaN(n) || n <= 0) { alert('Введите число больше 0'); return; }
-    onSave(n);
+  useEffect(() => {
+    if (!focused) setDraft(value != null ? String(value) : '');
+  }, [value, focused]);
+
+  const commit = () => {
+    const t = draft.trim();
+    if (t === '') { onCommit(null); return; }
+    const n = parseFloat(t);
+    if (isNaN(n) || n <= 0) { onCommit(null); return; }
+    onCommit(n);
   };
-  const handleKeyDown = (e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); };
-  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-  const hasCurrent = current != null && current !== '';
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') { e.currentTarget.blur(); }
+    else if (e.key === 'Escape') { setDraft(value != null ? String(value) : ''); e.currentTarget.blur(); }
+  };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: '#fff', borderRadius: 8, padding: '24px 28px', minWidth: 320, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Назначение людей</div>
-        <div style={{ color: '#555', fontSize: 13, marginBottom: 4 }}><b>Работа:</b> {task.name}</div>
-        <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}><b>Дата:</b> {dateLabel}</div>
-        <input
-          ref={inputRef}
-          type="number"
-          min="0"
-          step="0.5"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Например: 0.5, 1, 2…"
-          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid #4a90e2', borderRadius: 5, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
+    <input
+      className="gantt-volume-input"
+      type="number"
+      min="0"
+      step="any"
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={handleKeyDown}
+      onClick={e => e.stopPropagation()}
+      title="Введите объём за этот день"
+    />
+  );
+}
+
+// Одна полоса Ганта (контракт или план) для задачи в режиме МСГ
+function GanttBand({ task, type, minDate, ppd, isDay, volumePlan, volumeData, onVolumeCommit }) {
+  const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
+  const endKey   = type === 'contract' ? 'end_date_contract'   : 'end_date_plan';
+  const start = task[startKey] ? new Date(task[startKey]) : null;
+  const end   = task[endKey]   ? new Date(task[endKey])   : null;
+
+  if (!start || !end) {
+    return <div className={`gantt-band gantt-band-${type}`} />;
+  }
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  const startOffset = Math.floor((start - minDate) / 864e5);
+  const duration = Math.floor((end - start) / 864e5) + 1;
+  const bg = type === 'contract' ? '#c9c9c9' : '#cfe3fb';
+
+  // Не дневной масштаб — рисуем одну закрашенную полосу на весь диапазон дат
+  if (!isDay) {
+    return (
+      <div className={`gantt-band gantt-band-${type}`}>
+        <div
+          className="gantt-band-block"
+          style={{ left: startOffset * ppd, width: Math.max(duration * ppd, 6), backgroundColor: bg }}
+          title={`${type === 'contract' ? 'Контракт' : 'План'}: ${start.toLocaleDateString('ru-RU')} — ${end.toLocaleDateString('ru-RU')}`}
         />
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>Можно указывать дробные значения (0.5, 1.5, …)</div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-          {hasCurrent ? (
-            <button
-              onClick={onClear}
-              title="Удалить назначение на эту дату"
-              style={{ padding: '7px 14px', borderRadius: 5, border: '1px solid #e0a0a0', background: '#fff0f0', color: '#c0392b', cursor: 'pointer', fontSize: 13 }}
-            >Очистить</button>
-          ) : <span />}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 5, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
-            <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 5, border: 'none', background: '#4a90e2', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Сохранить</button>
-          </div>
-        </div>
       </div>
+    );
+  }
+
+  // Дневной масштаб — ячейка на каждый день диапазона
+  const perDay = (type === 'contract' && volumePlan > 0) ? volumePlan / duration : null;
+  const cells = [];
+  for (let i = 0; i < duration; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const dateStr = toDateStr(d);
+    const left = (startOffset + i) * ppd;
+
+    if (type === 'contract') {
+      cells.push(
+        <div key={i} className="gantt-band-cell" style={{ left, width: ppd, backgroundColor: bg }}
+          title={`${dateStr}: ${perDay != null ? trimNum(perDay) : 0}`}>
+          <span className="gantt-distributed-value">{perDay != null ? trimNum(perDay) : ''}</span>
+        </div>
+      );
+    } else {
+      const current = volumeData?.[task.id]?.[dateStr] ?? null;
+      cells.push(
+        <div key={i} className="gantt-band-cell gantt-band-cell-editable" style={{ left, width: ppd, backgroundColor: bg }}>
+          <VolumeCellInput value={current} onCommit={(v) => onVolumeCommit(task.id, dateStr, v)} />
+        </div>
+      );
+    }
+  }
+  return <div className={`gantt-band gantt-band-${type}`}>{cells}</div>;
+}
+
+// Блок из двух полос (контракт + план), соответствует одной строке МСГ
+function VolumeTaskBlock({ task, ppd, scale, minDate, volumeData, onVolumeCommit }) {
+  if (task.is_section) {
+    return (
+      <div className="gantt-task-block gantt-row-section"
+        style={{ height: 48, backgroundColor: getSectionColor(getLevelFromCode(task.code)) }} />
+    );
+  }
+  const isDay = scale === 'day';
+  const volumePlan = task.volume_plan || 0;
+  return (
+    <div className="gantt-task-block" style={{ height: 48 }}>
+      <GanttBand type="contract" task={task} minDate={minDate} ppd={ppd} isDay={isDay} volumePlan={volumePlan} />
+      <GanttBand type="plan" task={task} minDate={minDate} ppd={ppd} isDay={isDay}
+        volumePlan={volumePlan} volumeData={volumeData} onVolumeCommit={onVolumeCommit} />
     </div>
   );
 }
@@ -88,12 +164,9 @@ function computeBarStyle(task, type, minDate, ppd) {
   };
 }
 
-const GanttRow = React.memo(function GanttRow({
-  task, ppd, colWidth, headcountEnabled, scale,
-  taskHeadcount, minDate, timeMarks, onCellClick,
-}) {
+// Обычный режим (вкладка «График») — одна строка на задачу с барами контракт+план
+const GanttRow = React.memo(function GanttRow({ task, ppd, colWidth, minDate }) {
   const isSection = task.is_section;
-  const isClickable = headcountEnabled && scale === 'day' && !isSection;
   const sectionBg = isSection ? getSectionColor(getLevelFromCode(task.code)) : undefined;
   const contractStyle = !isSection ? computeBarStyle(task, 'contract', minDate, ppd) : null;
   const planStyle     = !isSection ? computeBarStyle(task, 'plan',     minDate, ppd) : null;
@@ -103,20 +176,6 @@ const GanttRow = React.memo(function GanttRow({
 
   return (
     <div className={`gantt-row-integrated${isSection ? ' gantt-row-section' : ''}`} style={{ background: rowBg }}>
-      {isClickable && timeMarks.map((mark, idx) => {
-        const hc = taskHeadcount?.[mark.dateStr] ?? null;
-        return (
-          <div key={idx} className="gantt-headcount-cell"
-            style={{
-              left: `${mark.offset * ppd}px`, width: `${ppd}px`,
-              ...(hc != null ? { background: 'rgba(74,144,226,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#1a5fa8' } : {}),
-            }}
-            title={hc != null ? `${hc} чел. — нажмите для изменения` : 'Нажмите для назначения людей'}
-            onClick={() => onCellClick(task, mark.dateStr)}>
-            {hc != null ? String(hc) : ''}
-          </div>
-        );
-      })}
       {!isSection && (
         <>
           {contractStyle && <div className="gantt-bar-contract" style={contractStyle}
@@ -127,23 +186,13 @@ const GanttRow = React.memo(function GanttRow({
       )}
     </div>
   );
-}, (prev, next) => (
-  prev.task === next.task &&
-  prev.taskHeadcount === next.taskHeadcount &&
-  prev.ppd === next.ppd &&
-  prev.colWidth === next.colWidth &&
-  prev.scale === next.scale &&
-  prev.headcountEnabled === next.headcountEnabled &&
-  prev.minDate === next.minDate &&
-  prev.timeMarks === next.timeMarks
-));
+});
 
-function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, headcountEnabled, onTotalsRowChange }) {
+function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volumeEnabled }) {
   const [scale, setScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
   });
-  const [modal, setModal] = useState(null);
   const internalScrollRef = useRef(null);
   const timelineScrollRef = useRef(null);
   const bodyScrollRef = externalScrollRef || internalScrollRef;
@@ -179,12 +228,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     const totalDays = Math.ceil((maxDate - minDate) / (1000*60*60*24)) + 1;
     const cfg = scaleConfig[scale];
     const timeMarks = [];
-    const toDateStr = (d) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,'0');
-      const day = String(d.getDate()).padStart(2,'0');
-      return `${y}-${m}-${day}`;
-    };
     let colWidth = cfg.pixelsPerDay;
     if (scale === 'day' || scale === 'week') {
       const step = scale === 'week' ? 7 : 1;
@@ -211,23 +254,6 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return { minDate, maxDate, totalDays, timeMarks, colWidth };
   }, [tasks, scale]);
 
-  const showTotalsRow = Boolean(headcountEnabled && scale === 'day');
-
-  useEffect(() => {
-    if (onTotalsRowChange) onTotalsRowChange(showTotalsRow);
-  }, [showTotalsRow, onTotalsRowChange]);
-
-  const dailyTotals = useMemo(() => {
-    if (!headcountData || !showTotalsRow) return {};
-    const totals = {};
-    Object.values(headcountData).forEach(byDate => {
-      Object.entries(byDate).forEach(([ds, count]) => {
-        totals[ds] = (totals[ds] || 0) + count;
-      });
-    });
-    return totals;
-  }, [headcountData, showTotalsRow]);
-
   useEffect(() => {
     const bodyEl = bodyScrollRef.current;
     const timeEl = timelineScrollRef.current;
@@ -243,22 +269,10 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
     return () => bodyEl.removeEventListener('scroll', onScroll);
   }, [chartData]);
 
-  const handleCellClick = useCallback((task, dateStr) => {
-    if (!headcountEnabled || scale !== 'day' || task.is_section) return;
-    setModal({ task, dateStr, current: headcountData?.[task.id]?.[dateStr] ?? null });
-  }, [headcountEnabled, scale, headcountData]);
-
-  const handleModalSave = (count) => {
-    if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, count);
-    setModal(null);
-  };
-
-  const handleModalClear = () => {
-    if (modal && onHeadcountSave) onHeadcountSave(modal.task.id, modal.dateStr, null);
-    setModal(null);
-  };
-
-  const timelineRowHeight = showTotalsRow ? 48 : 24;
+  const handleVolumeCommit = useCallback((taskId, dateStr, value) => {
+    if (!volumeEnabled || !onVolumeCommit) return;
+    onVolumeCommit(taskId, dateStr, value);
+  }, [volumeEnabled, onVolumeCommit]);
 
   if (!chartData || tasks.length === 0) {
     return (
@@ -282,68 +296,46 @@ function GanttChart({ tasks, externalScrollRef, headcountData, onHeadcountSave, 
   const colWidth = chartData.colWidth;
 
   return (
-    <>
-      <div className="gantt-chart-integrated">
-        <div className="gantt-combined-header">
-          <div className="gantt-controls-row">
-            <div className="gantt-title">Диаграмма Ганта</div>
-            <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
-              {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
-            </select>
-          </div>
-          <div className="gantt-timeline-row" ref={timelineScrollRef}
-            style={{ height: `${timelineRowHeight}px`, overflowX: 'hidden', overflowY: 'hidden' }}>
-            <div className="gantt-timeline-content" style={{ width: `${totalWidth}px` }}>
-              <div style={{ position: 'relative', height: 24 }}>
-                {chartData.timeMarks.map((mark, i) => (
-                  <div key={i} className="gantt-time-mark" style={{ left: `${mark.offset * ppd}px` }}>
-                    <div className="gantt-time-label">{mark.label}</div>
-                  </div>
-                ))}
-              </div>
-              {showTotalsRow && (
-                <div style={{ position: 'relative', height: 24, borderTop: '1px solid #d0d9e8', background: '#eaf3fb' }}>
-                  {chartData.timeMarks.map((mark, i) => {
-                    const total = dailyTotals[mark.dateStr];
-                    const label = total ? (Number.isInteger(total) ? total : +total.toFixed(2)) : '';
-                    return (
-                      <div key={i} style={{
-                        position: 'absolute', left: `${mark.offset * ppd}px`, width: `${ppd}px`, height: '24px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 11, fontWeight: total ? 700 : 400, color: total ? '#1a5fa8' : '#aaa',
-                        borderRight: '1px solid #d0d9e8', boxSizing: 'border-box',
-                      }}>{label}</div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+    <div className="gantt-chart-integrated">
+      <div className="gantt-combined-header">
+        <div className="gantt-controls-row">
+          <div className="gantt-title">Диаграмма Ганта</div>
+          <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
+            {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
+          </select>
         </div>
-
-        <div className="gantt-body-scroll" ref={bodyScrollRef}>
-          <div className="gantt-body-content" style={{ width: `${totalWidth}px` }}>
-            {tasks.map(task => (
-              <GanttRow
-                key={task.id || task.task_id}
-                task={task} ppd={ppd} colWidth={colWidth}
-                headcountEnabled={headcountEnabled} scale={scale}
-                taskHeadcount={headcountData?.[task.id]}
-                minDate={chartData.minDate} timeMarks={chartData.timeMarks}
-                onCellClick={handleCellClick}
-              />
-            ))}
+        <div className="gantt-timeline-row" ref={timelineScrollRef}
+          style={{ height: 24, overflowX: 'hidden', overflowY: 'hidden' }}>
+          <div className="gantt-timeline-content" style={{ width: `${totalWidth}px` }}>
+            <div style={{ position: 'relative', height: 24 }}>
+              {chartData.timeMarks.map((mark, i) => (
+                <div key={i} className="gantt-time-mark" style={{ left: `${mark.offset * ppd}px` }}>
+                  <div className="gantt-time-label">{mark.label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {modal && (
-        <HeadcountModal
-          task={modal.task} date={modal.dateStr} current={modal.current}
-          onSave={handleModalSave} onClear={handleModalClear} onClose={() => setModal(null)}
-        />
-      )}
-    </>
+      <div className="gantt-body-scroll" ref={bodyScrollRef}>
+        <div className="gantt-body-content" style={{ width: `${totalWidth}px` }}>
+          {tasks.map(task => (
+            volumeEnabled
+              ? <VolumeTaskBlock
+                  key={task.id || task.task_id}
+                  task={task} ppd={ppd} scale={scale}
+                  minDate={chartData.minDate} volumeData={volumeData}
+                  onVolumeCommit={handleVolumeCommit}
+                />
+              : <GanttRow
+                  key={task.id || task.task_id}
+                  task={task} ppd={ppd} colWidth={colWidth} minDate={chartData.minDate}
+                />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
