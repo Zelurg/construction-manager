@@ -29,6 +29,43 @@
   border-color: #2563eb;
 }
 
+/* ─── Dropdown (Свернуть/Развернуть) ─────────────────────────────────── */
+.toolbar-dropdown {
+  position: relative;
+}
+.toolbar-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 210px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.toolbar-dropdown-item {
+  text-align: left !important;
+  border: none !important;
+  background: transparent !important;
+  color: #374151 !important;
+  padding: 8px 10px !important;
+  border-radius: 4px !important;
+  font-size: 13px !important;
+  cursor: pointer;
+}
+.toolbar-dropdown-item:hover {
+  background: #f1f5f9 !important;
+}
+.toolbar-dropdown-sep {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 2px;
+}
+
 /* ─── Header project badge ───────────────────────────────────────────── */
 .header-left {
   display: flex;

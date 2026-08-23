@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { scheduleAPI } from '../services/api';
 import './Toolbar.css';
 
@@ -14,9 +14,22 @@ function Toolbar({
   onDownloadMSG,
   onUploadMSG,
   onPrint,
+  onCollapse,
+  msgCollapseMaxLevel,
 }) {
   const scheduleFileInputRef = useRef(null);
   const msgFileInputRef = useRef(null);
+  const [collapseOpen, setCollapseOpen] = useState(false);
+  const collapseRef = useRef(null);
+
+  useEffect(() => {
+    if (!collapseOpen) return;
+    const handler = (e) => {
+      if (collapseRef.current && !collapseRef.current.contains(e.target)) setCollapseOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [collapseOpen]);
 
   const handleScheduleFileChange = async (event) => {
     const file = event.target.files[0];
@@ -75,6 +88,39 @@ function Toolbar({
       </div>
 
       <div className="toolbar-right">
+        {/* Свернуть/развернуть разделы — только на вкладке monthly */}
+        {activeTab === 'monthly' && onCollapse && (
+          <div className="toolbar-dropdown" ref={collapseRef}>
+            <button
+              className="toolbar-btn"
+              onClick={() => setCollapseOpen(o => !o)}
+              title="Свернуть/развернуть разделы МСГ"
+            >
+              📂 Свернуть/Развернуть ▾
+            </button>
+            {collapseOpen && (
+              <div className="toolbar-dropdown-menu">
+                <button
+                  className="toolbar-dropdown-item"
+                  onClick={() => { onCollapse('collapseAll'); setCollapseOpen(false); }}
+                >Свернуть все</button>
+                <button
+                  className="toolbar-dropdown-item"
+                  onClick={() => { onCollapse('expandAll'); setCollapseOpen(false); }}
+                >Развернуть все</button>
+                {msgCollapseMaxLevel > 0 && <div className="toolbar-dropdown-sep" />}
+                {Array.from({ length: msgCollapseMaxLevel }, (_, i) => i + 1).map(n => (
+                  <button
+                    key={n}
+                    className="toolbar-dropdown-item"
+                    onClick={() => { onCollapse('collapseToLevel', n); setCollapseOpen(false); }}
+                  >Свернуть до уровня {n}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Печать МСГ — только на вкладке monthly */}
         {activeTab === 'monthly' && onPrint && (
           <button onClick={onPrint} className="toolbar-btn" title="Печать МСГ">

@@ -205,7 +205,7 @@ const TaskRow = React.memo(function TaskRow({
   );
 });
 
-function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPrint, onShowExportMSG, onShowImportMSG }) {
+function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPrint, onShowExportMSG, onShowImportMSG, onRegisterCollapse, onCollapseInfo }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
@@ -505,6 +505,33 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   useEffect(() => { if (onShowPrint) onShowPrint(() => setShowPrintDialog(true)); }, [onShowPrint]);
   useEffect(() => { if (onShowExportMSG) onShowExportMSG(handleExportMSG); }, [onShowExportMSG, handleExportMSG]);
   useEffect(() => { if (onShowImportMSG) onShowImportMSG(handleImportMSG); }, [onShowImportMSG, handleImportMSG]);
+
+  // Регистрируем обработчик сворачивания/разворачивания разделов для панели инструментов
+  useEffect(() => {
+    if (!onRegisterCollapse) return;
+    onRegisterCollapse((action, level) => {
+      setCollapsedSections(prev => {
+        const sections = tasks.filter(t => t.is_section);
+        let next;
+        if (action === 'expandAll') next = new Set();
+        else if (action === 'collapseAll') next = new Set(sections.map(s => s.id));
+        else if (action === 'collapseToLevel') {
+          next = new Set(sections.filter(s => getLevelFromCode(s.code) >= level).map(s => s.id));
+        } else next = prev;
+        saveCollapsedToStorage(next);
+        return next;
+      });
+    });
+  }, [onRegisterCollapse, tasks]);
+
+  // Сообщаем наверх максимальный уровень вложенности разделов текущего месяца
+  useEffect(() => {
+    if (!onCollapseInfo) return;
+    const maxLevel = tasks
+      .filter(t => t.is_section)
+      .reduce((m, t) => Math.max(m, getLevelFromCode(t.code)), 0);
+    onCollapseInfo(maxLevel);
+  }, [tasks, onCollapseInfo]);
 
   useEffect(() => {
     loadTasks(); loadEmployees(); websocketService.connect();

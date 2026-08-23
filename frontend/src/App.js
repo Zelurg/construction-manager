@@ -35,6 +35,8 @@ function AppInner() {
   const filtersHandlers = useRef({ schedule: null, monthly: null });
   const printHandlers = useRef({ monthly: null });
   const msgExportImportHandlers = useRef({ exportMSG: null, importMSG: null });
+  const collapseHandlers = useRef({ monthly: null });
+  const [msgCollapseMaxLevel, setMsgCollapseMaxLevel] = useState(0);
   const scheduleKey = useRef(0);
 
   const handleSetActiveTab = (tab) => {
@@ -122,6 +124,11 @@ function AppInner() {
     if (handler) handler();
   };
 
+  const handleCollapse = (action, level) => {
+    const handler = collapseHandlers.current.monthly;
+    if (handler) handler(action, level);
+  };
+
   const handleScheduleCleared = () => { scheduleKey.current += 1; };
 
   const WorkspaceApp = () => (
@@ -174,6 +181,8 @@ function AppInner() {
         onDownloadMSG={handleDownloadMSG}
         onUploadMSG={handleUploadMSG}
         onPrint={handleShowPrint}
+        onCollapse={handleCollapse}
+        msgCollapseMaxLevel={msgCollapseMaxLevel}
       />
 
       <main className="content">
@@ -193,6 +202,8 @@ function AppInner() {
             onShowPrint={(h) => (printHandlers.current.monthly = h)}
             onShowExportMSG={(h) => (msgExportImportHandlers.current.exportMSG = h)}
             onShowImportMSG={(h) => (msgExportImportHandlers.current.importMSG = h)}
+            onRegisterCollapse={(h) => (collapseHandlers.current.monthly = h)}
+            onCollapseInfo={setMsgCollapseMaxLevel}
           />
         )}
         {activeTab === 'analytics' && <Analytics />}
