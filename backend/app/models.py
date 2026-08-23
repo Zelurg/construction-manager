@@ -72,6 +72,12 @@ class Task(Base):
     status_mtr = Column(String, default='gray', server_default='gray', nullable=False)
     status_access = Column(String, default='gray', server_default='gray', nullable=False)
 
+    # Текстовые поля ИД (комментарии/значения по исполнительной документации)
+    id_number = Column(String, default='', nullable=True)
+    id_volume = Column(String, default='', nullable=True)
+    id_status = Column(String, default='', nullable=True)
+    id_access = Column(String, default='', nullable=True)
+
     # Примечание — произвольный текст, доступный всем пользователям
     notes = Column(Text, nullable=True)
 

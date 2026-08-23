@@ -201,6 +201,10 @@ async def update_task(
                 "status_mtr": db_task.status_mtr,
                 "status_access": db_task.status_access,
                 "notes": db_task.notes,
+                "id_number": db_task.id_number,
+                "id_volume": db_task.id_volume,
+                "id_status": db_task.id_status,
+                "id_access": db_task.id_access,
                 "level": db_task.level,
                 "parent_code": db_task.parent_code,
             }

@@ -54,6 +54,10 @@ class TaskBase(BaseModel):
     status_mtr: Optional[str] = 'gray'
     status_access: Optional[str] = 'gray'
     notes: Optional[str] = None
+    id_number: Optional[str] = ''
+    id_volume: Optional[str] = ''
+    id_status: Optional[str] = ''
+    id_access: Optional[str] = ''
 
 class TaskCreate(TaskBase):
     pass
@@ -82,6 +86,10 @@ class TaskUpdate(BaseModel):
     status_mtr: Optional[str] = None
     status_access: Optional[str] = None
     notes: Optional[str] = None
+    id_number: Optional[str] = None
+    id_volume: Optional[str] = None
+    id_status: Optional[str] = None
+    id_access: Optional[str] = None
 
 class Task(TaskBase):
     id: int

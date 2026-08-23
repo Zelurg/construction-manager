@@ -66,6 +66,17 @@ const CHECKLIST_FIELDS = [
 const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
 const CHECKLIST_COL_TO_FIELD = Object.fromEntries(CHECKLIST_FIELDS.map(f => [f.colKey, f.key]));
 
+// Дополнительные текстовые колонки ИД (без маркеров в заголовках)
+const TEXT_FIELDS = [
+  { key: 'id_number', colKey: 'cl_id_number', label: '№ ИД' },
+  { key: 'id_volume', colKey: 'cl_id_volume', label: 'Объём по ИД' },
+  { key: 'id_status', colKey: 'cl_id_status', label: 'Статус' },
+  { key: 'id_access', colKey: 'cl_id_access', label: 'Допуск ИД' },
+];
+const ALL_TEXT_FIELDS = [...CHECKLIST_FIELDS, ...TEXT_FIELDS];
+const EDITABLE_TEXT_COL_KEYS = new Set(ALL_TEXT_FIELDS.map(f => f.colKey));
+const EDITABLE_TEXT_COL_TO_FIELD = Object.fromEntries(ALL_TEXT_FIELDS.map(f => [f.colKey, f.key]));
+
 // Старые значения статусов (до переделки колонок в текстовые комментарии)
 // трактуются как «пусто», чтобы не считаться реальным комментарием.
 const LEGACY_STATUS_VALUES = new Set(['white', 'gray', 'red', 'yellow', 'green']);
@@ -81,6 +92,7 @@ const DEFAULT_COL_WIDTHS = {
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
   cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
+  cl_id_number: 90, cl_id_volume: 90, cl_id_status: 90, cl_id_access: 90,
   notes: 200,
 };
 
@@ -97,7 +109,7 @@ function getParentIds(task, allTasks) {
   return ids;
 }
 
-const STANDARD_EDITABLE = ['start_date_plan', 'end_date_plan', 'executor', 'notes'];
+const STANDARD_EDITABLE = ['start_date_plan', 'end_date_plan', 'executor', 'notes', 'unit_price'];
 const CUSTOM_EDITABLE = [
   'name', 'unit', 'volume_plan',
   'start_date_plan', 'end_date_plan',
@@ -332,7 +344,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     { key: 'cl_people',               label: 'Люди' },
     { key: 'cl_equipment',            label: 'Техника' },
     { key: 'cl_mtr',                  label: 'МТР' },
-    { key: 'cl_access',               label: 'Допуск' },
+    { key: 'cl_access',              label: 'Допуск' },
+    { key: 'cl_id_number',           label: '№ ИД' },
+    { key: 'cl_id_volume',           label: 'Объём по ИД' },
+    { key: 'cl_id_status',           label: 'Статус' },
+    { key: 'cl_id_access',           label: 'Допуск ИД' },
     { key: 'unit',                    label: 'Ед. изм.' },
     { key: 'volume_plan',             label: 'Объём план' },
     { key: 'volume_fact',             label: 'Объём факт' },
@@ -359,6 +375,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   const defaultColumns = [
     'code', 'name', 'cl_people', 'cl_equipment', 'cl_mtr', 'cl_access',
+    'cl_id_number', 'cl_id_volume', 'cl_id_status', 'cl_id_access',
     'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
     'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan',
   ];
@@ -374,7 +391,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           migrated.splice(idx, 1, 'cl_people', 'cl_equipment', 'cl_mtr', 'cl_access');
           return migrated;
         }
-        return parsed;
+        // До-мерживаем новые колонки по умолчанию, если их нет в сохранённом наборе
+        const merged = [...parsed];
+        defaultColumns.forEach(c => { if (!merged.includes(c)) merged.push(c); });
+        return merged;
       }
     } catch { /* ignore */ }
     return defaultColumns;
@@ -646,8 +666,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [filteredTasks, getChildTasks]);
 
   const getDisplayValue = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) {
-      const f = CHECKLIST_FIELDS.find(x => x.colKey === key);
+    if (EDITABLE_TEXT_COL_KEYS.has(key)) {
+      const f = ALL_TEXT_FIELDS.find(x => x.colKey === key);
       if (task.is_section) return '-';
       return getCommentText(task, f.key);
     }
@@ -686,8 +706,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       return activeFilters.every(([k, v]) => {
-        if (CHECKLIST_COL_KEYS.has(k)) {
-          const fieldKey = CHECKLIST_COL_TO_FIELD[k];
+        if (EDITABLE_TEXT_COL_KEYS.has(k)) {
+          const fieldKey = EDITABLE_TEXT_COL_TO_FIELD[k];
           return String(getCommentText(t, fieldKey) || '').toLowerCase().includes(v.toLowerCase());
         }
         return String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase());
@@ -703,8 +723,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const handleClearAllFilters = useCallback(() => { setFilters({}); setShowFilterManager(false); }, []);
 
   const getColumnValues = useCallback((key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) {
-      const fieldKey = CHECKLIST_COL_TO_FIELD[key];
+    if (EDITABLE_TEXT_COL_KEYS.has(key)) {
+      const fieldKey = EDITABLE_TEXT_COL_TO_FIELD[key];
       return tasks.filter(t => !t.is_section).map(t => getCommentText(t, fieldKey)).filter(Boolean);
     }
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
@@ -719,7 +739,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, []);
 
   const isFieldEditable = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return !task.is_section;
+    if (EDITABLE_TEXT_COL_KEYS.has(key)) return !task.is_section;
     if (task.is_section) return false;
     if (key === 'notes') return true;
     if (!isAdmin) return false;
@@ -728,9 +748,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [isAdmin]);
 
   const handleCellDoubleClick = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) {
+    if (EDITABLE_TEXT_COL_KEYS.has(key)) {
       if (!isFieldEditable(task, key)) return;
-      const fieldKey = CHECKLIST_COL_TO_FIELD[key];
+      const fieldKey = EDITABLE_TEXT_COL_TO_FIELD[key];
       setEditingCell({ taskId: task.id, field: key });
       setEditValue(getCommentText(task, fieldKey));
       return;
@@ -751,15 +771,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setEditingCell(null);
     const task = allTasksRef.current.find(t => t.id === ec.taskId);
     if (!task) return;
-    const fieldKey = CHECKLIST_COL_TO_FIELD[ec.field] || ec.field;
+    const fieldKey = EDITABLE_TEXT_COL_TO_FIELD[ec.field] || ec.field;
     let cur;
     if (ec.field === 'notes') cur = task.notes || '';
-    else if (CHECKLIST_COL_KEYS.has(ec.field)) cur = getCommentText(task, fieldKey);
+    else if (EDITABLE_TEXT_COL_KEYS.has(ec.field)) cur = getCommentText(task, fieldKey);
     else if (DATE_FIELDS.includes(ec.field)) cur = task[fieldKey] ? new Date(task[fieldKey]).toISOString().split('T')[0] : '';
     else cur = task[fieldKey] !== null && task[fieldKey] !== undefined ? String(task[fieldKey]) : '';
     if (ev === cur) return;
     let updateVal;
-    if (CHECKLIST_COL_KEYS.has(ec.field)) updateVal = ev;
+    if (EDITABLE_TEXT_COL_KEYS.has(ec.field)) updateVal = ev;
     else if (NUMBER_FIELDS.includes(ec.field)) updateVal = (ev === '' ? 0 : parseFloat(ev));
     else updateVal = (ev || null);
     try {
@@ -778,19 +798,22 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [handleCellBlur]);
 
   const getCellValue = useCallback((task, key) => {
-    const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
+    const clField = ALL_TEXT_FIELDS.find(f => f.colKey === key);
     if (clField) {
       if (task.is_section) {
-        const hasComment = sectionCommentMarkers[task.id]?.[clField.key];
-        return hasComment ? (
-          <span
-            title="Есть комментарии в дочерних работах"
-            style={{
-              display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
-              background: '#e07b00', border: '1px solid #b35e00', boxSizing: 'border-box',
-            }}
-          />
-        ) : null;
+        if (CHECKLIST_COL_KEYS.has(key)) {
+          const hasComment = sectionCommentMarkers[task.id]?.[clField.key];
+          return hasComment ? (
+            <span
+              title="Есть комментарии в дочерних работах"
+              style={{
+                display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
+                background: '#e07b00', border: '1px solid #b35e00', boxSizing: 'border-box',
+              }}
+            />
+          ) : null;
+        }
+        return null;
       }
       if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
         return (
@@ -879,7 +902,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [selectedTaskId, dragOverTaskId, dragOverPos, isAdmin]);
 
   const getCellStyle = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) {
+    if (EDITABLE_TEXT_COL_KEYS.has(key)) {
       const base = { textAlign: 'left', padding: '2px 6px' };
       if (isFieldEditable(task, key)) {
         return {
