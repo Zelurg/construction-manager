@@ -530,7 +530,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     const maxLevel = tasks
       .filter(t => t.is_section)
       .reduce((m, t) => Math.max(m, getLevelFromCode(t.code)), 0);
-    onCollapseInfo(maxLevel);
+    onCollapseInfo(maxLevel ?? 0);
   }, [tasks, onCollapseInfo]);
 
   useEffect(() => {
