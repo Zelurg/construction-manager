@@ -25,6 +25,28 @@ function trimNum(n) {
   return String(+n.toFixed(2));
 }
 
+// Смещение (в днях от minDate), на которое нужно прокрутить диаграмму,
+// чтобы показать начало работы. Для недели/месяца/квартала/года —
+// привязываем к началу соответствующего периода (границе колонки).
+function computeScrollOffsetDays(start, minDate, scale) {
+  const s = new Date(start); s.setHours(0, 0, 0, 0);
+  const min = new Date(minDate); min.setHours(0, 0, 0, 0);
+  let offset = Math.floor((s - min) / 864e5);
+  if (scale === 'week') {
+    offset = Math.floor(offset / 7) * 7;
+  } else if (scale === 'month') {
+    const pd = new Date(s.getFullYear(), s.getMonth(), 1);
+    offset = Math.floor((pd - min) / 864e5);
+  } else if (scale === 'quarter') {
+    const pq = new Date(s.getFullYear(), Math.floor(s.getMonth() / 3) * 3, 1);
+    offset = Math.floor((pq - min) / 864e5);
+  } else if (scale === 'year') {
+    const py = new Date(s.getFullYear(), 0, 1);
+    offset = Math.floor((py - min) / 864e5);
+  }
+  return Math.max(0, offset);
+}
+
 const VALID_SCALES = ['year', 'quarter', 'month', 'week', 'day'];
 const GANTT_SCALE_KEY = 'ganttScale';
 
@@ -188,7 +210,7 @@ const GanttRow = React.memo(function GanttRow({ task, ppd, colWidth, minDate }) 
   );
 });
 
-function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volumeEnabled }) {
+function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volumeEnabled, scrollTarget }) {
   const [scale, setScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
@@ -268,6 +290,20 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
     bodyEl.addEventListener('scroll', onScroll, { passive: true });
     return () => bodyEl.removeEventListener('scroll', onScroll);
   }, [chartData]);
+
+  // Прокрутка диаграммы к началу выбранной работы (по клику на строку таблицы)
+  useEffect(() => {
+    if (!scrollTarget || !chartData) return;
+    const task = tasks.find(t => t.id === scrollTarget.id);
+    if (!task || task.is_section) return;
+    const startStr = task.start_date_plan || task.start_date_contract;
+    if (!startStr) return;
+    const ppd = scaleConfig[scale].pixelsPerDay;
+    const offsetDays = computeScrollOffsetDays(startStr, chartData.minDate, scale);
+    const target = Math.max(0, offsetDays * ppd - 40);
+    const el = bodyScrollRef.current;
+    if (el) el.scrollTo({ left: target, behavior: 'smooth' });
+  }, [scrollTarget, chartData, scale, tasks]);
 
   const handleVolumeCommit = useCallback((taskId, dateStr, value) => {
     if (!volumeEnabled || !onVolumeCommit) return;

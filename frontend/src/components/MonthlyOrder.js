@@ -276,6 +276,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [editValue, setEditValue] = useState('');
   const [employees, setEmployees] = useState([]);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [ganttScrollTarget, setGanttScrollTarget] = useState(null);
   const [filterTriggers, setFilterTriggers] = useState({});
 
   const [volumeData, setVolumeData] = useState({});
@@ -929,6 +930,9 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const handleRowClick = useCallback((task) => {
     if (editingCellRef.current) return;
     setSelectedTaskId(prev => prev === task.id ? null : task.id);
+    if (!task.is_section) {
+      setGanttScrollTarget({ id: task.id, nonce: Date.now() });
+    }
   }, []);
 
   const handleColResizeMouseDown = useCallback((e, colKey) => {
@@ -1279,6 +1283,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                 volumeEnabled={true}
                 volumeData={volumeData}
                 onVolumeCommit={handleVolumeCommit}
+                scrollTarget={ganttScrollTarget}
               />
             </div>
           )}
