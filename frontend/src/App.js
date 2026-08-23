@@ -131,7 +131,7 @@ function AppInner() {
 
   const handleScheduleCleared = () => { scheduleKey.current += 1; };
 
-  const WorkspaceApp = () => (
+  const workspaceApp = (
     <div className="app">
       <header className="header">
         <div className="header-content">
@@ -231,7 +231,7 @@ function AppInner() {
               ? <Navigate to="/login" replace />
               : !currentProject
                 ? <ProjectSelect user={user} onLogout={handleLogout} onSelect={handleProjectSelect} />
-                : <WorkspaceApp />
+                : workspaceApp
           }
         />
       </Routes>
