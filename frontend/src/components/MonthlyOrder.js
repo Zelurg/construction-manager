@@ -4,10 +4,8 @@ import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
-import ChecklistFilter from './ChecklistFilter';
 import FilterManager from './FilterManager';
 import PrintDialog from './PrintDialog';
-import ChecklistStatus from './ChecklistStatus';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
@@ -67,6 +65,12 @@ const CHECKLIST_FIELDS = [
 ];
 const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
 const CHECKLIST_COL_TO_FIELD = Object.fromEntries(CHECKLIST_FIELDS.map(f => [f.colKey, f.key]));
+
+// Старые значения статусов (до переделки колонок в текстовые комментарии)
+// трактуются как «пусто», чтобы не считаться реальным комментарием.
+const LEGACY_STATUS_VALUES = new Set(['white', 'gray', 'red', 'yellow', 'green']);
+const isComment = (v) => !!(v && !LEGACY_STATUS_VALUES.has(v));
+const getCommentText = (task, fieldKey) => (isComment(task[fieldKey]) ? String(task[fieldKey]) : '');
 
 const DEFAULT_COL_WIDTHS = {
   code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
@@ -226,6 +230,24 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return getPositionalDescendantIds(idx, filteredTasks).size > 0;
   }, [filteredTasks]);
 
+  // Маркеры комментариев по разделам: отмечаем колонку, если у любой
+  // дочерней работы раздела есть непустой комментарий.
+  const sectionCommentMarkers = useMemo(() => {
+    const map = {};
+    tasks.forEach((section, idx) => {
+      if (!section.is_section) return;
+      const ids = getPositionalDescendantIds(idx, tasks);
+      const flags = {};
+      CHECKLIST_FIELDS.forEach(f => {
+        flags[f.key] = tasks.some(
+          t => !t.is_section && ids.has(t.id) && isComment(t[f.key])
+        );
+      });
+      map[section.id] = flags;
+    });
+    return map;
+  }, [tasks]);
+
   const [selectedMonth, setSelectedMonthState] = useState(getInitialMonth);
 
   const setSelectedMonth = useCallback((month) => {
@@ -307,10 +329,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const availableColumns = useMemo(() => [
     { key: 'code',                    label: 'Шифр' },
     { key: 'name',                    label: 'Наименование' },
-    { key: 'cl_people',               label: 'Люди',      isCalculated: true },
-    { key: 'cl_equipment',            label: 'Техника',  isCalculated: true },
-    { key: 'cl_mtr',                  label: 'МТР',        isCalculated: true },
-    { key: 'cl_access',               label: 'Допуск',    isCalculated: true },
+    { key: 'cl_people',               label: 'Люди' },
+    { key: 'cl_equipment',            label: 'Техника' },
+    { key: 'cl_mtr',                  label: 'МТР' },
+    { key: 'cl_access',               label: 'Допуск' },
     { key: 'unit',                    label: 'Ед. изм.' },
     { key: 'volume_plan',             label: 'Объём план' },
     { key: 'volume_fact',             label: 'Объём факт' },
@@ -508,13 +530,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     catch (e) { console.error(e); }
   };
 
-  const handleStatusChange = useCallback(async (taskId, field, value) => {
-    try {
-      await scheduleAPI.updateTask(taskId, { [field]: value });
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
-    } catch (e) { console.error('Ошибка сохранения статуса:', e); }
-  }, []);
-
   const handleAddCustomRow = async () => {
     if (!isAdmin) return;
     try {
@@ -631,7 +646,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [filteredTasks, getChildTasks]);
 
   const getDisplayValue = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return null;
+    if (CHECKLIST_COL_KEYS.has(key)) {
+      const f = CHECKLIST_FIELDS.find(x => x.colKey === key);
+      if (task.is_section) return '-';
+      return getCommentText(task, f.key);
+    }
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
@@ -669,7 +688,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       return activeFilters.every(([k, v]) => {
         if (CHECKLIST_COL_KEYS.has(k)) {
           const fieldKey = CHECKLIST_COL_TO_FIELD[k];
-          return (t[fieldKey] || 'gray') === v;
+          return String(getCommentText(t, fieldKey) || '').toLowerCase().includes(v.toLowerCase());
         }
         return String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase());
       });
@@ -684,7 +703,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const handleClearAllFilters = useCallback(() => { setFilters({}); setShowFilterManager(false); }, []);
 
   const getColumnValues = useCallback((key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return [];
+    if (CHECKLIST_COL_KEYS.has(key)) {
+      const fieldKey = CHECKLIST_COL_TO_FIELD[key];
+      return tasks.filter(t => !t.is_section).map(t => getCommentText(t, fieldKey)).filter(Boolean);
+    }
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
     active.forEach(([k, v]) => { arr = arr.filter(t => String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase())); });
@@ -697,7 +719,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, []);
 
   const isFieldEditable = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return false;
+    if (CHECKLIST_COL_KEYS.has(key)) return !task.is_section;
     if (task.is_section) return false;
     if (key === 'notes') return true;
     if (!isAdmin) return false;
@@ -706,7 +728,13 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [isAdmin]);
 
   const handleCellDoubleClick = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return;
+    if (CHECKLIST_COL_KEYS.has(key)) {
+      if (!isFieldEditable(task, key)) return;
+      const fieldKey = CHECKLIST_COL_TO_FIELD[key];
+      setEditingCell({ taskId: task.id, field: key });
+      setEditValue(getCommentText(task, fieldKey));
+      return;
+    }
     if (!isFieldEditable(task, key)) return;
     setEditingCell({ taskId: task.id, field: key });
     let val = '';
@@ -723,17 +751,20 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setEditingCell(null);
     const task = allTasksRef.current.find(t => t.id === ec.taskId);
     if (!task) return;
+    const fieldKey = CHECKLIST_COL_TO_FIELD[ec.field] || ec.field;
     let cur;
     if (ec.field === 'notes') cur = task.notes || '';
-    else if (DATE_FIELDS.includes(ec.field)) cur = task[ec.field] ? new Date(task[ec.field]).toISOString().split('T')[0] : '';
-    else cur = task[ec.field] !== null && task[ec.field] !== undefined ? String(task[ec.field]) : '';
+    else if (CHECKLIST_COL_KEYS.has(ec.field)) cur = getCommentText(task, fieldKey);
+    else if (DATE_FIELDS.includes(ec.field)) cur = task[fieldKey] ? new Date(task[fieldKey]).toISOString().split('T')[0] : '';
+    else cur = task[fieldKey] !== null && task[fieldKey] !== undefined ? String(task[fieldKey]) : '';
     if (ev === cur) return;
-    const updateVal = NUMBER_FIELDS.includes(ec.field)
-      ? (ev === '' ? 0 : parseFloat(ev))
-      : (ev || null);
+    let updateVal;
+    if (CHECKLIST_COL_KEYS.has(ec.field)) updateVal = ev;
+    else if (NUMBER_FIELDS.includes(ec.field)) updateVal = (ev === '' ? 0 : parseFloat(ev));
+    else updateVal = (ev || null);
     try {
-      await scheduleAPI.updateTask(ec.taskId, { [ec.field]: updateVal });
-      setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [ec.field]: updateVal } : t));
+      await scheduleAPI.updateTask(ec.taskId, { [fieldKey]: updateVal });
+      setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [fieldKey]: updateVal } : t));
     } catch (e) { console.error(e); }
   }, []);
 
@@ -749,15 +780,30 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const getCellValue = useCallback((task, key) => {
     const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
     if (clField) {
-      if (task.is_section) return null;
-      return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <ChecklistStatus
-            value={task[clField.key] || 'gray'}
-            size={16}
-            onChange={isAdmin ? (val) => handleStatusChange(task.id, clField.key, val) : undefined}
+      if (task.is_section) {
+        const hasComment = sectionCommentMarkers[task.id]?.[clField.key];
+        return hasComment ? (
+          <span
+            title="Есть комментарии в дочерних работах"
+            style={{
+              display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
+              background: '#e07b00', border: '1px solid #b35e00', boxSizing: 'border-box',
+            }}
           />
-        </div>
+        ) : null;
+      }
+      if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
+        return (
+          <input type="text" value={editValue} onChange={e => setEditValue(e.target.value)}
+            onBlur={handleCellBlur} onKeyDown={handleKeyDown} autoFocus
+            style={{ width: '100%', padding: '2px 4px', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
+          />
+        );
+      }
+      const txt = getCommentText(task, clField.key);
+      return (
+        <span style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+          title={txt}>{txt || '—'}</span>
       );
     }
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
@@ -800,7 +846,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       );
     }
     return getDisplayValue(task, key);
-  }, [editingCell, editValue, employees, handleCellBlur, handleKeyDown, getDisplayValue, isAdmin, handleStatusChange]);
+  }, [editingCell, editValue, employees, handleCellBlur, handleKeyDown, getDisplayValue, sectionCommentMarkers]);
 
   const getColLabel = useCallback((key) => availableColumns.find(c => c.key === key)?.label ?? key, [availableColumns]);
 
@@ -833,7 +879,17 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   }, [selectedTaskId, dragOverTaskId, dragOverPos, isAdmin]);
 
   const getCellStyle = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
+    if (CHECKLIST_COL_KEYS.has(key)) {
+      const base = { textAlign: 'left', padding: '2px 6px' };
+      if (isFieldEditable(task, key)) {
+        return {
+          ...base,
+          cursor: 'pointer',
+          backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit',
+        };
+      }
+      return base;
+    }
     const align = LEFT_ALIGN_COLS.has(key) ? 'left' : 'center';
     const base = { textAlign: align, padding: '2px 6px' };
     if (task.is_section) return base;
@@ -1131,7 +1187,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                   <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
                     {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
                     {visibleColumns.map(key => {
-                      const isClCol = CHECKLIST_COL_KEYS.has(key);
                       const hasFilter = !!filters[key];
                       return (
                         <th key={key}
@@ -1141,22 +1196,13 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                           style={{ verticalAlign: 'middle', textAlign: 'center' }}
                         >
                           <span className="th-label-text">{getColLabel(key)}</span>
-                          {isClCol ? (
-                            <ChecklistFilter
-                              columnKey={key}
-                              currentFilter={filters[key] || ''}
-                              onApplyFilter={handleFilterApply}
-                              triggerEvent={filterTriggers[key]}
-                            />
-                          ) : (
-                            <ColumnFilter
-                              columnKey={key}
-                              allValues={getColumnValues(key)}
-                              currentFilter={filters[key] || ''}
-                              onApplyFilter={handleFilterApply}
-                              triggerEvent={filterTriggers[key]}
-                            />
-                          )}
+                          <ColumnFilter
+                            columnKey={key}
+                            allValues={getColumnValues(key)}
+                            currentFilter={filters[key] || ''}
+                            onApplyFilter={handleFilterApply}
+                            triggerEvent={filterTriggers[key]}
+                          />
                           <div className="col-resize-handle" onMouseDown={e => handleColResizeMouseDown(e, key)} />
                         </th>
                       );
