@@ -34,6 +34,11 @@ function compareCode(a, b) {
   return 0;
 }
 
+// Визуальное отображение денежных значений: округление до целого + разделитель по разрядам
+function formatWhole(n) {
+  return Math.round(n || 0).toLocaleString('ru-RU');
+}
+
 const CHECKLIST_FIELDS = [
   { key: 'status_people',    colKey: 'cl_people',    label: 'Люди' },
   { key: 'status_equipment', colKey: 'cl_equipment', label: 'Техника' },
@@ -322,7 +327,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (CHECKLIST_COL_KEYS.has(key)) return null;
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
-      if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
+      if (sumCols.includes(key)) {
+        const val = calculateSectionSum(task, key);
+        return ['cost_total','cost_fact','cost_remaining'].includes(key) ? formatWhole(val) : val.toFixed(2);
+      }
       if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor','notes'].includes(key)) return '-';
       const agg = sectionDateAggregates[task.id];
       if (agg && ['start_date_plan','end_date_plan','start_date_contract','end_date_contract'].includes(key)) {
@@ -335,9 +343,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       case 'labor_total':              return ((task.labor_per_unit||0)*task.volume_plan).toFixed(2);
       case 'labor_fact':               return ((task.labor_per_unit||0)*task.volume_fact).toFixed(2);
       case 'labor_remaining':          return ((task.labor_per_unit||0)*(task.volume_plan-task.volume_fact)).toFixed(2);
-      case 'cost_total':               return ((task.unit_price||0)*task.volume_plan).toFixed(2);
-      case 'cost_fact':                return ((task.unit_price||0)*task.volume_fact).toFixed(2);
-      case 'cost_remaining':           return ((task.unit_price||0)*(task.volume_plan-task.volume_fact)).toFixed(2);
+      case 'cost_total':               return formatWhole((task.unit_price||0)*task.volume_plan);
+      case 'cost_fact':                return formatWhole((task.unit_price||0)*task.volume_fact);
+      case 'cost_remaining':           return formatWhole((task.unit_price||0)*(task.volume_plan-task.volume_fact));
+      case 'unit_price':               return formatWhole(task.unit_price);
       case 'machine_hours_total':      return ((task.machine_hours_per_unit||0)*task.volume_plan).toFixed(2);
       case 'machine_hours_fact':       return ((task.machine_hours_per_unit||0)*task.volume_fact).toFixed(2);
       case 'machine_hours_remaining':  return ((task.machine_hours_per_unit||0)*(task.volume_plan-task.volume_fact)).toFixed(2);
