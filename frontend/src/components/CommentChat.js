@@ -93,9 +93,20 @@ export default function CommentChat({ taskId, field, anchorRect, onClose, onValu
     }
   }, [comments, onValueChange]);
 
-  const posTop = anchorRect ? anchorRect.bottom + window.scrollY + 4 : 0;
-  let left = anchorRect ? anchorRect.left + window.scrollX : 0;
   const width = 300;
+  const height = Math.min(320, window.innerHeight - 24);
+  const gapY = 4;
+  const belowTop = anchorRect ? anchorRect.bottom + window.scrollY + gapY : 0;
+  const aboveTop = anchorRect ? anchorRect.top + window.scrollY - gapY - height : 0;
+  const overflowBottom = belowTop + height > window.innerHeight - 8;
+  const overflowTop = aboveTop < 8;
+  let top;
+  if (!overflowBottom) {
+    top = belowTop;
+  } else {
+    top = overflowTop ? Math.max(8, window.innerHeight - height - 8) : aboveTop;
+  }
+  let left = anchorRect ? anchorRect.left + window.scrollX : 0;
   const maxLeft = window.innerWidth - width - 12;
   if (left + width > window.innerWidth - 8) left = Math.max(8, Math.min(left, maxLeft));
 
@@ -104,7 +115,7 @@ export default function CommentChat({ taskId, field, anchorRect, onClose, onValu
       ref={rootRef}
       style={{
         position: 'absolute',
-        top: posTop,
+        top,
         left,
         width,
         background: '#fff',
@@ -114,7 +125,7 @@ export default function CommentChat({ taskId, field, anchorRect, onClose, onValu
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
-        height: 320,
+        height,
         overflow: 'hidden',
       }}
     >
