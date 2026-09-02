@@ -35,8 +35,9 @@ function AppInner() {
   const filtersHandlers = useRef({ schedule: null, monthly: null });
   const printHandlers = useRef({ monthly: null });
   const msgExportImportHandlers = useRef({ exportMSG: null, importMSG: null });
-  const collapseHandlers = useRef({ monthly: null });
+  const collapseHandlers = useRef({ monthly: null, schedule: null });
   const [msgCollapseMaxLevel, setMsgCollapseMaxLevel] = useState(0);
+  const [scheduleCollapseMaxLevel, setScheduleCollapseMaxLevel] = useState(0);
   const scheduleKey = useRef(0);
 
   const handleSetActiveTab = (tab) => {
@@ -125,7 +126,7 @@ function AppInner() {
   };
 
   const handleCollapse = (action, level) => {
-    const handler = collapseHandlers.current.monthly;
+    const handler = collapseHandlers.current[activeTab] || collapseHandlers.current.monthly;
     if (handler) handler(action, level);
   };
 
@@ -182,7 +183,7 @@ function AppInner() {
         onUploadMSG={handleUploadMSG}
         onPrint={handleShowPrint}
         onCollapse={handleCollapse}
-        msgCollapseMaxLevel={msgCollapseMaxLevel}
+        collapseMaxLevel={activeTab === 'monthly' ? msgCollapseMaxLevel : scheduleCollapseMaxLevel}
       />
 
       <main className="content">
@@ -192,6 +193,8 @@ function AppInner() {
             showGantt={showGantt}
             onShowColumnSettings={(h) => (columnSettingsHandlers.current.schedule = h)}
             onShowFilters={(h) => (filtersHandlers.current.schedule = h)}
+            onRegisterCollapse={(h) => (collapseHandlers.current.schedule = h)}
+            onCollapseInfo={setScheduleCollapseMaxLevel}
           />
         )}
         {activeTab === 'monthly' && (

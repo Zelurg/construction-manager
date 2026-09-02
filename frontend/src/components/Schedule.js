@@ -44,8 +44,16 @@ const CHECKLIST_FIELDS = [
   { key: 'status_mtr',       colKey: 'cl_mtr',       label: 'МТР' },
   { key: 'status_access',    colKey: 'cl_access',    label: 'Допуск' },
 ];
-const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
-const CHECKLIST_COL_TO_FIELD = Object.fromEntries(CHECKLIST_FIELDS.map(f => [f.colKey, f.key]));
+const TEXT_FIELDS = [
+  { key: 'id_number', colKey: 'cl_id_number', label: '№ ИД' },
+  { key: 'id_volume', colKey: 'cl_id_volume', label: 'Объём по ИД' },
+  { key: 'id_status', colKey: 'cl_id_status', label: 'Статус' },
+  { key: 'id_access', colKey: 'cl_id_access', label: 'Допуск ИД' },
+];
+
+const ALL_TEXT_FIELDS = [...CHECKLIST_FIELDS, ...TEXT_FIELDS];
+const ALL_COMMENT_COL_KEYS = new Set(ALL_TEXT_FIELDS.map(f => f.colKey));
+const ALL_COMMENT_COL_TO_FIELD = Object.fromEntries(ALL_TEXT_FIELDS.map(f => [f.colKey, f.key]));
 
 const LEGACY_STATUS_VALUES = new Set(['white', 'gray', 'red', 'yellow', 'green']);
 const isComment = (v) => !!(v && !LEGACY_STATUS_VALUES.has(v));
@@ -60,6 +68,7 @@ const DEFAULT_COL_WIDTHS = {
   cost_total: 100, cost_fact: 100, cost_remaining: 110,
   machine_hours_total: 110, machine_hours_fact: 110, machine_hours_remaining: 120,
   cl_people: 60, cl_equipment: 70, cl_mtr: 55, cl_access: 70,
+  cl_id_number: 90, cl_id_volume: 90, cl_id_status: 90, cl_id_access: 90,
   notes: 200,
 };
 
@@ -115,7 +124,7 @@ function getDescendantIds(sectionId, allTasks) {
   return ids;
 }
 
-function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
+function Schedule({ showGantt, onShowColumnSettings, onShowFilters, onRegisterCollapse, onCollapseInfo }) {
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
@@ -165,10 +174,14 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const availableColumns = [
     { key: 'code',                    label: 'Шифр' },
     { key: 'name',                    label: 'Наименование' },
-    { key: 'cl_people',               label: 'Люди',      isCalculated: true },
-    { key: 'cl_equipment',            label: 'Техника',  isCalculated: true },
-    { key: 'cl_mtr',                  label: 'МТР',        isCalculated: true },
-    { key: 'cl_access',               label: 'Допуск',    isCalculated: true },
+    { key: 'cl_people',               label: 'Люди' },
+    { key: 'cl_equipment',            label: 'Техника' },
+    { key: 'cl_mtr',                  label: 'МТР' },
+    { key: 'cl_access',               label: 'Допуск' },
+    { key: 'cl_id_number',            label: '№ ИД' },
+    { key: 'cl_id_volume',            label: 'Объём по ИД' },
+    { key: 'cl_id_status',            label: 'Статус' },
+    { key: 'cl_id_access',            label: 'Допуск ИД' },
     { key: 'unit',                    label: 'Ед. изм.' },
     { key: 'volume_plan',             label: 'Объём план' },
     { key: 'volume_fact',             label: 'Объём факт' },
@@ -195,8 +208,9 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
 
   const defaultColumns = [
     'code', 'name', 'cl_people', 'cl_equipment', 'cl_mtr', 'cl_access',
+    'cl_id_number', 'cl_id_volume', 'cl_id_status', 'cl_id_access',
     'unit', 'volume_plan', 'volume_fact', 'volume_remaining',
-    'start_date_contract', 'end_date_contract',
+    'start_date_contract', 'end_date_contract', 'start_date_plan', 'end_date_plan',
   ];
 
   const [visibleColumns, setVisibleColumns] = useState(() => {
@@ -321,7 +335,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getDisplayValue = (task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return task.is_section ? null : getCommentText(task, CHECKLIST_COL_TO_FIELD[key]);
+    if (ALL_COMMENT_COL_KEYS.has(key)) return task.is_section ? null : getCommentText(task, ALL_COMMENT_COL_TO_FIELD[key]);
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) {
@@ -367,7 +381,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       if (!activeFilters.every(([k, v]) => {
-        if (CHECKLIST_COL_KEYS.has(k)) return (getCommentText(t, CHECKLIST_COL_TO_FIELD[k]) || '').toLowerCase().includes(v.toLowerCase());
+        if (ALL_COMMENT_COL_KEYS.has(k)) return (getCommentText(t, ALL_COMMENT_COL_TO_FIELD[k]) || '').toLowerCase().includes(v.toLowerCase());
         return String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase());
       })) return false;
       if (monthPreset      && !taskInMonth(t, monthPreset))                              return false;
@@ -399,6 +413,33 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return filteredTasks.filter(t => !hiddenIds.has(t.id));
   }, [filteredTasks, collapsedSections]);
 
+  // Регистрируем обработчик сворачивания/разворачивания разделов для панели инструментов
+  useEffect(() => {
+    if (!onRegisterCollapse) return;
+    onRegisterCollapse((action, level) => {
+      setCollapsedSections(prev => {
+        const sections = tasks.filter(t => t.is_section);
+        let next;
+        if (action === 'expandAll') next = new Set();
+        else if (action === 'collapseAll') next = new Set(sections.map(s => s.id));
+        else if (action === 'collapseToLevel') {
+          next = new Set(sections.filter(s => getLevelFromCode(s.code) >= level).map(s => s.id));
+        } else next = prev;
+        saveCollapsedToStorage(next);
+        return next;
+      });
+    });
+  }, [onRegisterCollapse, tasks]);
+
+  // Сообщаем родителю максимальную глубину вложенности разделов
+  useEffect(() => {
+    if (!onCollapseInfo) return;
+    const maxLevel = tasks
+      .filter(t => t.is_section)
+      .reduce((m, t) => Math.max(m, getLevelFromCode(t.code)), 0);
+    onCollapseInfo(maxLevel ?? 0);
+  }, [tasks, onCollapseInfo]);
+
   const sectionDateAggregates = useMemo(() => {
     const map = {};
     tasks.filter(t => t.is_section).forEach(section => {
@@ -428,8 +469,8 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getColumnValues = (key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) {
-      return tasks.filter(t => !t.is_section).map(t => getCommentText(t, CHECKLIST_COL_TO_FIELD[key])).filter(Boolean);
+    if (ALL_COMMENT_COL_KEYS.has(key)) {
+      return tasks.filter(t => !t.is_section).map(t => getCommentText(t, ALL_COMMENT_COL_TO_FIELD[key])).filter(Boolean);
     }
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
@@ -450,10 +491,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const handleCellDoubleClick = useCallback((task, key, ev) => {
-    const isCommentCol = CHECKLIST_COL_KEYS.has(key) || key === 'notes';
+    const isCommentCol = ALL_COMMENT_COL_KEYS.has(key) || key === 'notes';
     if (isCommentCol) {
       if (task.is_section) return;
-      const fieldKey = CHECKLIST_COL_KEYS.has(key) ? CHECKLIST_COL_TO_FIELD[key] : 'notes';
+      const fieldKey = ALL_COMMENT_COL_KEYS.has(key) ? ALL_COMMENT_COL_TO_FIELD[key] : 'notes';
       const td = ev && ev.currentTarget ? ev.currentTarget.closest('td') : null;
       setChatCell({ taskId: task.id, field: fieldKey, anchorRect: (td || ev?.currentTarget)?.getBoundingClientRect() });
       return;
@@ -513,7 +554,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, [handleCellBlur]);
 
   const getCellValue = (task, key) => {
-    const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
+    const clField = ALL_TEXT_FIELDS.find(f => f.colKey === key);
     if (clField) {
       if (task.is_section) return null;
       const txt = getCommentText(task, clField.key);
@@ -571,7 +612,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getCellStyle = (task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'left', padding: '2px 4px', cursor: 'pointer' };
+    if (ALL_COMMENT_COL_KEYS.has(key)) return { textAlign: 'left', padding: '2px 4px', cursor: 'pointer' };
     const base = LEFT_ALIGN_COLS.has(key) ? { textAlign: 'left', padding: '2px 6px' } : { textAlign: 'center', padding: '2px 6px' };
     if (task.is_section && !['start_date_plan','end_date_plan'].includes(key)) return base;
     if (isNotesEditable(task, key) || isAdminEditable(task, key))

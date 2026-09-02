@@ -15,7 +15,7 @@ function Toolbar({
   onUploadMSG,
   onPrint,
   onCollapse,
-  msgCollapseMaxLevel,
+  collapseMaxLevel,
 }) {
   const scheduleFileInputRef = useRef(null);
   const msgFileInputRef = useRef(null);
@@ -88,13 +88,13 @@ function Toolbar({
       </div>
 
       <div className="toolbar-right">
-        {/* Свернуть/развернуть разделы — только на вкладке monthly */}
-        {activeTab === 'monthly' && onCollapse && (
+        {/* Свернуть/развернуть разделы */}
+        {(activeTab === 'monthly' || activeTab === 'schedule') && onCollapse && (
           <div className="toolbar-dropdown" ref={collapseRef}>
             <button
               className="toolbar-btn"
               onClick={() => setCollapseOpen(o => !o)}
-              title="Свернуть/развернуть разделы МСГ"
+              title="Свернуть/развернуть разделы"
             >
               📂 Свернуть/Развернуть ▾
             </button>
@@ -108,8 +108,8 @@ function Toolbar({
                   className="toolbar-dropdown-item"
                   onClick={() => { onCollapse('expandAll'); setCollapseOpen(false); }}
                 >Развернуть все</button>
-                {msgCollapseMaxLevel > 0 && <div className="toolbar-dropdown-sep" />}
-                {Array.from({ length: msgCollapseMaxLevel }, (_, i) => i + 1).map(n => (
+                {collapseMaxLevel > 0 && <div className="toolbar-dropdown-sep" />}
+                {Array.from({ length: collapseMaxLevel }, (_, i) => i + 1).map(n => (
                   <button
                     key={n}
                     className="toolbar-dropdown-item"
