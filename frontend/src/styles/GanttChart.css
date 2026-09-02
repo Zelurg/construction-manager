@@ -56,6 +56,16 @@
   background: white;
 }
 
+.gantt-scale-fixed {
+  padding: 3px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #f1f5f9;
+  color: #475569;
+  white-space: nowrap;
+}
+
 .gantt-timeline-row {
   overflow-x: hidden;
   overflow-y: hidden;

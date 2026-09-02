@@ -226,7 +226,7 @@ const GanttRow = React.memo(function GanttRow({ task, ppd, colWidth, minDate }) 
 });
 
 function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volumeEnabled, scrollTarget, periodStart, periodEnd }) {
-  const [scale, setScale] = useState(() => {
+  const [userScale, setUserScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
   });
@@ -234,8 +234,12 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
   const timelineScrollRef = useRef(null);
   const bodyScrollRef = externalScrollRef || internalScrollRef;
 
+  // На вкладке МСГ период закреплён за выбранным месяцем → только масштаб «День».
+  const dayOnly = !!(periodStart && periodEnd);
+  const scale = dayOnly ? 'day' : userScale;
+
   const handleScaleChange = (newScale) => {
-    setScale(newScale);
+    setUserScale(newScale);
     localStorage.setItem(GANTT_SCALE_KEY, newScale);
   };
 
@@ -259,9 +263,17 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
       if (t.end_date_plan)       d.push(new Date(t.end_date_plan));
       return d;
     });
-    const minDate = new Date(Math.min(...dates));
-    const maxDate = new Date(Math.max(...dates));
+    let minDate = new Date(Math.min(...dates));
+    let maxDate = new Date(Math.max(...dates));
     minDate.setHours(0,0,0,0); maxDate.setHours(23,59,59,999);
+    // В МСГ окно Ганта жёстко ограничено выбранным месяцем (период 25-е → 25-е),
+    // чтобы нельзя было пролистать за пределы месяца.
+    if (periodStart) {
+      const ps = new Date(periodStart); ps.setHours(0, 0, 0, 0); minDate = ps;
+    }
+    if (periodEnd) {
+      const pe = new Date(periodEnd); pe.setHours(23, 59, 59, 999); maxDate = pe;
+    }
     const totalDays = Math.ceil((maxDate - minDate) / (1000*60*60*24)) + 1;
     const cfg = scaleConfig[scale];
     const timeMarks = [];
@@ -289,7 +301,7 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
       if (timeMarks.length > 0) colWidth = timeMarks[0].colWidth || colWidth;
     }
     return { minDate, maxDate, totalDays, timeMarks, colWidth };
-  }, [tasks, scale]);
+  }, [tasks, scale, periodStart, periodEnd]);
 
   useEffect(() => {
     const bodyEl = bodyScrollRef.current;
@@ -339,9 +351,11 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
         <div className="gantt-combined-header">
           <div className="gantt-controls-fixed">
             <div className="gantt-title">Диаграмма Ганта</div>
-            <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
-              {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
-            </select>
+            {dayOnly
+              ? <div className="gantt-scale-fixed">День</div>
+              : <select className="gantt-scale-select" value={userScale} onChange={e => handleScaleChange(e.target.value)}>
+                  {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
+                </select>}
           </div>
           <div className="gantt-timeline-row"><div className="gantt-empty-timeline">Нет данных</div></div>
         </div>
@@ -359,9 +373,11 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
       <div className="gantt-combined-header">
         <div className="gantt-controls-row">
           <div className="gantt-title">Диаграмма Ганта</div>
-          <select className="gantt-scale-select" value={scale} onChange={e => handleScaleChange(e.target.value)}>
-            {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
-          </select>
+          {dayOnly
+            ? <div className="gantt-scale-fixed">Масштаб: День</div>
+            : <select className="gantt-scale-select" value={userScale} onChange={e => handleScaleChange(e.target.value)}>
+                {Object.keys(scaleConfig).map(k => <option key={k} value={k}>{scaleConfig[k].label}</option>)}
+              </select>}
         </div>
         <div className="gantt-timeline-row" ref={timelineScrollRef}
           style={{ height: 24, overflowX: 'hidden', overflowY: 'hidden' }}>
