@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 
 # ─── Project ────────────────────────────────────────────────────────────────
@@ -96,6 +96,11 @@ class Task(TaskBase):
     project_id: Optional[int] = None
     class Config:
         from_attributes = True
+
+
+class CascadeDateUpdate(BaseModel):
+    field: Literal['start_date_plan', 'end_date_plan']
+    value: Optional[date] = None
 
 
 # ─── CustomTaskCreate ───────────────────────────────────────────────────────

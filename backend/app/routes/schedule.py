@@ -214,6 +214,78 @@ async def update_task(
     return db_task
 
 
+@router.put("/sections/{section_id}/cascade-dates", response_model=List[schemas.Task])
+async def cascade_section_dates(
+    section_id: int,
+    body: schemas.CascadeDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    section = db.query(models.Task).filter(models.Task.id == section_id).first()
+    if not section or not section.is_section:
+        raise HTTPException(status_code=404, detail="Раздел не найден")
+
+    prefix = section.code + '.'
+    children = (
+        db.query(models.Task)
+        .filter(
+            models.Task.project_id == section.project_id,
+            models.Task.is_section == False,
+            models.Task.code.like(f"{prefix}%"),
+        )
+        .all()
+    )
+
+    updated = []
+    for child in children:
+        setattr(child, body.field, body.value)
+        db.commit()
+        db.refresh(child)
+        updated.append(child)
+
+    for child in updated:
+        await manager.broadcast(
+            {
+                "type": "task_updated",
+                "event": "tasks",
+                "data": {
+                    "id": child.id,
+                    "project_id": child.project_id,
+                    "code": child.code,
+                    "name": child.name,
+                    "unit": child.unit,
+                    "volume_plan": child.volume_plan,
+                    "volume_fact": child.volume_fact,
+                    "start_date_contract": str(child.start_date_contract) if child.start_date_contract else None,
+                    "end_date_contract": str(child.end_date_contract) if child.end_date_contract else None,
+                    "start_date_plan": str(child.start_date_plan) if child.start_date_plan else None,
+                    "end_date_plan": str(child.end_date_plan) if child.end_date_plan else None,
+                    "unit_price": child.unit_price,
+                    "labor_per_unit": child.labor_per_unit,
+                    "machine_hours_per_unit": child.machine_hours_per_unit,
+                    "executor": child.executor,
+                    "is_section": child.is_section,
+                    "is_custom": child.is_custom,
+                    "sort_order": child.sort_order,
+                    "status_people": child.status_people,
+                    "status_equipment": child.status_equipment,
+                    "status_mtr": child.status_mtr,
+                    "status_access": child.status_access,
+                    "notes": child.notes,
+                    "id_number": child.id_number,
+                    "id_volume": child.id_volume,
+                    "id_status": child.id_status,
+                    "id_access": child.id_access,
+                    "level": child.level,
+                    "parent_code": child.parent_code,
+                },
+            },
+            event_type="tasks",
+        )
+
+    return updated
+
+
 @router.delete("/tasks/{task_id}")
 async def delete_task(
     task_id: int,
