@@ -139,9 +139,11 @@ function AppInner() {
           <div className="header-left">
             <h1>Управление строительными проектами</h1>
             {currentProject && (
-              <div className="current-project-badge">
-                <span className="project-badge-icon">🏭</span>
-                <span className="project-badge-name">{currentProject.name}</span>
+              <>
+                <span className="current-project-name">
+                  <span className="project-badge-icon">🏭</span>
+                  {currentProject.name}
+                </span>
                 <button
                   className="btn-switch-project"
                   onClick={handleSwitchProject}
@@ -149,7 +151,7 @@ function AppInner() {
                 >
                   ⇄ Сменить объект
                 </button>
-              </div>
+              </>
             )}
           </div>
           <div className="user-info-header">

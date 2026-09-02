@@ -153,17 +153,6 @@ const TaskRow = React.memo(function TaskRow({
       onDragEnd={onDragEnd}
       onDrop={e => onDrop(e, task)}
     >
-      {isAdmin && (
-        <td style={{ width: 32, padding: '0 4px', textAlign: 'center' }}>
-          {task.is_custom && (
-            <button
-              onClick={e => { e.stopPropagation(); onDeleteCustomRow(task.id); }}
-              title="Удалить строку"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 14, lineHeight: 1, padding: 2 }}
-            >✕</button>
-          )}
-        </td>
-      )}
       {visibleColumns.map(key => {
         if (key === 'name' && task.is_section) {
           const nameText = typeof getCellValue(task, key) === 'string'
@@ -203,7 +192,18 @@ const TaskRow = React.memo(function TaskRow({
             onDoubleClick={(e) => onCellDoubleClick(task, key, e)}
             title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
           >
-            {getCellValue(task, key)}
+            {key === 'name' && task.is_custom ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  {getCellValue(task, key)}
+                </div>
+                <button
+                  onClick={e => { e.stopPropagation(); onDeleteCustomRow(task.id); }}
+                  title="Удалить строку"
+                  style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#e55', fontSize: 13, lineHeight: 1, padding: 2 }}
+                >✕</button>
+              </div>
+            ) : getCellValue(task, key)}
           </td>
         );
       })}
@@ -1250,12 +1250,10 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
             <div className="table-wrapper">
               <table className="tasks-table-integrated">
                 <colgroup>
-                  {isAdmin && <col style={{ width: '32px' }} />}
                   {visibleColumns.map(k => <col key={k} style={{ width: `${colWidths[k] || 60}px` }} />)}
                 </colgroup>
                 <thead style={{ height: `${tableHeaderHeight}px` }}>
                   <tr className="thead-labels" style={{ height: `${tableHeaderHeight}px`, verticalAlign: 'middle' }}>
-                    {isAdmin && <th style={{ width: 32, padding: 0 }} title="Действия" />}
                     {visibleColumns.map(key => {
                       const hasFilter = !!filters[key];
                       return (

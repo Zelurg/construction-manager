@@ -66,25 +66,34 @@
   margin: 4px 2px;
 }
 
-/* ─── Header project badge ───────────────────────────────────────────── */
+/* ─── Header project name + switch button ───────────────────────── */
 .header-left {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.current-project-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  padding: 3px 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 .current-project-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 8px;
-  padding: 4px 12px;
-  width: fit-content;
+  display: none;
 }
 
-.project-badge-icon { font-size: 14px; }
+.project-badge-icon { font-size: 13px; }
 
 .project-badge-name {
   font-size: 13px;
