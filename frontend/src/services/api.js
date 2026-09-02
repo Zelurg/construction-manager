@@ -42,6 +42,7 @@ export const projectsAPI = {
   getById: (id) => api.get(`/projects/${id}`),
   create: (data) => api.post('/projects/', data),
   update: (id, data) => api.put(`/projects/${id}`, data),
+  remove: (id) => api.delete(`/projects/${id}`),
 };
 
 // ─── Import / Export ─────────────────────────────────────────────────────────

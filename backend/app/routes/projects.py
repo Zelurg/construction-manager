@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
@@ -88,3 +88,61 @@ def touch_project(project_id: int, db: Session):
             models.Project.id == project_id
         ).update({"updated_at": datetime.utcnow()})
         db.commit()
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Полностью удалить объект и все связанные с ним данные. Только admin."""
+    db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if not db_project:
+        raise HTTPException(status_code=404, detail="Объект не найден")
+
+    task_ids = [
+        t.id for t in db.query(models.Task.id).filter(models.Task.project_id == project_id).all()
+    ]
+    brigade_ids = [
+        b.id for b in db.query(models.Brigade.id).filter(models.Brigade.project_id == project_id).all()
+    ]
+
+    if task_ids:
+        db.query(models.MonthlyTask).filter(
+            models.MonthlyTask.task_id.in_(task_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.TaskComment).filter(
+            models.TaskComment.task_id.in_(task_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.DailyHeadcount).filter(
+            models.DailyHeadcount.task_id.in_(task_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.DailyWork).filter(
+            models.DailyWork.task_id.in_(task_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.Task).filter(
+            models.Task.id.in_(task_ids)
+        ).delete(synchronize_session=False)
+
+    if brigade_ids:
+        db.query(models.DailyEquipmentUsage).filter(
+            models.DailyEquipmentUsage.brigade_id.in_(brigade_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.DailyExecutor).filter(
+            models.DailyExecutor.brigade_id.in_(brigade_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.DailyWork).filter(
+            models.DailyWork.brigade_id.in_(brigade_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.Brigade).filter(
+            models.Brigade.id.in_(brigade_ids)
+        ).delete(synchronize_session=False)
+
+    db.query(models.DailyHeadcount).filter(
+        models.DailyHeadcount.project_id == project_id
+    ).delete(synchronize_session=False)
+
+    db.delete(db_project)
+    db.commit()
+    return
