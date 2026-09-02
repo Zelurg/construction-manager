@@ -10,7 +10,7 @@ import CommentChat from './CommentChat';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
-  '#B8D4E8', '#C8DFF0', '#D8EAF5', '#E4F1F8', '#EFF6FB',
+  '#7B9BBF', '#9BB5CF', '#B5CADF', '#CDE0EE', '#E0EDF6',
 ];
 function getSectionColor(level) {
   return SECTION_COLORS[Math.min(Math.max(level || 0, 0), SECTION_COLORS.length - 1)];
@@ -306,7 +306,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [filterTriggers, setFilterTriggers] = useState({});
 
   const [volumeData, setVolumeData] = useState({});
-  const tableHeaderHeight = 60;
+  const tableHeaderHeight = 36;
 
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);

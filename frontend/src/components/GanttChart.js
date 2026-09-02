@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import '../styles/GanttChart.css';
 
 const SECTION_COLORS = [
-  '#B8D4E8', '#C8DFF0', '#D8EAF5', '#E4F1F8', '#EFF6FB',
+  '#7B9BBF', '#9BB5CF', '#B5CADF', '#CDE0EE', '#E0EDF6',
 ];
 
 function getSectionColor(level) {
