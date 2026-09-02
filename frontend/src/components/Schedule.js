@@ -4,9 +4,8 @@ import websocketService from '../services/websocket';
 import GanttChart from './GanttChart';
 import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
-import ChecklistFilter from './ChecklistFilter';
 import FilterManager from './FilterManager';
-import ChecklistStatus from './ChecklistStatus';
+import CommentChat from './CommentChat';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
@@ -47,6 +46,10 @@ const CHECKLIST_FIELDS = [
 ];
 const CHECKLIST_COL_KEYS = new Set(CHECKLIST_FIELDS.map(f => f.colKey));
 const CHECKLIST_COL_TO_FIELD = Object.fromEntries(CHECKLIST_FIELDS.map(f => [f.colKey, f.key]));
+
+const LEGACY_STATUS_VALUES = new Set(['white', 'gray', 'red', 'yellow', 'green']);
+const isComment = (v) => !!(v && !LEGACY_STATUS_VALUES.has(v));
+const getCommentText = (task, fieldKey) => (isComment(task[fieldKey]) ? String(task[fieldKey]) : '');
 
 const DEFAULT_COL_WIDTHS = {
   code: 90, name: 280, unit: 60, volume_plan: 90, volume_fact: 90,
@@ -133,6 +136,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const [showFilterManager,  setShowFilterManager]  = useState(false);
   const [editingCell,        setEditingCell]        = useState(null);
   const [editValue,          setEditValue]          = useState('');
+  const [chatCell,           setChatCell]           = useState(null);
   const [employees,          setEmployees]          = useState([]);
   const [filterTriggers,     setFilterTriggers]     = useState({});
 
@@ -292,13 +296,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     catch (e) { console.error('Ошибка загрузки сотрудников:', e); }
   };
 
-  const handleStatusChange = useCallback(async (taskId, field, value) => {
-    try {
-      await scheduleAPI.updateTask(taskId, { [field]: value });
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
-    } catch (e) { console.error('Ошибка сохранения статуса:', e); }
-  }, []);
-
   const getChildTasks = (sectionCode, arr) => {
     const prefix = sectionCode + '.';
     return arr.filter(t => !t.is_section && String(t.code).startsWith(prefix));
@@ -324,7 +321,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getDisplayValue = (task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return null;
+    if (CHECKLIST_COL_KEYS.has(key)) return task.is_section ? null : getCommentText(task, CHECKLIST_COL_TO_FIELD[key]);
     if (task.is_section) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) {
@@ -370,7 +367,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     const matchedWorks = tasks.filter(t => {
       if (t.is_section) return false;
       if (!activeFilters.every(([k, v]) => {
-        if (CHECKLIST_COL_KEYS.has(k)) return (t[CHECKLIST_COL_TO_FIELD[k]] || 'gray') === v;
+        if (CHECKLIST_COL_KEYS.has(k)) return (getCommentText(t, CHECKLIST_COL_TO_FIELD[k]) || '').toLowerCase().includes(v.toLowerCase());
         return String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase());
       })) return false;
       if (monthPreset      && !taskInMonth(t, monthPreset))                              return false;
@@ -431,7 +428,9 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getColumnValues = (key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return [];
+    if (CHECKLIST_COL_KEYS.has(key)) {
+      return tasks.filter(t => !t.is_section).map(t => getCommentText(t, CHECKLIST_COL_TO_FIELD[key])).filter(Boolean);
+    }
     const active = Object.entries(filters).filter(([k, v]) => k !== key && v && v.trim());
     let arr = tasks.filter(t => !t.is_section);
     active.forEach(([k, v]) => { arr = arr.filter(t => String(getDisplayValue(t, k) || '').toLowerCase().includes(v.toLowerCase())); });
@@ -450,8 +449,15 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key);
   };
 
-  const handleCellDoubleClick = useCallback((task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return;
+  const handleCellDoubleClick = useCallback((task, key, ev) => {
+    const isCommentCol = CHECKLIST_COL_KEYS.has(key) || key === 'notes';
+    if (isCommentCol) {
+      if (task.is_section) return;
+      const fieldKey = CHECKLIST_COL_KEYS.has(key) ? CHECKLIST_COL_TO_FIELD[key] : 'notes';
+      const td = ev && ev.currentTarget ? ev.currentTarget.closest('td') : null;
+      setChatCell({ taskId: task.id, field: fieldKey, anchorRect: (td || ev?.currentTarget)?.getBoundingClientRect() });
+      return;
+    }
     if (task.is_section && !['start_date_plan','end_date_plan'].includes(key)) return;
     if (!isNotesEditable(task, key) && !isAdminEditable(task, key)) return;
     let val = '';
@@ -510,14 +516,10 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     const clField = CHECKLIST_FIELDS.find(f => f.colKey === key);
     if (clField) {
       if (task.is_section) return null;
+      const txt = getCommentText(task, clField.key);
       return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <ChecklistStatus
-            value={task[clField.key] || 'gray'}
-            size={16}
-            onChange={isAdmin ? (val) => handleStatusChange(task.id, clField.key, val) : undefined}
-          />
-        </div>
+        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+          title={txt}>{txt || '—'}</span>
       );
     }
     if (editingCell && editingCell.taskId === task.id && editingCell.field === key) {
@@ -545,7 +547,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     if (key === 'notes') {
       const txt = task.notes || '';
       return (
-        <span style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
           title={txt}>{txt || '—'}</span>
       );
     }
@@ -569,7 +571,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   };
 
   const getCellStyle = (task, key) => {
-    if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
+    if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'left', padding: '2px 4px', cursor: 'pointer' };
     const base = LEFT_ALIGN_COLS.has(key) ? { textAlign: 'left', padding: '2px 6px' } : { textAlign: 'center', padding: '2px 6px' };
     if (task.is_section && !['start_date_plan','end_date_plan'].includes(key)) return base;
     if (isNotesEditable(task, key) || isAdminEditable(task, key))
@@ -632,7 +634,6 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
               <thead>
                 <tr className="thead-labels">
                   {visibleColumns.map(key => {
-                    const isClCol = CHECKLIST_COL_KEYS.has(key);
                     return (
                       <th key={key}
                         className={filters[key] ? 'has-filter' : ''}
@@ -641,22 +642,13 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         style={{ textAlign: LEFT_ALIGN_COLS.has(key) ? 'left' : 'center' }}
                       >
                         <span className="th-label-text">{getColLabel(key)}</span>
-                        {isClCol ? (
-                          <ChecklistFilter
-                            columnKey={key}
-                            currentFilter={filters[key] || ''}
-                            onApplyFilter={handleFilterApply}
-                            triggerEvent={filterTriggers[key]}
-                          />
-                        ) : (
-                          <ColumnFilter
-                            columnKey={key}
-                            allValues={getColumnValues(key)}
-                            currentFilter={filters[key] || ''}
-                            onApplyFilter={handleFilterApply}
-                            triggerEvent={filterTriggers[key]}
-                          />
-                        )}
+                        <ColumnFilter
+                          columnKey={key}
+                          allValues={getColumnValues(key)}
+                          currentFilter={filters[key] || ''}
+                          onApplyFilter={handleFilterApply}
+                          triggerEvent={filterTriggers[key]}
+                        />
                         <div className="col-resize-handle" onMouseDown={e => handleColResizeMouseDown(e, key)} />
                       </th>
                     );
@@ -701,7 +693,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                         const nameText = getDisplayValue(task, key);
                         return (
                           <td key={key} style={getCellStyle(task, key)}
-                            onDoubleClick={() => handleCellDoubleClick(task, key)}>
+                            onDoubleClick={(e) => handleCellDoubleClick(task, key, e)}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
                               title={nameText}>{nameText}</span>
                           </td>
@@ -710,7 +702,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
                       const editable = isNotesEditable(task, key) || isAdminEditable(task, key);
                       return (
                         <td key={key} style={getCellStyle(task, key)}
-                          onDoubleClick={() => handleCellDoubleClick(task, key)}
+                          onDoubleClick={(e) => handleCellDoubleClick(task, key, e)}
                           title={editable ? 'Двойной клик для редактирования' : ''}>
                           {getCellValue(task, key)}
                         </td>
@@ -750,6 +742,18 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
           executorPreset={executorPreset}
           onExecutorPresetChange={setExecutorPreset}
           employees={employees}
+        />
+      )}
+      {chatCell && (
+        <CommentChat
+          taskId={chatCell.taskId}
+          field={chatCell.field}
+          anchorRect={chatCell.anchorRect}
+          onClose={() => setChatCell(null)}
+          onValueChange={(val) => {
+            setTasks(prev => prev.map(t => t.id === chatCell.taskId ? { ...t, [chatCell.field]: val } : t));
+            setFilteredTasks(prev => prev.map(t => t.id === chatCell.taskId ? { ...t, [chatCell.field]: val } : t));
+          }}
         />
       )}
     </div>

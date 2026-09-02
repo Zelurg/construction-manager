@@ -93,6 +93,16 @@ export const scheduleAPI = {
     api.delete('/schedule/tasks', { params: projectParams() }),
 };
 
+// ─── Comments (мини-чат для текстовых колонок) ─────────────────────────────
+export const commentsAPI = {
+  getList: (taskId, field) =>
+    api.get('/comments/', { params: { task_id: taskId, field } }),
+  add: (taskId, field, text) =>
+    api.post('/comments/', { task_id: taskId, field, text }),
+  remove: (commentId) =>
+    api.delete(`/comments/${commentId}`),
+};
+
 // ─── Monthly ─────────────────────────────────────────────────────────────────
 export const monthlyAPI = {
   getTasks: (month) =>

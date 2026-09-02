@@ -85,6 +85,20 @@ class Task(Base):
     monthly_tasks = relationship("MonthlyTask", back_populates="task")
     daily_works = relationship("DailyWork", back_populates="task")
     daily_headcounts = relationship("DailyHeadcount", back_populates="task", cascade="all, delete-orphan")
+    task_comments = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")
+
+
+class TaskComment(Base):
+    """Комментарий к задаче в конкретной текстовой колонке (история как мини-чат)"""
+    __tablename__ = "task_comments"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False, index=True)
+    field = Column(String, nullable=False, index=True)
+    author_name = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    task = relationship("Task", back_populates="task_comments")
 
 
 class MonthlyTask(Base):

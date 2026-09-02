@@ -6,6 +6,7 @@ import ColumnSettings from './ColumnSettings';
 import ColumnFilter from './ColumnFilter';
 import FilterManager from './FilterManager';
 import PrintDialog from './PrintDialog';
+import CommentChat from './CommentChat';
 import { useAuth } from '../contexts/AuthContext';
 
 const SECTION_COLORS = [
@@ -170,7 +171,7 @@ const TaskRow = React.memo(function TaskRow({
             : task.name;
           return (
             <td key={key} style={getCellStyle(task, key)}
-              onDoubleClick={() => onCellDoubleClick(task, key)}
+              onDoubleClick={(e) => onCellDoubleClick(task, key, e)}
               title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 {hasChildren && (
@@ -199,7 +200,7 @@ const TaskRow = React.memo(function TaskRow({
         return (
           <td key={key}
             style={getCellStyle(task, key)}
-            onDoubleClick={() => onCellDoubleClick(task, key)}
+            onDoubleClick={(e) => onCellDoubleClick(task, key, e)}
             title={isFieldEditable(task, key) ? 'Двойной клик для редактирования' : ''}
           >
             {getCellValue(task, key)}
@@ -298,6 +299,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [chatCell, setChatCell] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [ganttScrollTarget, setGanttScrollTarget] = useState(null);
@@ -777,12 +779,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return STANDARD_EDITABLE.includes(key);
   }, [isAdmin]);
 
-  const handleCellDoubleClick = useCallback((task, key) => {
+  const handleCellDoubleClick = useCallback((task, key, ev) => {
     if (EDITABLE_TEXT_COL_KEYS.has(key)) {
-      if (!isFieldEditable(task, key)) return;
+      if (!isFieldEditable(task, key) || task.is_section) return;
       const fieldKey = EDITABLE_TEXT_COL_TO_FIELD[key];
-      setEditingCell({ taskId: task.id, field: key });
-      setEditValue(getCommentText(task, fieldKey));
+      const td = ev && ev.currentTarget ? ev.currentTarget.closest('td') : null;
+      setChatCell({ taskId: task.id, field: fieldKey, anchorRect: (td || ev?.currentTarget)?.getBoundingClientRect() });
+      return;
+    }
+    if (key === 'notes') {
+      if (task.is_section) return;
+      const td = ev && ev.currentTarget ? ev.currentTarget.closest('td') : null;
+      setChatCell({ taskId: task.id, field: 'notes', anchorRect: (td || ev?.currentTarget)?.getBoundingClientRect() });
       return;
     }
     if (!isFieldEditable(task, key)) return;
@@ -869,7 +877,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       }
       const txt = getCommentText(task, clField.key);
       return (
-        <span style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
           title={txt}>{txt || '—'}</span>
       );
     }
@@ -908,7 +916,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     if (key === 'notes') {
       const txt = task.notes || '';
       return (
-        <span style={{ display: 'block', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
+        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, color: txt ? 'inherit' : '#bbb' }}
           title={txt}>{txt || '—'}</span>
       );
     }
@@ -1330,6 +1338,18 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
             includeGantt={showGantt}
             onPrint={handlePrint}
             onClose={() => setShowPrintDialog(false)}
+          />
+        )}
+        {chatCell && (
+          <CommentChat
+            taskId={chatCell.taskId}
+            field={chatCell.field}
+            anchorRect={chatCell.anchorRect}
+            onClose={() => setChatCell(null)}
+            onValueChange={(val) => {
+              setTasks(prev => prev.map(t => t.id === chatCell.taskId ? { ...t, [chatCell.field]: val } : t));
+              setFilteredTasks(prev => prev.map(t => t.id === chatCell.taskId ? { ...t, [chatCell.field]: val } : t));
+            }}
           />
         )}
       </div>

@@ -103,6 +103,29 @@ class CascadeDateUpdate(BaseModel):
     value: Optional[date] = None
 
 
+# ─── TaskComment ─────────────────────────────────────────────────────────────
+
+COMMENT_FIELDS = (
+    'status_people', 'status_equipment', 'status_mtr', 'status_access',
+    'id_number', 'id_volume', 'id_status', 'id_access', 'notes',
+)
+
+class TaskCommentCreate(BaseModel):
+    task_id: int
+    field: str
+    text: str = Field(..., min_length=1)
+
+class TaskCommentOut(BaseModel):
+    id: int
+    task_id: int
+    field: str
+    author_name: str
+    text: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+
 # ─── CustomTaskCreate ───────────────────────────────────────────────────────
 
 class CustomTaskCreate(BaseModel):

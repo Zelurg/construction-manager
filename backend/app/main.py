@@ -6,7 +6,7 @@ from .routes import (
     auth, users, admin, schedule, monthly,
     daily, brigades, executors, analytics,
     employees, equipment, equipment_usage,
-    import_export, websocket, headcount
+    import_export, websocket, headcount, comments
 )
 from .routes import projects
 
@@ -41,6 +41,7 @@ app.include_router(executors.router, prefix="/executors", tags=["executors"])
 app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 app.include_router(import_export.router, prefix="/import-export", tags=["import-export"])
 app.include_router(headcount.router, prefix="/headcount", tags=["headcount"])
+app.include_router(comments.router, prefix="/comments", tags=["comments"])
 
 # Global directories
 app.include_router(employees.router, prefix="/employees", tags=["employees"])
