@@ -549,8 +549,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       const r = await scheduleAPI.getTasks();
       const all = r.data;
       const [year, month] = selectedMonth.split('-').map(Number);
-      const mStart = new Date(year, month - 1, 1);
-      const mEnd   = new Date(year, month, 0, 23, 59, 59);
+      const mStart = new Date(year, month - 2, 25);
+      const mEnd   = new Date(year, month - 1, 25, 23, 59, 59);
       const filtered = all.filter(task => {
         if (task.is_section) return true;
         const s = task.start_date_plan ? new Date(task.start_date_plan) : null;
@@ -1210,7 +1210,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
         <label>Выберите месяц:</label>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
         <span style={{ fontSize: 13, color: '#666' }}>
-          Показаны работы с плановыми датами, попадающими в выбранный месяц
+          Показаны работы с плановыми датами с 25-го числа предыдущего месяца по 25-е число выбранного месяца
         </span>
         {isAdmin && (
           <div style={{ display: 'inline-flex', gap: 8, marginLeft: 8 }}>
