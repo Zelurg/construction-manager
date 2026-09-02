@@ -114,7 +114,8 @@ export default function CommentChat({ taskId, field, anchorRect, onClose, onValu
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: 320,
+        height: 320,
+        overflow: 'hidden',
       }}
     >
       <div style={{
@@ -134,9 +135,9 @@ export default function CommentChat({ taskId, field, anchorRect, onClose, onValu
       </div>
 
       <div ref={listRef} style={{
-        flex: 1, overflowY: 'auto', padding: '8px 10px',
+        flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
+        padding: '8px 10px',
         display: 'flex', flexDirection: 'column', gap: 6,
-        minHeight: 40,
       }}>
         {loading ? (
           <span style={{ fontSize: 12, color: '#999' }}>Загрузка…</span>
