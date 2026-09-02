@@ -144,6 +144,7 @@ const TaskRow = React.memo(function TaskRow({
 }) {
   return (
     <tr
+      className={task.is_section ? 'task-row-section' : ''}
       style={getRowStyle(task)}
       onClick={() => onRowClick(task)}
       draggable={task.is_custom && isAdmin}
@@ -306,7 +307,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const [filterTriggers, setFilterTriggers] = useState({});
 
   const [volumeData, setVolumeData] = useState({});
-  const tableHeaderHeight = 36;
+  const tableHeaderHeight = 60;
 
   const dragTaskIdRef = useRef(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);

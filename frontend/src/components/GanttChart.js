@@ -173,7 +173,7 @@ function VolumeTaskBlock({ task, ppd, scale, minDate, maxDate, volumeData, onVol
   if (task.is_section) {
     return (
       <div className="gantt-task-block gantt-row-section"
-        style={{ height: 48, backgroundColor: getSectionColor(getLevelFromCode(task.code)) }} />
+        style={{ height: 32, backgroundColor: getSectionColor(getLevelFromCode(task.code)) }} />
     );
   }
   const isDay = scale === 'day';

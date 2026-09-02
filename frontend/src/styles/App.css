@@ -386,6 +386,8 @@ body {
 .tasks-table-integrated tbody tr { height: 32px; }
 /* Вкладка МСГ: каждая строка соответствует двум полосам Ганта (48px) */
 .monthly-order .tasks-table-integrated tbody tr { height: 48px; }
+/* Вкладка МСГ: цветные строки разделов — компактные как на Графике (32px) */
+.monthly-order .tasks-table-integrated tbody tr.task-row-section { height: 32px; }
 .tasks-table-integrated td {
   padding: 4px 8px;
   text-align: left;
