@@ -225,7 +225,7 @@ const GanttRow = React.memo(function GanttRow({ task, ppd, colWidth, minDate }) 
   );
 });
 
-function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volumeEnabled, scrollTarget }) {
+function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volumeEnabled, scrollTarget, periodStart, periodEnd }) {
   const [scale, setScale] = useState(() => {
     const saved = localStorage.getItem(GANTT_SCALE_KEY);
     return saved && VALID_SCALES.includes(saved) ? saved : 'month';
@@ -306,19 +306,27 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
     return () => bodyEl.removeEventListener('scroll', onScroll);
   }, [chartData]);
 
-  // Прокрутка диаграммы к началу выбранной работы (по клику на строку таблицы)
+  // Прокрутка диаграммы к началу выбранной работы (по клику на строку таблицы).
+  // Якорь = начало отчётного периода (25-е предыдущего месяца), если дата старта
+  // раньше или позже периода; иначе — сам день старта (внутри периода).
   useEffect(() => {
     if (!scrollTarget || !chartData) return;
     const task = tasks.find(t => t.id === scrollTarget.id);
     if (!task || task.is_section) return;
     const startStr = task.start_date_plan || task.start_date_contract;
     if (!startStr) return;
+    const taskStart = new Date(startStr); taskStart.setHours(0, 0, 0, 0);
+    const pStart = periodStart ? new Date(periodStart) : null;
+    pStart && pStart.setHours(0, 0, 0, 0);
+    const withinPeriod = pStart && taskStart.getTime() >= pStart.getTime()
+      && (!periodEnd || taskStart.getTime() <= new Date(periodEnd).getTime());
+    const anchorDate = withinPeriod ? taskStart : (pStart || taskStart);
     const ppd = scaleConfig[scale].pixelsPerDay;
-    const offsetDays = computeScrollOffsetDays(startStr, chartData.minDate, scale);
+    const offsetDays = computeScrollOffsetDays(anchorDate.toISOString(), chartData.minDate, scale);
     const target = Math.max(0, offsetDays * ppd - 40);
     const el = bodyScrollRef.current;
     if (el) el.scrollTo({ left: target, behavior: 'smooth' });
-  }, [scrollTarget, chartData, scale, tasks]);
+  }, [scrollTarget, chartData, scale, tasks, periodStart, periodEnd]);
 
   const handleVolumeCommit = useCallback((taskId, dateStr, value) => {
     if (!volumeEnabled || !onVolumeCommit) return;

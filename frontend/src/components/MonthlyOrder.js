@@ -337,6 +337,15 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
   const selectedMonthRef = useRef(selectedMonth);
   useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
 
+  // Период отчётного месяца МСГ: с 25-го числа предыдущего месяца по 25-е выбранного
+  const monthPeriod = useMemo(() => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const start = new Date(year, month - 2, 25);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(year, month - 1, 25, 23, 59, 59);
+    return { start, end };
+  }, [selectedMonth]);
+
   useEffect(() => {
     if (!showGantt) return;
     const timer = setTimeout(() => {
@@ -1318,6 +1327,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
                 volumeData={volumeData}
                 onVolumeCommit={handleVolumeCommit}
                 scrollTarget={ganttScrollTarget}
+                periodStart={monthPeriod.start.toISOString()}
+                periodEnd={monthPeriod.end.toISOString()}
               />
             </div>
           )}
