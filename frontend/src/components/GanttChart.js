@@ -90,7 +90,7 @@ function VolumeCellInput({ value, onCommit }) {
 }
 
 // Одна полоса Ганта (контракт или план) для задачи в режиме МСГ
-function GanttBand({ task, type, minDate, ppd, isDay, volumePlan, volumeData, onVolumeCommit }) {
+function GanttBand({ task, type, minDate, maxDate, ppd, isDay, volumePlan, volumeData, onVolumeCommit }) {
   const startKey = type === 'contract' ? 'start_date_contract' : 'start_date_plan';
   const endKey   = type === 'contract' ? 'end_date_contract'   : 'end_date_plan';
   const start = task[startKey] ? new Date(task[startKey]) : null;
@@ -119,26 +119,41 @@ function GanttBand({ task, type, minDate, ppd, isDay, volumePlan, volumeData, on
     );
   }
 
-  // Дневной масштаб — ячейка на каждый день диапазона
-  const perDay = (type === 'contract' && volumePlan > 0) ? volumePlan / duration : null;
+  // Дневной масштаб — ячейка на каждый день диапазона.
+  // Для плановой полосы ячейки ввода рисуем по всей видимой шкале диаграммы
+  // (minDate..maxDate), чтобы фактические объёмы можно было вносить и вне
+  // плановых дат. Дни планового диапазона — синим, вне плана — серым фоном.
   const cells = [];
-  for (let i = 0; i < duration; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const dateStr = toDateStr(d);
-    const left = (startOffset + i) * ppd;
-
-    if (type === 'contract') {
+  if (type === 'contract') {
+    const perDay = (volumePlan > 0) ? volumePlan / duration : null;
+    for (let i = 0; i < duration; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const dateStr = toDateStr(d);
+      const left = (startOffset + i) * ppd;
       cells.push(
         <div key={i} className="gantt-band-cell" style={{ left, width: ppd, backgroundColor: bg }}
           title={`${dateStr}: ${perDay != null ? trimNum(perDay) : 0}`}>
           <span className="gantt-distributed-value">{perDay != null ? trimNum(perDay) : ''}</span>
         </div>
       );
-    } else {
+    }
+  } else {
+    const planStart = Math.floor((start - minDate) / 864e5);
+    const planEnd   = Math.floor((end - minDate) / 864e5);
+    const fullStart = Math.max(0, planStart);
+    const range = maxDate ? Math.floor((maxDate - minDate) / 864e5) + 1 : planEnd + 1;
+    const fullEnd = Math.max(planEnd, range - 1);
+    for (let i = fullStart; i <= fullEnd; i++) {
+      const d = new Date(minDate);
+      d.setDate(minDate.getDate() + i);
+      const dateStr = toDateStr(d);
+      const left = i * ppd;
+      const inPlan = i >= planStart && i <= planEnd;
+      const cellBg = inPlan ? bg : '#f1f1f1';
       const current = volumeData?.[task.id]?.[dateStr] ?? null;
       cells.push(
-        <div key={i} className="gantt-band-cell gantt-band-cell-editable" style={{ left, width: ppd, backgroundColor: bg }}>
+        <div key={i} className="gantt-band-cell gantt-band-cell-editable" style={{ left, width: ppd, backgroundColor: cellBg }}>
           <VolumeCellInput value={current} onCommit={(v) => onVolumeCommit(task.id, dateStr, v)} />
         </div>
       );
@@ -148,7 +163,7 @@ function GanttBand({ task, type, minDate, ppd, isDay, volumePlan, volumeData, on
 }
 
 // Блок из двух полос (контракт + план), соответствует одной строке МСГ
-function VolumeTaskBlock({ task, ppd, scale, minDate, volumeData, onVolumeCommit }) {
+function VolumeTaskBlock({ task, ppd, scale, minDate, maxDate, volumeData, onVolumeCommit }) {
   if (task.is_section) {
     return (
       <div className="gantt-task-block gantt-row-section"
@@ -159,8 +174,8 @@ function VolumeTaskBlock({ task, ppd, scale, minDate, volumeData, onVolumeCommit
   const volumePlan = task.volume_plan || 0;
   return (
     <div className="gantt-task-block" style={{ height: 48 }}>
-      <GanttBand type="contract" task={task} minDate={minDate} ppd={ppd} isDay={isDay} volumePlan={volumePlan} />
-      <GanttBand type="plan" task={task} minDate={minDate} ppd={ppd} isDay={isDay}
+      <GanttBand type="contract" task={task} minDate={minDate} maxDate={maxDate} ppd={ppd} isDay={isDay} volumePlan={volumePlan} />
+      <GanttBand type="plan" task={task} minDate={minDate} maxDate={maxDate} ppd={ppd} isDay={isDay}
         volumePlan={volumePlan} volumeData={volumeData} onVolumeCommit={onVolumeCommit} />
     </div>
   );
@@ -361,7 +376,7 @@ function GanttChart({ tasks, externalScrollRef, volumeData, onVolumeCommit, volu
               ? <VolumeTaskBlock
                   key={task.id || task.task_id}
                   task={task} ppd={ppd} scale={scale}
-                  minDate={chartData.minDate} volumeData={volumeData}
+                  minDate={chartData.minDate} maxDate={chartData.maxDate} volumeData={volumeData}
                   onVolumeCommit={handleVolumeCommit}
                 />
               : <GanttRow

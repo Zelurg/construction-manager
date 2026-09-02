@@ -454,38 +454,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     } catch (e) { console.error(e); alert('Не удалось сохранить объём'); }
   }, []);
 
-  // Объёмы, чьи даты выпали из текущего диапазона плановых дат задачи
-  const orphanedVolumes = useMemo(() => {
-    const toMidnight = (s) => {
-      const str = String(s);
-      return new Date(str.length === 10 ? str + 'T00:00:00' : str).getTime();
-    };
-    const list = [];
-    tasks.forEach(t => {
-      if (t.is_section) return;
-      const s = t.start_date_plan ? toMidnight(t.start_date_plan) : null;
-      const e = t.end_date_plan ? toMidnight(t.end_date_plan) : null;
-      const dates = volumeData[t.id] || {};
-      Object.keys(dates).forEach(dateStr => {
-        const d = toMidnight(dateStr);
-        if (s === null || e === null || d < s || d > e) {
-          list.push({ taskId: t.id, code: t.code, name: t.name, date: dateStr, volume: dates[dateStr] });
-        }
-      });
-    });
-    return list;
-  }, [tasks, volumeData]);
-
-  const handleDeleteOrphanedVolumes = useCallback(async () => {
-    if (!window.confirm(`Удалить ${orphanedVolumes.length} объёмов вне диапазона плановых дат?`)) return;
-    try {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const r = await dailyVolumeAPI.deleteOrphaned(year, month);
-      await loadVolumes();
-      if (r.data.deleted > 0) await loadTasks();
-    } catch (e) { console.error(e); alert('Не удалось удалить объёмы'); }
-  }, [selectedMonth, orphanedVolumes.length]);
-
   const handleExportMSG = useCallback(async () => {
     try {
       const [year, month] = selectedMonthRef.current.split('-').map(Number);
@@ -1246,23 +1214,6 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
           </div>
         )}
       </div>
-
-      {orphanedVolumes.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#fff4e5', borderBottom: '1px solid #f0d9b0' }}>
-          <span style={{ fontSize: 13, color: '#8a5a00' }}>
-            Объёмы вне плановых дат: {orphanedVolumes.length}{' '}
-            ({[...new Set(orphanedVolumes.map(v => v.code))].filter(Boolean).join(', ') || 'задачи без плановых дат'}) —{' '}
-            ячейки выпали из диапазона «Старт план/Финиш план» и больше не видны на диаграмме
-          </span>
-          <button
-            onClick={handleDeleteOrphanedVolumes}
-            title="Удалить введённые объёмы, не попадающие в диапазон плановых дат"
-            style={{ padding: '4px 12px', background: '#e07b00', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13, marginLeft: 'auto' }}
-          >
-            Удалить вне диапазона
-          </button>
-        </div>
-      )}
 
       <div className="schedule-container-integrated" ref={containerRef}
         style={{ userSelect: isResizing ? 'none' : 'auto' }}>
