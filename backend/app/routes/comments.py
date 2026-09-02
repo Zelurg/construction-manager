@@ -34,9 +34,17 @@ def _latest_text(db: Session, task_id: int, field: str) -> Optional[str]:
 
 
 def _sync_scalar(db: Session, task: models.Task, field: str):
-    """Обновляет скалярную колонку задачи текстом последнего комментария (или None)."""
+    """Обновляет скалярную колонку задачи текстом последнего комментария.
+
+    Если комментариев не осталось — очищаем значение. Для чек-листовых колонок
+    (NOT NULL, серый по умолчанию) восстанавливаем дефолт 'gray'.
+    """
     latest = _latest_text(db, task.id, field)
-    setattr(task, field, latest)
+    if latest is not None:
+        setattr(task, field, latest)
+    else:
+        is_checklist = field in ('status_people', 'status_equipment', 'status_mtr', 'status_access')
+        setattr(task, field, 'gray' if is_checklist else None)
     db.add(task)
 
 
