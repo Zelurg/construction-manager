@@ -85,6 +85,8 @@ export const scheduleAPI = {
     api.post('/schedule/tasks/custom', data, { params: projectParams() }),
   updateTask: (id, task) => api.put(`/schedule/tasks/${id}`, task),
   deleteTask: (id) => api.delete(`/schedule/tasks/${id}`),
+  cascadeSectionDates: (sectionId, field, value) =>
+    api.put(`/schedule/sections/${sectionId}/cascade-dates`, { field, value }),
   deleteAllCustomTasks: () =>
     api.delete('/schedule/tasks/custom/all', { params: projectParams() }),
   clearAll: () =>

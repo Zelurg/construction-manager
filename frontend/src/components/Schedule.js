@@ -324,6 +324,11 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
       if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor','notes'].includes(key)) return '-';
+      const agg = sectionDateAggregates[task.id];
+      if (agg && ['start_date_plan','end_date_plan','start_date_contract','end_date_contract'].includes(key)) {
+        const val = agg[key];
+        return val ? new Date(val).toLocaleDateString('ru-RU') : '-';
+      }
     }
     switch (key) {
       case 'volume_remaining':         return (task.volume_plan-task.volume_fact).toFixed(2);
@@ -388,6 +393,22 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     return filteredTasks.filter(t => !hiddenIds.has(t.id));
   }, [filteredTasks, collapsedSections]);
 
+  const sectionDateAggregates = useMemo(() => {
+    const map = {};
+    tasks.filter(t => t.is_section).forEach(section => {
+      const prefix = section.code + '.';
+      const works = tasks.filter(t => !t.is_section && String(t.code).startsWith(prefix));
+      if (!works.length) return;
+      const agg = {};
+      agg.start_date_plan      = works.map(t => t.start_date_plan).filter(Boolean).sort()[0] || null;
+      agg.end_date_plan        = works.map(t => t.end_date_plan).filter(Boolean).sort().pop() || null;
+      agg.start_date_contract  = works.map(t => t.start_date_contract).filter(Boolean).sort()[0] || null;
+      agg.end_date_contract    = works.map(t => t.end_date_contract).filter(Boolean).sort().pop() || null;
+      map[section.id] = agg;
+    });
+    return map;
+  }, [tasks]);
+
   const sectionHasChildren = useCallback((section) => {
     const prefix = section.code + '.';
     return filteredTasks.some(t => t.id !== section.id && String(t.code).startsWith(prefix));
@@ -414,19 +435,26 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   }, []);
 
   const isNotesEditable = (task, key) => key === 'notes' && !task.is_section;
-  const isAdminEditable = (task, key) => isAdmin && !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key);
+  const isAdminEditable = (task, key) => {
+    if (!isAdmin) return false;
+    if (['start_date_plan','end_date_plan'].includes(key) && task.is_section) return true;
+    return !task.is_section && ['start_date_plan','end_date_plan','executor'].includes(key);
+  };
 
   const handleCellDoubleClick = useCallback((task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return;
-    if (task.is_section) return;
+    if (task.is_section && !['start_date_plan','end_date_plan'].includes(key)) return;
     if (!isNotesEditable(task, key) && !isAdminEditable(task, key)) return;
     let val = '';
     if (key === 'notes') val = task.notes || '';
     else if (key === 'executor') val = task[key] || '';
-    else val = task[key] ? new Date(task[key]).toISOString().split('T')[0] : '';
+    else val = task[key] ? new Date(task[key]).toISOString().split('T')[0]
+      : (task.is_section && sectionDateAggregates[task.id]?.[key]
+          ? new Date(sectionDateAggregates[task.id][key]).toISOString().split('T')[0]
+          : '');
     setEditValue(val);
     setEditingCell({ taskId: task.id, field: key });
-  }, [isAdmin]);
+  }, [isAdmin, sectionDateAggregates]);
 
   // Читаем через ref — onBlur срабатывает до обновления state в React
   const handleCellBlur = useCallback(async () => {
@@ -439,15 +467,26 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
     let cur;
     if (ec.field === 'notes') cur = task.notes || '';
     else if (['start_date_plan','end_date_plan'].includes(ec.field))
-      cur = task[ec.field] ? new Date(task[ec.field]).toISOString().split('T')[0] : '';
+      cur = task[ec.field] ? new Date(task[ec.field]).toISOString().split('T')[0]
+        : (task.is_section && sectionDateAggregates[task.id]?.[ec.field]
+            ? new Date(sectionDateAggregates[task.id][ec.field]).toISOString().split('T')[0]
+            : '');
     else cur = task[ec.field] || '';
     if (ev === cur) return;
     const updateVal = ev || null;
-    try {
-      await scheduleAPI.updateTask(ec.taskId, { [ec.field]: updateVal });
-      setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [ec.field]: updateVal } : t));
-    } catch (e) { console.error('Ошибка обновления:', e); }
-  }, []);
+    if (task.is_section && ['start_date_plan','end_date_plan'].includes(ec.field)) {
+      try {
+        const r = await scheduleAPI.cascadeSectionDates(ec.taskId, ec.field, updateVal);
+        const updatedIds = new Set(r.data.map(t => t.id));
+        setTasks(prev => prev.map(t => updatedIds.has(t.id) ? { ...t, [ec.field]: updateVal } : t));
+      } catch (e) { console.error('Ошибка каскадного обновления:', e); }
+    } else {
+      try {
+        await scheduleAPI.updateTask(ec.taskId, { [ec.field]: updateVal });
+        setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [ec.field]: updateVal } : t));
+      } catch (e) { console.error('Ошибка обновления:', e); }
+    }
+  }, [sectionDateAggregates]);
 
   const handleKeyDown = useCallback((e) => {
     if (editingCellRef.current?.field === 'notes') {
@@ -523,7 +562,7 @@ function Schedule({ showGantt, onShowColumnSettings, onShowFilters }) {
   const getCellStyle = (task, key) => {
     if (CHECKLIST_COL_KEYS.has(key)) return { textAlign: 'center', padding: '2px 4px' };
     const base = LEFT_ALIGN_COLS.has(key) ? { textAlign: 'left', padding: '2px 6px' } : { textAlign: 'center', padding: '2px 6px' };
-    if (task.is_section) return base;
+    if (task.is_section && !['start_date_plan','end_date_plan'].includes(key)) return base;
     if (isNotesEditable(task, key) || isAdminEditable(task, key))
       return { ...base, cursor: 'pointer', backgroundColor: editingCell?.taskId === task.id && editingCell?.field === key ? '#ffffcc' : 'inherit' };
     return base;

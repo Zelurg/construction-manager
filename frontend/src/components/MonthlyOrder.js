@@ -260,6 +260,25 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     return map;
   }, [tasks]);
 
+  const sectionDateAggregates = useMemo(() => {
+    const map = {};
+    tasks.forEach((section, idx) => {
+      if (!section.is_section) return;
+      const ids = getPositionalDescendantIds(idx, tasks);
+      const works = tasks.filter(t => !t.is_section && ids.has(t.id));
+      if (!works.length) return;
+      const minDate = (f) => works.map(t => t[f]).filter(Boolean).sort().slice(0, 1)[0] || null;
+      const maxDate = (f) => works.map(t => t[f]).filter(Boolean).sort().slice(-1)[0] || null;
+      map[section.id] = {
+        start_date_plan:     minDate('start_date_plan'),
+        end_date_plan:       maxDate('end_date_plan'),
+        start_date_contract: minDate('start_date_contract'),
+        end_date_contract:   maxDate('end_date_contract'),
+      };
+    });
+    return map;
+  }, [tasks]);
+
   const [selectedMonth, setSelectedMonthState] = useState(getInitialMonth);
 
   const setSelectedMonth = useCallback((month) => {
@@ -703,6 +722,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       const sumCols = ['labor_total','labor_fact','labor_remaining','cost_total','cost_fact','cost_remaining','machine_hours_total','machine_hours_fact','machine_hours_remaining'];
       if (sumCols.includes(key)) return calculateSectionSum(task, key).toFixed(2);
       if (['volume_plan','volume_fact','volume_remaining','unit','unit_price','labor_per_unit','machine_hours_per_unit','executor','notes'].includes(key)) return '-';
+      const agg = sectionDateAggregates[task.id];
+      if (agg && DATE_FIELDS.includes(key)) {
+        const val = agg[key];
+        return val ? new Date(val).toLocaleDateString('ru-RU') : '-';
+      }
     }
     switch (key) {
       case 'volume_remaining':         return (task.volume_plan - task.volume_fact).toFixed(2);
@@ -721,7 +745,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
       case 'notes': return task.notes || '';
       default: return task[key] !== undefined && task[key] !== null ? String(task[key]) : '-';
     }
-  }, [calculateSectionSum]);
+  }, [calculateSectionSum, sectionDateAggregates]);
 
   const applyFilters = () => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim());
@@ -768,7 +792,8 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
 
   const isFieldEditable = useCallback((task, key) => {
     if (EDITABLE_TEXT_COL_KEYS.has(key)) return !task.is_section;
-    if (task.is_section) return false;
+    if (task.is_section)
+      return isAdmin && ['start_date_plan','end_date_plan'].includes(key);
     if (key === 'notes') return true;
     if (!isAdmin) return false;
     if (task.is_custom) return CUSTOM_EDITABLE.includes(key);
@@ -787,10 +812,14 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     setEditingCell({ taskId: task.id, field: key });
     let val = '';
     if (key === 'notes') val = task.notes || '';
-    else if (DATE_FIELDS.includes(key)) val = task[key] ? new Date(task[key]).toISOString().split('T')[0] : '';
+    else if (DATE_FIELDS.includes(key))
+      val = task[key] ? new Date(task[key]).toISOString().split('T')[0]
+        : (task.is_section && sectionDateAggregates[task.id]?.[key]
+            ? new Date(sectionDateAggregates[task.id][key]).toISOString().split('T')[0]
+            : '');
     else val = task[key] !== null && task[key] !== undefined ? String(task[key]) : '';
     setEditValue(val);
-  }, [isFieldEditable]);
+  }, [isFieldEditable, sectionDateAggregates]);
 
   const handleCellBlur = useCallback(async () => {
     const ec = editingCellRef.current;
@@ -803,7 +832,11 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     let cur;
     if (ec.field === 'notes') cur = task.notes || '';
     else if (EDITABLE_TEXT_COL_KEYS.has(ec.field)) cur = getCommentText(task, fieldKey);
-    else if (DATE_FIELDS.includes(ec.field)) cur = task[fieldKey] ? new Date(task[fieldKey]).toISOString().split('T')[0] : '';
+    else if (DATE_FIELDS.includes(ec.field))
+      cur = task[fieldKey] ? new Date(task[fieldKey]).toISOString().split('T')[0]
+        : (task.is_section && sectionDateAggregates[task.id]?.[fieldKey]
+            ? new Date(sectionDateAggregates[task.id][fieldKey]).toISOString().split('T')[0]
+            : '');
     else cur = task[fieldKey] !== null && task[fieldKey] !== undefined ? String(task[fieldKey]) : '';
     if (ev === cur) return;
     let updateVal;
@@ -811,10 +844,16 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     else if (NUMBER_FIELDS.includes(ec.field)) updateVal = (ev === '' ? 0 : parseFloat(ev));
     else updateVal = (ev || null);
     try {
-      await scheduleAPI.updateTask(ec.taskId, { [fieldKey]: updateVal });
-      setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [fieldKey]: updateVal } : t));
+      if (task.is_section && ['start_date_plan','end_date_plan'].includes(ec.field)) {
+        const r = await scheduleAPI.cascadeSectionDates(ec.taskId, ec.field, updateVal);
+        const updatedIds = new Set(r.data.map(t => t.id));
+        setTasks(prev => prev.map(t => updatedIds.has(t.id) ? { ...t, [ec.field]: updateVal } : t));
+      } else {
+        await scheduleAPI.updateTask(ec.taskId, { [fieldKey]: updateVal });
+        setTasks(prev => prev.map(t => t.id === ec.taskId ? { ...t, [fieldKey]: updateVal } : t));
+      }
     } catch (e) { console.error(e); }
-  }, []);
+  }, [sectionDateAggregates]);
 
   const handleKeyDown = useCallback((e) => {
     if (editingCellRef.current?.field === 'notes') {
@@ -943,7 +982,7 @@ function MonthlyOrder({ showGantt, onShowColumnSettings, onShowFilters, onShowPr
     }
     const align = LEFT_ALIGN_COLS.has(key) ? 'left' : 'center';
     const base = { textAlign: align, padding: '2px 6px' };
-    if (task.is_section) return base;
+    if (task.is_section && !['start_date_plan','end_date_plan'].includes(key)) return base;
     if (isFieldEditable(task, key)) {
       return {
         ...base,
