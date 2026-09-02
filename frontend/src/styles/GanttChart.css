@@ -116,6 +116,7 @@
 .gantt-body-content {
   position: relative;
   min-height: 100%;
+  overflow: hidden;
 }
 
 .gantt-row-integrated {

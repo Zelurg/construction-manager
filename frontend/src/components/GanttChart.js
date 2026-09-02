@@ -126,11 +126,15 @@ function GanttBand({ task, type, minDate, maxDate, ppd, isDay, volumePlan, volum
   const cells = [];
   if (type === 'contract') {
     const perDay = (volumePlan > 0) ? volumePlan / duration : null;
+    const range = maxDate ? Math.floor((maxDate - minDate) / 864e5) + 1 : duration;
     for (let i = 0; i < duration; i++) {
+      const absIdx = startOffset + i;
+      // Обрезаем ячейки контракта по видимой шкале диаграммы (выбранный месяц).
+      if (absIdx < 0 || absIdx >= range) continue;
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const dateStr = toDateStr(d);
-      const left = (startOffset + i) * ppd;
+      const left = absIdx * ppd;
       cells.push(
         <div key={i} className="gantt-band-cell" style={{ left, width: ppd, backgroundColor: bg }}
           title={`${dateStr}: ${perDay != null ? trimNum(perDay) : 0}`}>
@@ -143,7 +147,9 @@ function GanttBand({ task, type, minDate, maxDate, ppd, isDay, volumePlan, volum
     const planEnd   = Math.floor((end - minDate) / 864e5);
     const fullStart = 0;
     const range = maxDate ? Math.floor((maxDate - minDate) / 864e5) + 1 : planEnd + 1;
-    const fullEnd = Math.max(planEnd, range - 1);
+    // Полоса плана рисуется строго по видимой шкале (выбранный месяц),
+    // чтобы её нельзя было прокрутить за пределы месяца.
+    const fullEnd = range - 1;
     for (let i = fullStart; i <= fullEnd; i++) {
       const d = new Date(minDate);
       d.setDate(minDate.getDate() + i);
