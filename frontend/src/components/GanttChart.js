@@ -141,7 +141,7 @@ function GanttBand({ task, type, minDate, maxDate, ppd, isDay, volumePlan, volum
   } else {
     const planStart = Math.floor((start - minDate) / 864e5);
     const planEnd   = Math.floor((end - minDate) / 864e5);
-    const fullStart = Math.max(0, planStart);
+    const fullStart = 0;
     const range = maxDate ? Math.floor((maxDate - minDate) / 864e5) + 1 : planEnd + 1;
     const fullEnd = Math.max(planEnd, range - 1);
     for (let i = fullStart; i <= fullEnd; i++) {
