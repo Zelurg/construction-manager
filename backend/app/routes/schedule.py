@@ -226,6 +226,22 @@ async def cascade_section_dates(
         raise HTTPException(status_code=404, detail="Раздел не найден")
 
     prefix = section.code + '.'
+    # Массово меняем даты только для тех уровней, где под заголовком нет
+    # более вложенных заголовков-разделов (цветных строк). Иначе менять даты
+    # всех работ проекта/раздела неправильно.
+    has_nested_sections = (
+        db.query(models.Task.id)
+        .filter(
+            models.Task.project_id == section.project_id,
+            models.Task.is_section == True,
+            models.Task.code.like(f"{prefix}%"),
+        )
+        .first()
+    ) is not None
+
+    if has_nested_sections:
+        return []
+
     children = (
         db.query(models.Task)
         .filter(
